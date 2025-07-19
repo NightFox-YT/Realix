@@ -1,5 +1,5 @@
 :: Realix Build Script
-:: (C) v0.01 | 19.07.2025
+:: (C) v0.02 | 19.07.2025
 :: ================
 @echo off
 setlocal
@@ -8,22 +8,32 @@ setlocal
 set "SRC_DIR=source"
 set "BUILD_DIR=build"
 
-:: Проверка исходного файла
+:: Проверка исходных файлов
 if not exist "%SRC_DIR%\boot.asm" (
    echo [ERR] Source file not found: '%SRC_DIR%\boot.asm'
+   pause
+   exit /b 1
+)
+if not exist "%SRC_DIR%\kernel\clear.asm" (
+   echo [ERR] Source file not found: "%SRC_DIR%\kernel\clear.asm"
+   pause
+   exit /b 1
+)
+if not exist "%SRC_DIR%\kernel\print.asm" (
+   echo [ERR] Source file not found: "%SRC_DIR%\kernel\print.asm"
    pause
    exit /b 1
 )
 
 :: Создание папки сборки
 if not exist "%BUILD_DIR%" (
-    mkdir "%BUILD_DIR%" 2>nul
+    mkdir "%BUILD_DIR%"
     echo [LOG] Created %BUILD_DIR% directory.
 )
 
 :: Компиляция загрузчика
 echo [LOG] Compiling bootloader...
-nasm -f bin "%SRC_DIR%\boot.asm" -o "%BUILD_DIR%\boot.bin"
+nasm -f bin "%SRC_DIR%\boot.asm" -o "%BUILD_DIR%\boot.bin" -i "%SRC_DIR%\kernel"
 
 :: Успешная компиляция
 if exist "%BUILD_DIR%\boot.bin" (
