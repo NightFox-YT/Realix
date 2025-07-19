@@ -1,4 +1,6 @@
-:: Realix Build Script (v0.01)
+:: Realix Build Script
+:: (C) v0.01 | 19.07.2025
+:: ================
 @echo off
 setlocal
 
@@ -14,7 +16,10 @@ if not exist "%SRC_DIR%\boot.asm" (
 )
 
 :: Создание папки сборки
-mkdir "%BUILD_DIR%" 2>nul
+if not exist "%BUILD_DIR%" (
+    mkdir "%BUILD_DIR%" 2>nul
+    echo [LOG] Created %BUILD_DIR% directory.
+)
 
 :: Компиляция загрузчика
 echo [LOG] Compiling bootloader...
@@ -29,7 +34,7 @@ if exist "%BUILD_DIR%\boot.bin" (
     echo       Possible reasons:
     echo       1. Syntax errors in assembly code
     echo       2. Invalid file paths
-    echo       3. NASM not installed or not in PATH (Download NASM: https://nasm.us)
+    echo       3. NASM not installed or not in PATH (Download: https://nasm.us)
     pause
     exit /b 1
 )
