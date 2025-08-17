@@ -1,15 +1,42 @@
 ; Realix > Bootix
-; (C) v0.01 | 16.08.25
+; (C) v0.02 | 17.08.25
 ; ===============
 
 ; Адрес загрузки
 org 0x7C00
 bits 16
 
+; [Символы]
+%define ENTER 0x0D, 0x0A
+
+; Настройка загрузчика
+start:
+    ; Настройка сегментных регистров (Напрямую настроить нельзя)
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+
+    ; Настройка стека (Стек растёт вниз от адреса загрузки)
+    mov ss, ax
+    mov sp, 0x7C00
+
+    jmp main
+
+; [Kernel] Print
+%include "print.asm"
+
+; Основной код
+main:
+    mov si, msg_welcome ; "Приветствие"
+    call print
+
 ; Остановка CPU
-halt:
+.halt:
     cli
     hlt
+
+; [Сообщения]
+msg_welcome: db "Welcome, Realix v0.02.", ENTER, 0
 
 ; Сигнатура AA55 (BIOS)
 times 510-($-$$) db 0
