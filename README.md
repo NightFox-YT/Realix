@@ -1,5 +1,5 @@
-# Realix v0.01 | 16.08.25 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
-- **Size:** 2 bytes (+2 bytes - signature `AA55`)
+# Realix v0.02 | 17.08.25 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
+- **Size:** 96 bytes + `AA55` signature
 - **Architecture:** x86
 
 ## 📌 Description
@@ -8,8 +8,9 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 ✅ This version is officially supported and frequently updated by the author.
 
 ## ✨ Features
-- ✔️ BIOS-based bootloader | 🆕
-- ⏳ VGA text output (80x25)
+- ✔️ BIOS-based bootloader
+- ✔️ Text output ("Welcome...") | 🆕
+- ⏳ Read from disk
 - ❌ No filesystem
 - ❌ No user input
 - ❌ No networking
@@ -17,7 +18,7 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 (8086+ compatible)
-- **RAM:** 512+ bytes
+- **RAM:** ≥512 bytes
 - **Motherboard:** BIOS-supported
 
 ## 📂 File hierarchy
@@ -26,6 +27,8 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
   - realix.img
 - source/
   - bootix.asm
+  - kernel/
+    - print.asm 
 - Makefile
 - README.md
 - LICENSE
