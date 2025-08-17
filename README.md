@@ -1,11 +1,11 @@
-# Realix v0.01 | 16.08.25 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
-- **Size:** 2 bytes (+2 bytes - signature `AA55`)
+# Realix v0.01 | 16.08.25 [![Status](https://img.shields.io/badge/status-outdate-yellow)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
+- **Size:** 2 bytes + `AA55` signature
 - **Architecture:** x86
 
 ## 📌 Description
 Realix is a lightweight, simple 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
 
-✅ This version is officially supported and frequently updated by the author.
+❗ This version is officially supported by the author until 23.08.25.
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader | 🆕
@@ -17,7 +17,7 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 (8086+ compatible)
-- **RAM:** 512+ bytes
+- **RAM:** ≥512 bytes
 - **Motherboard:** BIOS-supported
 
 ## 📂 File hierarchy
@@ -40,8 +40,7 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
   - Use Rufus. (Windows)
 
 ## 🙌 Join Us
-**We welcome all contributions!**
-How to help:
+**We welcome all contributions!** How to help:
 - 🐞 Report bugs
 - 💡 Suggest new features
 - 📝 Improve documentation
