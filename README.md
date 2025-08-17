@@ -1,5 +1,5 @@
 # Realix v0.02 | 17.08.25 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
-- **Size:** 96 bytes + `AA55` signature
+- **Size:** 65 bytes + `AA55` signature
 - **Architecture:** x86
 
 ## 📌 Description
@@ -37,7 +37,7 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 **Linux:** Use the ready-made solution `Makefile` with command `make`.
 <br/>**Windows/MacOS:**
   - Compile source code with NASM.
-    - `nasm -f bin source/bootix.asm -o build/bootix.bin`
+    - `nasm -f bin source/bootix.asm -o build/bootix.bin -i source/kernel`
   - Use the DD utility. (MacOS)
     - `dd if=build/bootix.bin of=build/realix.img bs=512 count=1`
   - Use Rufus. (Windows)
