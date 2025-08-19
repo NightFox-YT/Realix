@@ -5,14 +5,14 @@
 ## 📌 Description
 Realix is a lightweight, simple 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
 
-❗ This version is officially supported by the author until 23.08.25.
+❗ **Attention:** This version is officially supported by the author until 23.08.25.
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader | 🆕
 - ⏳ VGA text output (80x25)
 - ❌ No filesystem
 - ❌ No user input
-- ❌ No networking
+- ❌ No internet support
 - ❌ No sounds
 
 ## 📦 Hardware Requirements
@@ -26,18 +26,20 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
   - realix.img
 - source/
   - bootix.asm
+- LICENSE
 - Makefile
 - README.md
-- LICENSE
 
 ## 🛠 Build
-**Linux:** Use the ready-made solution `Makefile` with command `make`.
-<br/>**Windows/MacOS:**
-  - Compile source code with NASM.
+**Linux:**
+  - Use the ready-made solution `Makefile` with command `make`.<br />
+
+**Windows/MacOS:**
+  - Compile source code with `NASM`.
     - `nasm -f bin source/bootix.asm -o build/bootix.bin`
-  - Use the DD utility. (MacOS)
+  - Use the `DD utility`. (MacOS)
     - `dd if=build/bootix.bin of=build/realix.img bs=512 count=1`
-  - Use Rufus. (Windows)
+  - Use `Rufus`. (Windows)
 
 ## 🙌 Join Us
 **We welcome all contributions!** How to help:
