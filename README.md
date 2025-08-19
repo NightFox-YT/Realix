@@ -1,11 +1,11 @@
-# Realix v0.02 | 17.08.25 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
+# Realix v0.02 | 17.08.25 [![Status](https://img.shields.io/badge/status-outdate-yellow)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 - **Size:** 65 bytes + `AA55` signature
 - **Architecture:** x86
 
 ## 📌 Description
 Realix is a lightweight, simple 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
 
-✅ This version is officially supported and frequently updated by the author.
+❗ **Attention:** This version is officially supported by the author until 24.08.25.
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader
@@ -39,7 +39,7 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 
 **Windows/MacOS:**
   - Compile source code with `NASM`.
-    - `nasm -f bin source/bootix.asm -o build/bootix.bin`
+    - `nasm -f bin source/bootix.asm -o build/bootix.bin i source/kernel`
   - Use the `DD utility`. (MacOS)
     - `dd if=build/bootix.bin of=build/realix.img bs=512 count=1`
   - Use `Rufus`. (Windows)
