@@ -22,9 +22,6 @@ start:
 
     jmp main
 
-; [Kernel] Print
-%include "print.asm"
-
 ; Основной код
 main:
     mov si, msg_welcome ; "Приветствие"
@@ -34,6 +31,9 @@ main:
 .halt:
     cli
     hlt
+
+; [Kernel] Print
+%include "print.asm"
 
 ; [Сообщения]
 msg_welcome: db "Welcome, Realix v0.02.", ENTER, 0
