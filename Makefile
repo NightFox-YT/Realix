@@ -12,7 +12,7 @@ BUILD_DIR = build
 # Запуск по умолчанию
 all: floppy
 
-# Создание образа диска (floppy)
+# Сборка образа диска (floppy)
 floppy: $(BUILD_DIR)/realix.img
 
 $(BUILD_DIR)/realix.img: bootix

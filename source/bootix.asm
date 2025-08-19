@@ -30,14 +30,6 @@ start:
 
     jmp main
 
-; [Kernel] Print, print_reg
-%include 'print.asm'
-%include 'print_reg.asm'
-
-; [Disk] Read, lba_to_chs
-%include 'read.asm'
-%include 'lba_to_chs.asm'
-
 ; Основной код
 main:
     ; Чтение информации с диска
@@ -56,9 +48,17 @@ main:
 
 ; Обработчик ошибок
 error_handler:
-    mov ah, 0    ; Ожидание нажатия
+    mov ah, 0    ; Режим ожидания нажатия
     int 0x16
     jmp 0FFFFh:0 ; Переход в начало BIOS для перезагрузки
+
+; [Kernel] Print, print_reg
+%include 'print.asm'
+%include 'print_reg.asm'
+
+; [Disk] Read, lba_to_chs
+%include 'read.asm'
+%include 'lba_to_chs.asm'
 
 ; [Сообщения]
 msg_welcome:      db 'Welcome, Realix v0.03.', ENTER, 0
