@@ -1,11 +1,11 @@
-# Realix v0.02 | 17.08.25 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
+# Realix v0.02 | 17.08.25 [![Status](https://img.shields.io/badge/status-outdate-byellow)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 - **Size:** 65 bytes + `AA55` signature
 - **Architecture:** x86
 
 ## 📌 Description
 Realix is a lightweight, simple 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
 
-✅ This version is officially supported and frequently updated by the author.
+❗ **Attention:** This version is officially supported by the author until 24.08.25.
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader
