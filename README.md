@@ -1,4 +1,4 @@
-# Realix v0.03 | 19.08.25 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
+# Realix v0.03 | 19.08.25 ![Status](https://img.shields.io/badge/status-active-brightgreen) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 - **Size:** 354 bytes + `AA55` signature
 - **Architecture:** x86
 
@@ -30,8 +30,6 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
   - disk/
     - lba_to_chs.asm
     - read.asm
-  - fat/
-    - fat_headers.asm
   - kernel/
     - print.asm
     - print_reg.asm
@@ -41,7 +39,7 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 
 ## 🛠 Build
 **Linux:**
-  - Use the ready-made solution `Makefile` with command `make`.<br/>
+  - Use the ready-made solution `Makefile` with command `make`. <br/>
 
 **Windows/MacOS:**
   - Compile source code with `NASM`.
@@ -56,5 +54,4 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 **We welcome all contributions!** How to help:
 - 🐞 Report bugs
 - 💡 Suggest new features
-- 📝 Improve documentation
 - 🔧 Optimize code
