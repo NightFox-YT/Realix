@@ -19,7 +19,7 @@ $(BUILD_DIR)/realix.img: bootix
 	cp $(BUILD_DIR)/bootix.bin $(BUILD_DIR)/realix.img
 	truncate -s 1440k $(BUILD_DIR)/realix.img
 
-# Сборка Bootix (bin)
+# Сборка загрузчика (bin)
 bootix: $(BUILD_DIR)/bootix.bin
 
 $(BUILD_DIR)/bootix.bin: always

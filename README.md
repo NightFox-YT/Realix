@@ -13,7 +13,7 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 - ⏳ Read from disk
 - ❌ No filesystem
 - ❌ No user input
-- ❌ No networking
+- ❌ No internet support
 - ❌ No sounds
 
 ## 📦 Hardware Requirements
@@ -28,23 +28,24 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 - source/
   - bootix.asm
   - kernel/
-    - print.asm 
+    - print.asm
+- LICENSE
 - Makefile
 - README.md
-- LICENSE
 
 ## 🛠 Build
-**Linux:** Use the ready-made solution `Makefile` with command `make`.
-<br/>**Windows/MacOS:**
-  - Compile source code with NASM.
-    - `nasm -f bin source/bootix.asm -o build/bootix.bin -i source/kernel`
-  - Use the DD utility. (MacOS)
+**Linux:**
+  - Use the ready-made solution `Makefile` with command `make`.<br />
+
+**Windows/MacOS:**
+  - Compile source code with `NASM`.
+    - `nasm -f bin source/bootix.asm -o build/bootix.bin`
+  - Use the `DD utility`. (MacOS)
     - `dd if=build/bootix.bin of=build/realix.img bs=512 count=1`
-  - Use Rufus. (Windows)
+  - Use `Rufus`. (Windows)
 
 ## 🙌 Join Us
-**We welcome all contributions!**
-How to help:
+**We welcome all contributions!** How to help:
 - 🐞 Report bugs
 - 💡 Suggest new features
 - 📝 Improve documentation
