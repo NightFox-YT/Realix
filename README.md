@@ -1,5 +1,5 @@
 # Realix v0.03 | 19.08.25 [![Status](https://img.shields.io/badge/status-active-brightgreen)](https://github.com/NightFox-YT/Realix) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
-- **Size:** ?? bytes + `AA55` signature
+- **Size:** 354 bytes + `AA55` signature
 - **Architecture:** x86
 
 ## 📌 Description
@@ -48,8 +48,8 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
     - `nasm -f bin source/bootix.asm -o build/bootix.bin -i source/kernel -i source/disk -i source/fat`
   - Use the `DD utility`. (MacOS)
     - `dd if=/dev/zero of=build/realix.img bs=512 count=2880`
-	  - `newfs_msdos -F 12 -f 2880 build/realix.img`
-	  - `dd if=build/bootix.bin of=build/realix.img conv=notrunc`
+	- `newfs_msdos -F 12 -f 2880 build/realix.img`
+	- `dd if=build/bootix.bin of=build/realix.img conv=notrunc`
   - Use `Rufus`. (Windows)
 
 ## 🙌 Join Us
