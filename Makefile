@@ -1,6 +1,6 @@
-# Realix > Build Script
+# Realix > Makefile
 # (C) v0.03 | 19.08.25
-# =====================
+# =================
 
 # Конфигурация
 ASM = nasm
@@ -24,7 +24,7 @@ $(BUILD_DIR)/realix.img: bootix
 bootix: $(BUILD_DIR)/bootix.bin
 
 $(BUILD_DIR)/bootix.bin: always
-	$(ASM) $(SRC_DIR)/bootix.asm -f bin -o $(BUILD_DIR)/bootix.bin -i $(SRC_DIR)/kernel -i $(SRC_DIR)/disk -i $(SRC_DIR)/fat
+	$(ASM) $(SRC_DIR)/bootix.asm -f bin -o $(BUILD_DIR)/bootix.bin -i $(SRC_DIR)/kernel -i $(SRC_DIR)/disk
 
 # Подготовка к сборке
 always:

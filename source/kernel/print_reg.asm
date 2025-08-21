@@ -12,11 +12,11 @@ print_reg:
 
 .next_digit:
     xor dx, dx
-    div bx          ; Делим ax на 10 (Получаем результат в ax, остаток в dx)
-    add dl, 0x30    ; Преобразуем остаток в ASCII символ
-    push dx         ; *Сохраняем цифру в стеке
+    div bx           ; Делим ax на 10 (Получаем результат в ax, остаток в dx)
+    add dl, 0x30     ; Преобразуем остаток в ASCII символ
+    push dx          ; *Сохраняем цифру в стеке
     inc cx
-    test ax, ax     ; Проверяем, осталось ли что-то в ax
+    test ax, ax      ; Проверяем, осталось ли что-то в ax
     jnz .next_digit
 
 .print_char:
