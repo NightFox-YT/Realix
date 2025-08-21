@@ -6,7 +6,7 @@
 org 0x7C00
 bits 16
 
-; [Символы]
+; Символы
 %define ENTER 0x0D, 0x0A
 
 ; Запуск
@@ -35,7 +35,7 @@ main:
 ; [Kernel] Print
 %include "print.asm"
 
-; [Сообщения]
+; Сообщения
 msg_welcome: db "Welcome, Realix v0.02.", ENTER, 0
 
 ; Сигнатура AA55 (BIOS)
