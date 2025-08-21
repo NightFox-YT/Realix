@@ -1,8 +1,8 @@
-; Realix > Disk
+; Realix > Read sectors
 ; (C) v0.03 | 19.08.25
-; =============
+; =====================
 
-; [Disk] Чтение с диска
+; [Disk] Чтение секторов с диска
 ; Параметры:
 ;  - ax: LBA
 ;  - cl: кол-во секторов для чтения (до 128)
@@ -23,8 +23,8 @@ disk_read:
     mov di, 3   ; Кол-во попыток чтения
 
 .retry:
-    pusha     ; Сохранение всех регистров (BIOS может изменить)
-    stc       ; Установка carry flag (BIOS может не устанавливать)
+    pusha    ; Сохранение всех регистров (BIOS может изменить)
+    stc      ; Установка carry flag (BIOS может не устанавливать)
     int 0x13
     jnc .done
 
@@ -32,7 +32,8 @@ disk_read:
     popa
     call disk_reset
 
-    dec di      ; Уменьшаем кол-во попыток
+    ; Уменьшаем кол-во попыток
+    dec di
     test di, di
     jnz .retry
 
@@ -78,6 +79,6 @@ disk_reset:
 
 ; [Disk] Ошибки
 read_error:
-    mov si, err_read_failed   ; "Чтение с диска не удалось"
+    mov si, err_read_failed ; "Чтение с диска не удалось"
     call print
     jmp error_handler
