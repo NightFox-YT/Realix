@@ -1,6 +1,6 @@
-# Realix > Build script
+# Realix > Makefile
 # (C) v0.01 | 16.08.25
-# =====================
+# =================
 
 # Конфигурация
 ASM = nasm
