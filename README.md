@@ -41,7 +41,7 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 
 ## 🛠 Build
 **Linux:**
-  - Use the ready-made solution `Makefile` with command `make`.<br/>
+  - Use the ready-made solution `Makefile` with command `make`. <br/>
 
 **MacOS:**
   - Compile source code with `NASM`.
