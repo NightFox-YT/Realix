@@ -1,6 +1,6 @@
-; Realix > Read sectors
-; (C) v0.03 | 19.08.25
-; =====================
+; Realix > Read
+; (C) v0.04 | 25.08.25
+; =============
 
 ; [Disk] Чтение секторов с диска
 ; Параметры:
@@ -43,22 +43,8 @@ disk_read:
 
 .done:
     popa
-
-    ; Вывод о успешном прочтении
-    mov si, msg_read_success ; "[LOG] Read ..."
-    call print
-
-    xor ah, ah
-    call print_reg ; Выводим число секторов
-    add si, 12     ; "sectors, LBA: ..." + Пропускаем символы, которые уже вывели.
-    call print
-
-    pop ax         ; *Восстанавливаем LBA
     
-    call print_reg ; Выводим LBA
-    add si, 16     ; ENTER + Пропускаем символы, которые уже вывели.
-    call print
-
+    pop ax
     pop di
     pop dx
     pop cx
@@ -70,7 +56,7 @@ disk_read:
 ;  - dl: номер диска
 disk_reset:
     pusha
-    mov ah, 0     ; Режима сброса диска
+    mov ah, 0     ; Режим сброса диска
     stc           ; Установка carry flag (BIOS может не устанавливать)
     int 0x13
     jc read_error ; Если carry flag != 0, диск сломался...

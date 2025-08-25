@@ -1,5 +1,5 @@
 ; Realix > LBA to CHS
-; (C) v0.03 | 19.08.25
+; (C) v0.04 | 25.08.25
 ; ===================
 
 ; [Disk] Перевод LBA адреса в CHS адрес
@@ -15,13 +15,13 @@ lba_to_chs:
 
     ; Вычисляем номер сектора
     xor dx, dx 
-    div word [bdb_sectors_per_track] ; ax = LBA / SectorsPerTrack, dx = LBA % SectorsPerTrack
+    div word [bpb_sectors_per_track] ; ax = LBA / SectorsPerTrack, dx = LBA % SectorsPerTrack
     inc dx                           ; (Сектор) dx = (LBA % SectorsPerTrack) + 1
     mov cx, dx                       ; Сохраняем номер сектора в cx
 
     ; Вычисляем номер головы, цилиндра
     xor dx, dx
-    div word [bdb_heads] ; (Цилиндр) ax = (LBA / SectorsPerTrack) / Heads, (Голова) dx = (LBA / SectorsPerTrack) % Heads
+    div word [bpb_heads] ; (Цилиндр) ax = (LBA / SectorsPerTrack) / Heads, (Голова) dx = (LBA / SectorsPerTrack) % Heads
     mov dh, dl           ; Сохраняем номер головы в dh
 
     ; Формируем cx для прерывания BIOS

@@ -1,5 +1,5 @@
 ; Realix > Bootix
-; (C) v0.03 | 19.08.25
+; (C) v0.04 | 25.08.25
 ; ===============
 
 ; Настройка компиляции
@@ -13,19 +13,19 @@ bits 16
 jmp short start
 nop
 
-bdb_oem:                   db 'MSWIN4.1' ; Идентификатор OEM (8 байт)
-bdb_bytes_per_sector:      dw 512        ; Кол-во байт на сектор (Floppy: 512)
-bdb_sectors_per_cluster:   db 1          ; Кол-во секторов на кластер
-bdb_reserved_sectors:      dw 1          ; Кол-во зарезервированных секторов (Сектор загрузчика)
-bdb_fats:                  db 2          ; Кол-во FAT таблиц
-bdb_dir_entries:           dw 0x0E0      ; Кол-во записей корневого каталога
-bdb_total_sectors:         dw 2880       ; Кол-во секторов (2880 * 512 = 1.44 мб)
-bdb_media_descriptor_type: db 0x0F0      ; Тип диска (F0 - 3.5" floppy disk)
-bdb_sectors_per_fat:       dw 9          ; Кол-во секторов на FAT таблицу
-bdb_sectors_per_track:     dw 18         ; Кол-во секторов на дорожку
-bdb_heads:                 dw 2          ; Кол-во голов
-bdb_hidden_sectors:        dd 0          ; Кол-во скрытых секторов
-bdb_large_sectors:         dd 0          ; Кол-во секторов, следующих дальше 65535 сектора
+bpb_oem:                   db 'MSWIN4.1' ; Идентификатор OEM (8 байт)
+bpb_bytes_per_sector:      dw 512        ; Кол-во байт на сектор (Floppy: 512)
+bpb_sectors_per_cluster:   db 1          ; Кол-во секторов на кластер
+bpb_reserved_sectors:      dw 1          ; Кол-во зарезервированных секторов (Сектор загрузчика)
+bpb_fats:                  db 2          ; Кол-во FAT таблиц
+bpb_dir_entries:           dw 0x0E0      ; Кол-во записей корневого каталога
+bpb_total_sectors:         dw 2880       ; Кол-во секторов (2880 * 512 = 1.44 мб)
+bpb_media_descriptor_type: db 0x0F0      ; Тип диска (F0 - 3.5" floppy disk)
+bpb_sectors_per_fat:       dw 9          ; Кол-во секторов на FAT таблицу
+bpb_sectors_per_track:     dw 18         ; Кол-во секторов на дорожку
+bpb_heads:                 dw 2          ; Кол-во голов
+bpb_hidden_sectors:        dd 0          ; Кол-во скрытых секторов
+bpb_large_sectors:         dd 0          ; Кол-во секторов, следующих дальше 65535 сектора
 
 ; Дополнительные параметры (extended boot record)
 ebr_drive_number:          db 0                  ; Номер диска (0x00 floppy / 0x80 hdd)
@@ -47,20 +47,32 @@ start:
     mov sp, 0x7C00
 
     ; Обновление номера диска (BIOS устанавливает его в dl)
-    mov [ebr_drive_number], dl 
+    mov [ebr_drive_number], dl
 
-    jmp main
+    ; Настройка сегмента кода (cs) дальним переходом
+    ; (BIOS может запустить загрузчик в 07C0:0000 вместо 0000:7C00)
+    jmp 0:main
 
 ; Основной код
 main:
-    ; Чтение информации с диска
-    mov ax, 1      ; LBA
-    mov cl, 3      ; Кол-во секторов для чтения
-    mov bx, 0x7E00 ; Адрес данных для записи (после загрузчика)
-    call disk_read
-
-    mov si, msg_welcome ; "Приветствие"
+    mov si, msg_booting ; "Загрузка"
     call print
+
+    ; Считывание параметров диска (Не полагаемся на данные отформатированного диска)
+    push es
+    mov ah, 08h   ; Режим получения параметров диска
+    int 0x13
+    jc read_error ; Carry flag != 0, => Диск сломался...
+    pop es
+
+    and cl, 63                      ; Убираем верхние 2 бита в cl
+    xor ch, ch
+    mov [bpb_sectors_per_track], cx ; Обновляем кол-во секторов на дорожку
+
+    inc dh              ; Увеличиваем dh (BIOS выводит кол-во голов минус 1)
+    mov [bpb_heads], dh ; Обновляем кол-во голов
+
+    jmp read_file ; Считываем файл второго этапа загрузчика
 
 ; Остановка CPU
 .halt:
@@ -73,19 +85,23 @@ error_handler:
     int 0x16
     jmp 0FFFFh:0 ; Переход в начало BIOS для перезагрузки
 
-; [Kernel] Print, print_reg
+; [Kernel] Print
 %include 'print.asm'
-%include 'print_reg.asm'
 
-; [Disk] Read, lba_to_chs
+; [Disk] Read, read file, lba_to_chs
 %include 'read.asm'
+%include 'read_file.asm'
 %include 'lba_to_chs.asm'
 
 ; Сообщения
-msg_welcome:      db 'Welcome, Realix v0.03.', ENTER, 0
-msg_read_success: db '[LOG] Read ', 0, " sectors, LBA: ", 0, ENTER, 0
+msg_booting:           db 'Booting Realix.', 0
+err_read_failed:       db 'Read failed!', 0
+err_initrix_not_found: db 'No Initrix!', 0
 
-err_read_failed:  db '[!] Read from disk failed!', ENTER, 0
+; Переменные (Для чтение второго этапа загрузчика)
+file_name: db 'INITRIX BIN'
+FILE_LOAD_SEGMENT equ 0x2000
+FILE_LOAD_OFFSET  equ 0
 
 ; Сигнатура AA55 (BIOS)
 times 510-($-$$) db 0
