@@ -51,7 +51,7 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
     - `dd if=/dev/zero of=build/realix.img bs=512 count=2880`
 	- `newfs_msdos -F 12 -f 2880 build/realix.img`
 	- `dd if=build/bootix.bin of=build/realix.img conv=notrunc`
-  - `mcopy -i build/realix.img build/initrix.bin "::initrix.bin"`
+  	- `mcopy -i build/realix.img build/initrix.bin "::initrix.bin"`
 
 ## 🔗 Links
 - **Discord:** https://discord.gg/zMzpWFgXaH
