@@ -17,7 +17,7 @@ bpb_oem:                   db 'MSWIN4.1' ; Идентификатор OEM (8 б�
 bpb_bytes_per_sector:      dw 512        ; Кол-во байт на сектор (Floppy: 512)
 bpb_sectors_per_cluster:   db 1          ; Кол-во секторов на кластер
 bpb_reserved_sectors:      dw 1          ; Кол-во зарезервированных секторов (Сектор загрузчика)
-bpb_fats:                  db 2          ; Кол-во FAT таблиц
+bpb_fat_count:             db 2          ; Кол-во FAT таблиц
 bpb_dir_entries:           dw 0x0E0      ; Кол-во записей корневого каталога
 bpb_total_sectors:         dw 2880       ; Кол-во секторов (2880 * 512 = 1.44 мб)
 bpb_media_descriptor_type: db 0x0F0      ; Тип диска (F0 - 3.5" floppy disk)
