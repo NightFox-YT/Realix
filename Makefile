@@ -1,13 +1,14 @@
 # © Realix > Makefile
-# (01.02.26) v0.01
-# ===================
+# (19.03.26) v0.01
+# ================
 
 # Конфигурация
 ASM = nasm
+ASMFLAGS = -f bin
 SRC_DIR = source
 BUILD_DIR = build
 
-.PHONY: all floppy bootix clean always
+.PHONY: all floppy bootix run clean always
 
 # Запуск по умолчанию
 all: floppy
@@ -23,11 +24,11 @@ $(BUILD_DIR)/realix.img: bootix
 bootix: $(BUILD_DIR)/bootix.bin
 
 $(BUILD_DIR)/bootix.bin: always
-	$(ASM) $(SRC_DIR)/bootix.asm -f bin -o $(BUILD_DIR)/bootix.bin
+	$(ASM) $(SRC_DIR)/bootix.asm $(ASMFLAGS) -o $(BUILD_DIR)/bootix.bin
 
 # Запуск собранного образа диска
 run: floppy
-    qemu-system-x86_64 -fda $(BUILD_DIR)/realix.img
+	qemu-system-x86_64 -fda $(BUILD_DIR)/realix.img
 
 # Подготовка к сборке
 always:

@@ -5,9 +5,8 @@ Please consider upgrading to a newer version if available.
 
 ## 📌 About
 Realix is a minimal 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
-- **Size:** 512 bytes (2 bytes of code + 508 bytes padding + `AA55` signature)
+- **Size:** 512 bytes (4 bytes of them is code + `AA55` signature)
 - **Release:** `16.08.25`
-- **Last update:** `18.03.26`
 
 ## ✨ Features
 - 🆕 BIOS-based bootloader
@@ -58,10 +57,9 @@ make
    dd if=build/bootix.bin of=build/realix.img bs=512 count=1
    ```
 
-## 🔗 Links
+## 🔗 Links & 🙌 Contributing
 - **Discord:** [discord.gg/zMzpWFgXaH](https://discord.gg/zMzpWFgXaH)
 
-## 🙌 Contributing
 Contributions of any kind are welcome:
 
 - 🐞 Report bugs
