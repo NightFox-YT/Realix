@@ -5,7 +5,7 @@ Please consider upgrading to a newer version if available.
 
 ## 📌 About
 Realix is a minimal 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
-- **Size:** 2 bytes + `AA55` signature
+- **Size:** 512 bytes (2 bytes of code + 508 bytes padding + `AA55` signature)
 - **Release:** `16.08.25`
 - **Last update:** `01.02.26`
 
@@ -25,12 +25,12 @@ Realix is a minimal 16-bit OS designed for x86 architecture, developed from scra
 ## 📂 File hierarchy
 ```
 .
-├── source/
-│   └── bootix.asm
-├── build/          # Generated on build
-├── Makefile
-├── LICENSE
-└── README.md
+├─ source/
+│   └─ bootix.asm
+├─ build/          # Generated on build
+├─ Makefile
+├─ LICENSE
+└─ README.md
 ```
 
 ## 🛠 Build

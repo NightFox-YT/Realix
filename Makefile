@@ -25,6 +25,10 @@ bootix: $(BUILD_DIR)/bootix.bin
 $(BUILD_DIR)/bootix.bin: always
 	$(ASM) $(SRC_DIR)/bootix.asm -f bin -o $(BUILD_DIR)/bootix.bin
 
+# Запуск собранного образа диска
+run: floppy
+    qemu-system-x86_64 -fda $(BUILD_DIR)/realix.img
+
 # Подготовка к сборке
 always:
 	mkdir -p $(BUILD_DIR)
