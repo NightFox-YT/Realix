@@ -1,6 +1,6 @@
 # 📦 Realix `v0.01` ![Status](https://img.shields.io/badge/status-archived-red) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
-⚠️ **This version is archived from `23.08.25`.** No further updates are guaranteed — changes may still be added at the creator's discretion.
+⚠️ **This version is archived from `21.03.26`.** No further updates are guaranteed — changes may still be added at the creator's discretion.
 Please consider upgrading to a newer version if available.
 
 ## 📌 About
@@ -18,7 +18,7 @@ Realix is a minimal 16-bit OS designed for x86 architecture, developed from scra
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 (8086+ compatible)
-- **RAM:** ≥512 bytes
+- **RAM:** 512 bytes
 - **Motherboard:** BIOS-supported
 
 ## 📂 File hierarchy
@@ -34,28 +34,15 @@ Realix is a minimal 16-bit OS designed for x86 architecture, developed from scra
 
 ## 🛠 Build
 
-### Linux
-Use the ready-made solution `Makefile`, simply run:
-```bash
-make
-```
+### Linux & macOS
+Use the ready-made solution `Makefile`, simply run: `make`.
 
 ### Windows
 1. Compile source code with `NASM`:
    ```bash
    nasm -f bin source/bootix.asm -o build/bootix.bin
    ```
-2. Write to disk image using **Rufus**.
-
-### macOS
-1. Compile source code with `NASM`:
-   ```bash
-   nasm -f bin source/bootix.asm -o build/bootix.bin
-   ```
-2. Create a bootable image with `dd`:
-   ```bash
-   dd if=build/bootix.bin of=build/realix.img bs=512 count=1
-   ```
+2. Write to disk image using `Rufus`.
 
 ## 🔗 Links & Contributing
 - **Discord:** [discord.gg/zMzpWFgXaH](https://discord.gg/zMzpWFgXaH)

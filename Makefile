@@ -1,5 +1,5 @@
 # © Realix > Makefile
-# (19.03.26) v0.01
+# (21.03.26) v0.01
 # ================
 
 # Конфигурация
@@ -24,7 +24,7 @@ $(BUILD_DIR)/realix.img: bootix
 bootix: $(BUILD_DIR)/bootix.bin
 
 $(BUILD_DIR)/bootix.bin: always
-	$(ASM) $(SRC_DIR)/bootix.asm $(ASMFLAGS) -o $(BUILD_DIR)/bootix.bin
+	$(ASM) $(ASMFLAGS) $(SRC_DIR)/bootix.asm -o $(BUILD_DIR)/bootix.bin
 
 # Запуск собранного образа диска
 run: floppy
