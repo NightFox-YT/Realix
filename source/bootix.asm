@@ -1,10 +1,10 @@
-; Realix > Bootix
-; (C) v0.02 | 17.08.25
-; ===============
+; © Realix > Bootix
+; (21.03.26) v0.02
+; ================
 
 ; Настройка компиляции
-org 0x7C00
 bits 16
+org 0x7C00
 
 ; Символы
 %define ENTER 0x0D, 0x0A
@@ -20,20 +20,19 @@ start:
     mov ss, ax
     mov sp, 0x7C00
 
-    jmp main
-
 ; Основной код
 main:
     mov si, msg_welcome ; "Приветствие"
     call print
 
 ; Остановка CPU
-.halt:
+halt:
     cli
     hlt
+    jmp $
 
-; [Kernel] Print
-%include "print.asm"
+; Подключение модулей
+%include "kernel/print.asm"
 
 ; Сообщения
 msg_welcome: db "Welcome, Realix v0.02.", ENTER, 0
