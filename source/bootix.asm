@@ -55,7 +55,7 @@ main:
     push word [bpb_sectors_per_track]
     push word [bpb_heads]
     mov ax, 1             ; LBA
-    mov cl, 3             ; Кол-во секторов для чтения
+    mov cl, 1             ; Кол-во секторов для чтения
     mov bx, 0x7E00        ; Адрес для записи (после загрузчика)
     call disk_read
 
