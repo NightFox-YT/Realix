@@ -1,24 +1,32 @@
-; Realix > Read
-; (C) v0.03 | 19.08.25
-; =============
+; © Realix > Read
+; (21.03.26) v0.03
+; ================
 
-; [Disk] Чтение секторов с диска
-; Параметры:
+; > Чтение секторов с диска
+; Параметры (Стек):
+;  - [bp+4]: bpb_heads             (кол-во голов)
+;  - [bp+6]: bpb_sectors_per_track (секторов на дорожку)
+; Параметры (Регистры):
 ;  - ax: LBA
 ;  - cl: кол-во секторов для чтения (до 128)
 ;  - dl: номер диска
 ;  - es:bx: адрес памяти, где сохранить прочитанные данные
 disk_read:
+    push bp
+    mov bp, sp
+
     push bx
     push cx
     push dx
     push di
     push ax
 
-    push cx         ; *Временно сохраняем cl (кол-во секторов для чтения)
+    push cx          ; Сохраняем кол-во секторов (cl)
+    push word [bp+6]
+    push word [bp+4]
     call lba_to_chs
     
-    pop ax      ; *Восстанавливаем cl в al (кол-во секторов для чтения)
+    pop ax      ; Восстанавливаем кол-во секторов (cl > al)
     mov ah, 02h ; Режим чтения секторов
     mov di, 3   ; Кол-во попыток чтения
 
@@ -37,35 +45,31 @@ disk_read:
     test di, di
     jnz .retry
 
+; Все попытки исчерпаны
 .fail:
-    ; Все попытки исчерпаны
     jmp read_error
 
 .done:
     popa
 
-    ; Вывод о успешном прочтении
-    mov si, msg_read_success ; "[LOG] Read ..."
+    ; Вывод в консоль
+    mov si, msg_read_ok ; "[LOG] Read OK: LBA "
     call print
 
-    xor ah, ah
-    call print_reg ; Выводим число секторов
-    add si, 12     ; "sectors, LBA: ..." + Пропускаем символы, которые уже вывели.
-    call print
+    pop ax              ; *Восстанавливаем LBA (al)
+    call print_reg
 
-    pop ax         ; *Восстанавливаем LBA
-    
-    call print_reg ; Выводим LBA
-    add si, 16     ; ENTER + Пропускаем символы, которые уже вывели.
+    mov si, new_line    ; "Enter"
     call print
 
     pop di
     pop dx
     pop cx
     pop bx
-    ret
+    pop bp
+    ret 4
 
-; [Disk] Сбрасываем контроллер диска
+; > Сброс контроллер диска
 ; Параметры:
 ;  - dl: номер диска
 disk_reset:
@@ -73,12 +77,12 @@ disk_reset:
     mov ah, 0     ; Режим сброса диска
     stc           ; Установка carry flag (BIOS может не устанавливать)
     int 0x13
-    jc read_error ; Если carry flag != 0, диск сломался...
+    jc read_error
     popa
     ret
 
-; [Disk] Ошибки
+; > Ошибки
 read_error:
-    mov si, err_read_failed ; "Чтение с диска не удалось"
+    mov si, err_read_failed ; "[!] Read failed!"
     call print
     jmp error_handler

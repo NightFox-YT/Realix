@@ -1,17 +1,17 @@
-# 📦 Realix v0.03 | 19.08.25 ![Status](https://img.shields.io/badge/status-archive-red) ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
-- **Size:** 354 bytes + `AA55` signature
-- **Architecture:** x86
+# 📦 Realix `v0.03` ![Status](https://img.shields.io/badge/status-archived-red) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
-## 📌 Description
-Realix is a lightweight, simple 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.<br/>
+⚠️ **This version is archived from `21.03.26`.** No further updates are guaranteed — changes may still be added at the creator's discretion.
+Please consider upgrading to a newer version if available.
 
-❗ **WARNING:** Support for this version ended on 24.08.25, please upgrade to a newer version.<br/>
-(This means that there will be no more commits and changes in the branch.)
+## 📌 About
+Realix is a minimal 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
+- **Size:** 512 bytes (354 bytes of them is code + `AA55` signature)
+- **Release:** `19.08.25`
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader
-- ✔️ Text output ("Welcome...")
-- ✔️ Read from disk | 🆕
+- ✔️ VGA text output (80×25)
+- 🆕 Read from disk
 - ⏳ FAT12 filesystem
 - ❌ No user input
 - ❌ No internet support
@@ -19,40 +19,48 @@ Realix is a lightweight, simple 16-bit OS designed for x86 architecture, develop
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 (8086+ compatible)
-- **RAM:** ≥512 bytes
+- **RAM:** 512 bytes
 - **Motherboard:** BIOS-supported
 
 ## 📂 File hierarchy
-- source/
-  - bootix.asm
-  - disk/
-    - lba_to_chs.asm
-    - read.asm
-  - kernel/
-    - print.asm
-    - print_reg.asm
-- LICENSE
-- Makefile
-- README.md
+```
+.
+├─ source/
+│  ├─ bootix.asm
+│  ├─ kernel/
+│  │  ├─ print.asm
+│  │  └─ print_reg.asm
+│  └─ disk/
+│  │  ├─ lba_to_chs.asm
+│  │  └─ read.asm
+├─ build/                # Generated on build
+├─ Makefile
+├─ LICENSE
+└─ README.md
+```
 
 ## 🛠 Build
-**Linux:**
-  - Use the ready-made solution `Makefile` with command `make`.<br/>
+### Linux
+Use the ready-made solution `Makefile`, simply run: `make`.
 
-**Windows/MacOS:**
-  - Compile source code with `NASM`.
-    - `nasm -f bin source/bootix.asm -o build/bootix.bin -i source/kernel -i source/disk`
-  - Use the `DD utility`. (MacOS)
-    - `dd if=/dev/zero of=build/realix.img bs=512 count=2880`
-	- `newfs_msdos -F 12 -f 2880 build/realix.img`
-	- `dd if=build/bootix.bin of=build/realix.img conv=notrunc`
-  - Use `Rufus`. (Windows)
+### macOS
+1. Replace line `mkfs.fat -F 12 -n "Realix" $(BUILD_DIR)/realix.img` with `newfs_msdos -F 12 -f 2880 $(BUILD_DIR)/realix.img` in the `Makefile`.
+2. Simply run: `make`
 
-## 🔗 Links
-- **Discord:** https://discord.gg/zMzpWFgXaH
+### Windows
+1. Compile source code with `NASM`:
+   ```bash
+   nasm -f bin source/bootix.asm -o build/bootix.bin
+   ```
+2. Write to disk image using `Rufus`.
 
-## 🙌 Join Us
-**We welcome all contributions!** How to help:
+## 🔗 Links & 🙌 Contributing
+- **Discord:** [discord.gg/zMzpWFgXaH](https://discord.gg/zMzpWFgXaH)
+
+Contributions of any kind are welcome:
+
 - 🐞 Report bugs
-- 💡 Suggest new features
-- 🔧 Optimize code
+- 💡 Suggest features
+- 🔧 Optimize or refactor code
+
+Feel free to open an issue or reach out via Discord.
