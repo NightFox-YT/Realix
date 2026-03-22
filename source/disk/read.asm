@@ -1,6 +1,7 @@
 ; © Realix > Read
-; (21.03.26) v0.03
+; (22.03.26) v0.03
 ; ================
+; Зависимости: kernel/print.asm, kernel/print_reg.asm
 
 ; > Чтение секторов с диска
 ; Параметры (Стек):
@@ -12,6 +13,7 @@
 ;  - dl: номер диска
 ;  - es:bx: адрес памяти, где сохранить прочитанные данные
 disk_read:
+    ; Установка фрейма функции
     push bp
     mov bp, sp
 
@@ -21,9 +23,7 @@ disk_read:
     push di
     push ax
 
-    push cx          ; Сохраняем кол-во секторов (cl)
-    push word [bp+6]
-    push word [bp+4]
+    push cx         ; Сохраняем кол-во секторов (cl)
     call lba_to_chs
     
     pop ax      ; Восстанавливаем кол-во секторов (cl > al)
@@ -40,7 +40,7 @@ disk_read:
     popa
     call disk_reset
 
-    ; Уменьшаем кол-во попыток
+    ; Переход к след. попытке
     dec di
     test di, di
     jnz .retry
@@ -56,33 +56,73 @@ disk_read:
     mov si, msg_read_ok ; "[LOG] Read OK: LBA "
     call print
 
-    pop ax              ; *Восстанавливаем LBA (al)
+    pop ax           ; *Восстанавливаем LBA (al)
     call print_reg
 
-    mov si, new_line    ; "Enter"
+    mov si, new_line ; "Enter"
     call print
 
     pop di
     pop dx
     pop cx
     pop bx
+
     pop bp
     ret 4
 
-; > Сброс контроллер диска
+; > Перевод LBA адреса в CHS адрес
+; ! NOTE: Фрейм функции отсутствует, т.к. функция локальная для disk_read
+; Параметры:
+;  - [bp+6]: bpb_sectors_per_track  (секторов на дорожку)
+;  - [bp+4]: bpb_heads (кол-во голов)
+;  - ax: LBA
+; Вывод:
+;  - cx [bits 0-5]: сектор
+;  - cx [bits 6-15]: цилиндр
+;  - dh: голова
+lba_to_chs:
+    push ax
+    push dx
+
+    ; Вычисляем номер сектора (LBA / SectorsPerTrack)
+    xor dx, dx
+    div word [bp+6] ; ax = LBA / SPT, dx = LBA % SPT
+    inc dx          ; Сектора нумеруются с 1
+    mov cx, dx      ; Сохраняем номер сектора (cx)
+
+    ; Вычисляем номер цилиндра, головы ((LBA / SectorsPerTrack) / Heads)
+    xor dx, dx
+    div word [bp+4] ; (Цилиндр) ax = (LBA / SPT) / Heads, (Голова) dx = (LBA / SPT) % Heads
+    mov dh, dl      ; Сохраняем номер головы в dh
+
+    ; Формируем cx для INT 0x13
+    mov ch, al ; Сохраняем [bits 8-15] циллиндра в ch
+    shl ah, 6  ; Оставляем 2 старших бита
+    or cl, ah  ; Перемещаем верхние 2 бита [bits 6-8] в cl
+
+    pop ax     ; *Восстанавливаем оригинальный dx → ax
+    mov dl, al ; Восстанавливаем dl
+    pop ax     ; *Восстанавливаем ax
+
+    ret
+
+; > Сброс контроллера диска
 ; Параметры:
 ;  - dl: номер диска
 disk_reset:
     pusha
-    mov ah, 0     ; Режим сброса диска
-    stc           ; Установка carry flag (BIOS может не устанавливать)
+
+    stc ; Установка carry flag (BIOS может не устанавливать)
+
+    ; Режим сброса диска
+    mov ah, 0
     int 0x13
     jc read_error
+
     popa
     ret
 
 ; > Ошибки
 read_error:
-    mov si, err_read_failed ; "[!] Read failed!"
-    call print
+    mov si, err_read_failed
     jmp error_handler

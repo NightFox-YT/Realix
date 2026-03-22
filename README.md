@@ -1,11 +1,11 @@
 # 📦 Realix `v0.03` ![Status](https://img.shields.io/badge/status-archived-red) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
-⚠️ **This version is archived from `21.03.26`.** No further updates are guaranteed — changes may still be added at the creator's discretion.
+⚠️ **This version is archived from `22.03.26`.** No further updates are guaranteed — changes may still be added at the creator's discretion.
 Please consider upgrading to a newer version if available.
 
 ## 📌 About
 Realix is a minimal 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
-- **Size:** 512 bytes (347 bytes of them is code + `AA55` signature)
+- **Size:** `512 bytes` (335 bytes of them is code + `AA55` signature)
 - **Release:** `19.08.25`
 
 ## ✨ Features
@@ -31,9 +31,8 @@ Realix is a minimal 16-bit OS designed for x86 architecture, developed from scra
 │  │  ├─ print.asm
 │  │  └─ print_reg.asm
 │  └─ disk/
-│  │  ├─ lba_to_chs.asm
 │  │  └─ read.asm
-├─ build/                # Generated on build
+├─ build/               # Generated on build
 ├─ Makefile
 ├─ LICENSE
 └─ README.md
@@ -54,7 +53,7 @@ Use the ready-made solution `Makefile`, simply run: `make`.
    ```
 2. Write to disk image using `Rufus`.
 
-## 🔗 Links & 🙌 Contributing
+## 🔗 Links & Contributing
 - **Discord:** [discord.gg/zMzpWFgXaH](https://discord.gg/zMzpWFgXaH)
 
 Contributions of any kind are welcome:

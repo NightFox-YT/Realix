@@ -1,5 +1,5 @@
 ; © Realix > Bootix
-; (21.03.26) v0.03
+; (22.03.26) v0.03
 ; ================
 
 ; Настройка компиляции
@@ -69,17 +69,22 @@ halt:
     hlt
     jmp $
 
-; Обработчик ошибок
+; > Обработчик ошибок
+; Параметры:
+;  - si: сообщение об ошибке
 error_handler:
-    mov ah, 0    ; Режим ожидания нажатия
+    ; Вывод сообщения
+    call print
+    
+    ; Ожидание нажатия
+    mov ah, 0
     int 0x16
-    jmp 0FFFFh:0 ; Переход в начало BIOS для перезагрузки
+    jmp 0FFFFh:0 ; Переход в BIOS для перезагрузки
 
 ; Подключение модулей
 %include 'kernel/print.asm'
 %include 'kernel/print_reg.asm'
 %include 'disk/read.asm'
-%include 'disk/lba_to_chs.asm'
 
 ; Сообщения
 msg_welcome: db 'Welcome, Realix v0.03.', ENTER, 0
