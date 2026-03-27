@@ -14,7 +14,7 @@ print:
     xor bx, bx   ; Сброс номера страницы (bh: 0)
 
 .next_char:
-    lodsb       ; Загрузка символа из si в al
+    lodsb       ; Загрузка символа (si > al)
     test al, al ; Проверка на 0 (Конец строки)
     jz .done
 

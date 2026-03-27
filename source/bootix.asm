@@ -90,7 +90,7 @@ error_handler:
 msg_welcome: db 'Welcome, Realix v0.03.', ENTER, 0
 msg_read_ok: db '[+] Read OK: LBA ', 0
 new_line:    db ENTER, 0
-err_read_failed:  db '[!] Read failed!', ENTER, 0
+err_read_failed: db '[!] Read failed!', ENTER, 0
 
 ; Сигнатура AA55 (BIOS)
 times 510-($-$$) db 0

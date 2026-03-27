@@ -11,10 +11,10 @@ print_reg:
     xor cx, cx ; Обнуление счётчика цифр
 
 .next_digit:
-    xor dx, dx      ; Обнуление регистра с ASCII символом
-    div bx          ; Делим ax на 10 (ax - результат, dx - остаток)
-    add dl, 0x30    ; Цифра → ASCII
-    push dx         ; *Сохраняем цифру в стеке
+    xor dx, dx   ; Обнуление регистра с ASCII символом
+    div bx       ; ax / bx (10): ax - результат (dx - остаток)
+    add dl, 0x30 ; Цифра → ASCII
+    push dx      ; *Сохраняем цифру в стеке
 
     ; Переход к след. цифре
     inc cx

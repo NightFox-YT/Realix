@@ -24,7 +24,7 @@ disk_read:
     push ax
 
     push cx         ; Сохраняем кол-во секторов (cl)
-    call lba_to_chs
+    call .lba_to_chs
     
     pop ax      ; Восстанавливаем кол-во секторов (cl > al)
     mov ah, 02h ; Режим чтения секторов
@@ -71,7 +71,7 @@ disk_read:
     ret 4
 
 ; > Перевод LBA адреса в CHS адрес
-; ! NOTE: Фрейм функции отсутствует, т.к. функция локальная для disk_read
+; ! NOTE: Функция локальная для disk_read! (Фрейм функции отсутствует)
 ; Параметры:
 ;  - [bp+6]: bpb_sectors_per_track  (секторов на дорожку)
 ;  - [bp+4]: bpb_heads (кол-во голов)
@@ -80,7 +80,7 @@ disk_read:
 ;  - cx [bits 0-5]: сектор
 ;  - cx [bits 6-15]: цилиндр
 ;  - dh: голова
-lba_to_chs:
+.lba_to_chs:
     push ax
     push dx
 
