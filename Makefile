@@ -29,7 +29,7 @@ $(BUILD_DIR)/bootix.bin: always
 
 # Запуск собранного образа диска
 run: floppy
-	qemu-system-x86_64 -fda $(BUILD_DIR)/realix.img
+	qemu-system-x86_64 -drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy
 
 # Подготовка к сборке
 always:

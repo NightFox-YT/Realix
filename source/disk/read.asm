@@ -1,6 +1,7 @@
 ; © Realix > Read
 ; (28.03.26) v0.03
 ; ================
+; Зависимости: error_handler (функция)
 
 ; > Чтение секторов с диска
 ; Параметры (Стек):
@@ -13,7 +14,7 @@
 ;  - es:bx: адрес памяти для записи данных
 ; Вывод:
 ;  - Успех: возвращает управление
-;  - Ошибка: вызывает error_handler (noreturn)
+;  - Ошибка: переходит к read_error (noreturn)
 disk_read:
     ; Установка фрейма функции
     push bp
@@ -42,9 +43,8 @@ disk_read:
     popa
     call disk_reset
 
-    ; Переход к след. попытке
+    ; Переход к след. попытке (dec автоматически устанавливает ZF)
     dec di
-    test di, di
     jnz .retry
 
 ; Все попытки исчерпаны
@@ -64,8 +64,7 @@ disk_read:
     pop bp
     ret 4
 
-; > Перевод LBA адреса в CHS адрес
-; ! Локальная функция: вызывается из disk_readю
+; > Перевод LBA адреса в CHS адрес (❗Локальная функция)
 ; Параметры (наследует фрейм disk_read):
 ;  - [bp+6]: bpb_sectors_per_track
 ;  - [bp+4]: bpb_heads
@@ -107,7 +106,7 @@ disk_read:
 ;  - dl: номер диска
 ; Вывод:
 ;  - Успех: возвращает управление
-;  - Ошибка: вызывает error_handler (noreturn)
+;  - Ошибка: переходит к read_error (noreturn)
 disk_reset:
     pusha
     stc   ; Установка Carry Flag (Некоторые BIOS не устанавливают)
@@ -126,3 +125,6 @@ disk_reset:
 read_error:
     mov si, err_read_failed
     jmp error_handler
+
+; Сообщения
+err_read_failed: db '[!] Read failed!', ENTER, 0

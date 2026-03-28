@@ -51,7 +51,7 @@ start:
 
 ; Основной код
 main:
-    ; Чтение информации с диска (dl уже установлен)
+    ; Чтение информации с диска (dl установлен)
     push word [bpb_sectors_per_track]
     push word [bpb_heads]
     mov ax, 1             ; LBA
@@ -63,7 +63,7 @@ main:
     mov si, msg_read_ok
     call print
 
-    call print_reg      ; LBA уже сохранён в ax
+    call print_reg  ; (ax содержит LBA)
 
     mov si, new_line
     call print
@@ -82,10 +82,8 @@ halt:
 ; Параметры:
 ;  - si: сообщение об ошибке
 error_handler:
-    ; Вывод сообщения
+    ; Вывод сообщения и ожидание нажатия
     call print
-    
-    ; Ожидание нажатия
     mov ah, 0
     int 0x16
 
@@ -100,8 +98,9 @@ error_handler:
 ; Сообщения
 msg_welcome: db 'Welcome, Realix v0.03.', ENTER, 0
 msg_read_ok: db '[+] Read OK: LBA ', 0
-new_line:    db ENTER, 0
-err_read_failed: db '[!] Read failed!', ENTER, 0
+
+; Вспомогательные строки
+new_line: db ENTER, 0
 
 ; Сигнатура AA55 (BIOS)
 times 510-($-$$) db 0
