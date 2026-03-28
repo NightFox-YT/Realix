@@ -1,5 +1,5 @@
 ; © Realix > Bootix
-; (22.03.26) v0.03
+; (28.03.26) v0.03
 ; ================
 
 ; Настройка компиляции
@@ -51,13 +51,22 @@ start:
 
 ; Основной код
 main:
-    ; Чтение информации с диска
+    ; Чтение информации с диска (dl уже установлен)
     push word [bpb_sectors_per_track]
     push word [bpb_heads]
     mov ax, 1             ; LBA
     mov cl, 1             ; Кол-во секторов для чтения
     mov bx, 0x7E00        ; Адрес для записи (после загрузчика)
     call disk_read
+
+    ; Логирование успешного чтения
+    mov si, msg_read_ok
+    call print
+
+    call print_reg      ; LBA уже сохранён в ax
+
+    mov si, new_line
+    call print
 
     ; "Приветствие"
     mov si, msg_welcome
@@ -79,7 +88,9 @@ error_handler:
     ; Ожидание нажатия
     mov ah, 0
     int 0x16
-    jmp 0FFFFh:0 ; Переход в BIOS для перезагрузки
+
+    ; Переход в вектор сброса BIOS
+    jmp 0xFFFF:0
 
 ; Подключение модулей
 %include 'kernel/print.asm'

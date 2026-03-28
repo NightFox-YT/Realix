@@ -1,6 +1,6 @@
 # 📦 Realix `v0.03` ![Status](https://img.shields.io/badge/status-archived-red) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
-⚠️ **This version is archived from `22.03.26`.** No further updates are guaranteed — changes may still be added at the creator's discretion.
+⚠️ **This version is archived from `28.03.26`.** No further updates are guaranteed — changes may still be added at the creator's discretion.
 Please consider upgrading to a newer version if available.
 
 ## 📌 About

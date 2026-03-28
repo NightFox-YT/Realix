@@ -18,7 +18,7 @@ floppy: $(BUILD_DIR)/realix.img
 
 $(BUILD_DIR)/realix.img: bootix
 	dd if=/dev/zero of=$(BUILD_DIR)/realix.img bs=512 count=2880
-	mkfs.fat -F 12 -n "Realix" $(BUILD_DIR)/realix.img
+	mkfs.fat -F 12 -n "REALIX" $(BUILD_DIR)/realix.img
 	dd if=$(BUILD_DIR)/bootix.bin of=$(BUILD_DIR)/realix.img conv=notrunc
 
 # Сборка загрузчика (bin)
