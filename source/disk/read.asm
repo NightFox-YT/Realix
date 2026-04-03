@@ -1,6 +1,7 @@
 ; © Realix > Read
-; (28.03.26) v0.04
+; (03.04.26) v0.04
 ; ================
+; Зависимости: error_handler (функция)
 
 ; > Чтение секторов с диска
 ; Параметры (Стек):
@@ -13,7 +14,7 @@
 ;  - es:bx: адрес памяти для записи данных
 ; Вывод:
 ;  - Успех: возвращает управление
-;  - Ошибка: вызывает error_handler (noreturn)
+;  - Ошибка: переходит к read_error (noreturn)
 disk_read:
     ; Установка фрейма функции
     push bp
@@ -63,8 +64,7 @@ disk_read:
     pop bp
     ret 4
 
-; > Перевод LBA адреса в CHS адрес
-; ! Локальная функция: вызывается из disk_readю
+; > Перевод LBA адреса в CHS адрес (❗Локальная функция)
 ; Параметры (наследует фрейм disk_read):
 ;  - [bp+6]: bpb_sectors_per_track
 ;  - [bp+4]: bpb_heads
@@ -106,7 +106,7 @@ disk_read:
 ;  - dl: номер диска
 ; Вывод:
 ;  - Успех: возвращает управление
-;  - Ошибка: вызывает error_handler (noreturn)
+;  - Ошибка: переходит к read_error (noreturn)
 disk_reset:
     pusha
     stc   ; Установка Carry Flag (Некоторые BIOS не устанавливают)
@@ -119,6 +119,29 @@ disk_reset:
     popa
     ret
 
+; > Чтение параметров диска
+; Вывод:
+;  - cx: bpb_sectors_per_track
+;  - dh: bpb_heads
+;  - Ошибка: переходит к read_error (noreturn)
+disk_params:
+    push ax
+
+    ; Считывание параметров диска (Секторов на дорожку и кол-во голов)
+    push es
+    mov ah, 08h   ; Режим получения параметров диска
+    int 0x13
+    jc read_error
+    pop es
+
+    ; Обновляем кол-во секторов на дорожку и кол-во голов
+    and cl, 0x3F  ; Убираем верхние 2 бита
+    xor ch, ch
+    inc dh
+
+    pop ax
+    ret
+
 ; > Ошибка чтения
 ; Вывод:
 ;  - Вызывает error_handler (noreturn)
@@ -127,4 +150,4 @@ read_error:
     jmp error_handler
 
 ; Сообщения
-err_read_failed: db 'Read failed!', 0
+err_read_failed: db '[!] Read failed!', 0
