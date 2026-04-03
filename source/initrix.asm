@@ -1,5 +1,5 @@
 ; © Realix > Initrix
-; (28.03.26) v0.04
+; (03.04.26) v0.04
 ; ================
 
 ; Настройка компиляции
@@ -11,21 +11,26 @@ org 0x0
 
 ; Основной код
 main:
-    mov si, msg_initialization ; "Инициализация..."
+    ; "Инициализация..."
+    mov si, msg_init
     call print
 
-    mov si, msg_welcome ; "Приветствие"
+    ; "Приветствие"
+    mov si, msg_welcome
     call print
 
 ; Остановка CPU
 .halt:
     cli
     hlt
+    jmp $
 
 ; Подключение модулей
 %include 'kernel/print.asm'
 
 ; Сообщения
+msg_init:    db '[+] Initializing...', ENTER, 0
+msg_welcome: db 'Welcome, Realix v0.04.', ENTER, 0
+
+; Вспомогательные строки
 new_line: db ENTER, 0
-msg_initialization: db '[+] Starting initialization...', ENTER, 0
-msg_welcome: db 'Welcome, Realix v0.04...', ENTER, 0

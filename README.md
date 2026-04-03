@@ -4,14 +4,14 @@
 
 ## 📌 About
 Realix is a minimal 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
-- **Size:** `607 bytes`
+- **Size:** `598 bytes`
 - **Release:** `25.08.25`
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader
 - ✔️ VGA text output (80×25)
 - ✔️ Read from disk
-- 🆕 Read files with FAT12
+- 🆕 Read the second-stage from FAT12
 - ❌ No user input
 - ❌ No internet support
 - ❌ No sounds
