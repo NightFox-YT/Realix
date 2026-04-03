@@ -1,24 +1,26 @@
-# Realix `v0.04` ![Status](https://img.shields.io/badge/status-latest-brightgreen) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
+# Realix `v0.05` ![Status](https://img.shields.io/badge/status-latest-brightgreen) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
 ✅ This version is officially supported and frequently updated by the author.
 
 ## 📌 About
 Realix is a minimal 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
-- **Size:** `607 bytes`
-- **Release:** `25.08.25`
+- **Size:** `997 bytes`
+- **Release:** `04.04.25`
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader
 - ✔️ VGA text output (80×25)
 - ✔️ Read from disk
-- 🆕 Read files with FAT12
+- ✔️ Read the second-stage from FAT12
+- 🆕 Collecting PC information
+- 🆕 Loading screen
 - ❌ No user input
 - ❌ No internet support
 - ❌ No sounds
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 (8086+ compatible)
-- **RAM:** 512 bytes
+- **RAM:** 1 KB
 - **Motherboard:** BIOS-supported
 
 ## 📂 File hierarchy

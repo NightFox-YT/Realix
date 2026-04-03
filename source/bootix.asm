@@ -1,5 +1,5 @@
 ; © Realix > Bootix
-; (28.03.26) v0.04
+; (03.04.26) v0.04
 ; ================
 
 ; Настройка компиляции
@@ -55,23 +55,12 @@ start:
 
 ; Основной код
 main:
-    ; Считывание параметров диска (Секторов на дорожку и кол-во голов)
-    push es
-    mov ah, 08h  ; Режим получения параметров диска
-    int 0x13
-    jc read_error
-    pop es
-
-    ; Обновляем переменную с кол-вом секторов на дорожку
-    and cl, 0x3F                    ; Убираем верхние 2 бита
-    xor ch, ch
+    ; Считывание параметров диска
+    call disk_params
     mov [bpb_sectors_per_track], cx
-
-    ; Обновляем кол-во голов (Вывод BIOS: Кол-во голов - 1)
-    inc dh
     mov [bpb_heads], dh
 
-    ; Вычисление LBA корневого каталога (Подготовка к его)
+    ; Вычисление LBA корневого каталога
     ; > LBA = sectors_per_fat * fats + reserved
     mov ax, [bpb_sectors_per_fat]
     mov bl, [bpb_fat_count]
@@ -90,7 +79,7 @@ main:
     xor dx, dx
     div word [bpb_bytes_per_sector]
 
-    ; > Округление размера корневого каталога до целого числа вверх
+    ; Округление размера корневого каталога до целого вверх
     or dx, dx    
     jz .read_root_dir
     inc ax
@@ -103,7 +92,7 @@ main:
 
     ; Чтение корневого каталога
     pop ax                            ; *Восстанавливаем LBA каталога
-    mov cl, al                        ; Кол-во секторов = Размер каталога
+    mov cl, al                        ; Кол-во секторов - размер каталога
     mov dl, [ebr_drive_number]        ; Номер диска
     mov bx, 0x7E00                    ; Адрес данных для записи
     push word [bpb_sectors_per_track]
@@ -114,14 +103,14 @@ main:
     xor bx, bx      ; Кол-во пройденных записей корневого каталога
     mov di, 0x7E00  ; Адрес текущей записи корневого каталога
 
-; Поиск файла
+; Поиск initrix
 .search_initrix:
     ; Подготовка к сравнению названий
     mov si, file_initrix_bin
     mov cx, 11                ; Сравниваем названия до 11 символов
 
     ; Сравниваем по символу название файлов, сохраняя адрес записи
-    ; > si:di++, до cx == 0
+    ; > si:di++ до cx == 0
     push di
     repe cmpsb
     pop di
@@ -160,13 +149,13 @@ main:
 
 ; Чтение initrix и обработка FAT цепочки
 .load_initrix_loop:
-    ; Чтение след. кластера (dl - содержит номер диска из прошлой функции)
+    ; Чтение след. кластера (dl содержит номер диска)
     push word [bpb_sectors_per_track]
     push word [bpb_heads]
     mov cl, [bpb_sectors_per_cluster] ; Кол-во секторов
 
-    ; > Вычисление LBA кластера
-    ;   > (initrix_cluster - 2) * sectors_per_cluster + root_dir_end
+    ; Вычисление LBA кластера
+    ; > LBA = (initrix_cluster - 2) * sectors_per_cluster + root_dir_end
     mov ax, [initrix_cluster]
     sub ax, 2
     mul cx
@@ -231,10 +220,8 @@ main:
 ; Параметры:
 ;  - si: сообщение об ошибке
 error_handler:
-    ; Вывод сообщения
+    ; Вывод сообщения и ожидание нажатия
     call print
-    
-    ; Ожидание нажатия
     mov ah, 0
     int 0x16
 
@@ -246,12 +233,12 @@ error_handler:
 %include 'disk/read.asm'
 
 ; Сообщения
-err_initrix_not_found: db 'No Initrix!', 0
+err_initrix_not_found: db '[!] No Initrix!', 0
 
 ; Переменные (Для чтения второго этапа загрузчика)
+file_initrix_bin: db 'INITRIX BIN'
 initrix_cluster:  dw 0
 root_dir_end:     dw 0
-file_initrix_bin: db 'INITRIX BIN'
 
 INITRIX_LOAD_SEGMENT equ 0x2000
 INITRIX_LOAD_OFFSET  equ 0
