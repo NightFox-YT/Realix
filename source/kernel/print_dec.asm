@@ -1,4 +1,4 @@
-; © Realix > Print register
+; © Realix > Print register AX (dec)
 ; (28.03.26) v0.04
 ; ================
 
@@ -7,14 +7,14 @@
 ;  - ax: значение регистра
 print_reg:
     pusha
-    mov bx, 10 ; Делитель (Для перевода в десятичное значение)
-    xor cx, cx ; Счётчик цифр
+    mov bx, 10    ; Делитель (Для перевода в десятичный вид)
+    xor cx, cx    ; Счётчик цифр
 
 .next_digit:
-    xor dx, dx   ; Обнуление dx с ASCII символом
-    div bx       ; ax - частное (dx - остаток, цифра)
-    add dl, 0x30 ; Цифра → ASCII
-    push dx      ; Сохраняем цифру в стеке
+    xor dx, dx    ; Обнуление dx с ASCII символом
+    div bx        ; ax - частное (dx - остаток: цифра)
+    add dl, 0x30  ; Цифра → ASCII
+    push dx       ; Сохраняем цифру в стеке
 
     ; Переход к след. цифре
     inc cx
