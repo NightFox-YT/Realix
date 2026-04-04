@@ -233,7 +233,7 @@ error_handler:
 %include 'disk/read.asm'
 
 ; Сообщения
-err_initrix_not_found: db 'No Initrix!', 0
+err_initrix_not_found: db '[!] No Initrix!', 0
 
 ; Переменные (Для чтения второго этапа загрузчика)
 file_initrix_bin: db 'INITRIX BIN'

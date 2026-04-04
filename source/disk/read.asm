@@ -64,7 +64,7 @@ disk_read:
     pop bp
     ret 4
 
-; > Перевод LBA адреса в CHS адрес (❗Локальная функция)
+; > Перевод LBA адреса в CHS адрес (❗ Локальная функция)
 ; Параметры (наследует фрейм disk_read):
 ;  - [bp+6]: bpb_sectors_per_track
 ;  - [bp+4]: bpb_heads
@@ -123,7 +123,7 @@ disk_reset:
 ; Вывод:
 ;  - cx: bpb_sectors_per_track
 ;  - dh: bpb_heads
-;  - Ошибка: переходит к read_error (noreturn)
+;  - Ошибка: вызывает error_handler (noreturn)
 disk_params:
     push ax
 
@@ -134,9 +134,11 @@ disk_params:
     jc read_error
     pop es
 
-    ; Обновляем кол-во секторов на дорожку и кол-во голов
+    ; Обновляем переменную с кол-вом секторов на дорожку
     and cl, 0x3F  ; Убираем верхние 2 бита
     xor ch, ch
+
+    ; Обновляем кол-во голов (Вывод BIOS: Кол-во голов - 1)
     inc dh
 
     pop ax
