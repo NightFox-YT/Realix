@@ -1,5 +1,5 @@
 ; © Realix > Initrix
-; (05.04.26) v0.05
+; (05.04.26) v0.06
 ; ================
 
 ; Настройка компиляции
@@ -7,14 +7,14 @@ bits 16
 org 0x0
 
 ; Символы
-%define ENTER 0x0D, 0x0A
+%include 'symbols.inc'
 
 ; Основной код
 main:
     ; Получение номера диска, переданного из bootix
     mov [boot_drive], dl
 
-    mov si, msg_init  ; "Инициализация"
+    mov si, msg_init  ; "Инициализация..."
     call print
 
     ; Получение объёма доступной "нижней" памяти (до 640 КБ)
@@ -30,6 +30,7 @@ main:
 
     mov ax, [memory_kb]
     mov word [PCINFO_ADDR], ax      ; Размер нижней памяти (КБ)
+    mov dl, [boot_drive]
     mov byte [PCINFO_ADDR + 2], dl  ; Номер загрузочного диска
 
     pop ds
@@ -56,14 +57,14 @@ main:
     mov si, double_new_line
     call print
 
-    ; "Загрузка ядра..."
-    mov si, msg_loading
+    mov si, msg_loading  ; "Загрузка ядра..."
     call print
 
     ; Загрузка ядра с диска
     mov si, kernel_filename
     mov ax, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
+    mov dl, [boot_drive]
     call load_file
 
     ; Настройка сегментов и регистров под kernel
@@ -110,7 +111,7 @@ msg_loading: db '[+] Loading kernel.', ENTER, 0
 err_memory:  db '[!] Memory error (int 12h)!', ENTER, 0
 
 ; Строки загрузочного экрана
-str_title:       db '     Realix v0.05', ENTER, '(C) NightFox developer', ENTER, ENTER, 0
+str_title:       db '     Realix v0.06', ENTER, '(C) NightFox developer', ENTER, ENTER, 0
 str_memory:      db 'Low Memory: ', 0
 str_kb:          db ' KB / 640 KB', 0
 
@@ -126,4 +127,4 @@ memory_kb:       dw 0
 
 KERNEL_LOAD_SEGMENT equ 0x1000
 KERNEL_LOAD_OFFSET  equ 0x0000
-PCINFO_ADDR equ 0x0500
+PCINFO_ADDR         equ 0x0500

@@ -1,5 +1,5 @@
 ; © Realix > Bootix
-; (05.04.26) v0.04
+; (05.04.26) v0.06
 ; ================
 
 ; Настройка компиляции
@@ -7,7 +7,7 @@ bits 16
 org 0x7C00
 
 ; Символы
-%define ENTER 0x0D, 0x0A
+%include 'symbols.inc'
 
 ; Настройка FAT12 (48 байт)
 jmp short start
@@ -134,8 +134,8 @@ main:
 
     ; Чтение FAT таблицы
     mov ax, [bpb_reserved_sectors]     ; LBA
-    mov cl, [bpb_sectors_per_fat]      ; Кол-во секторов - размер FAT
-    mov dl, [ebr_drive_number]         ; Номер диска
+    mov cl, [bpb_sectors_per_fat]      ; Кол-во секторов
+    mov dl, [ebr_drive_number]         ; Номер диска - размер FAT
     mov bx, 0x7E00                     ; Адрес данных для записи
     push word [bpb_sectors_per_track]
     push word [bpb_heads]
@@ -230,7 +230,7 @@ error_handler:
 ; Подключение модулей
 %include 'kernel/print.asm'
 %include 'disk/read.asm'
-%include 'disk/disk_params.asm'
+%include 'disk/params.asm'
 
 ; Сообщения
 err_initrix_not_found: db '[!] No Initrix!', 0

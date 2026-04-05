@@ -1,20 +1,22 @@
-# Realix `v0.05` ![Status](https://img.shields.io/badge/status-latest-brightgreen) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
+# Realix `v0.06` ![Status](https://img.shields.io/badge/status-latest-brightgreen) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
 ✅ This version is officially supported and frequently updated by the author.
 
 ## 📌 About
 Realix is a **minimal 16-bit OS** designed for x86 architecture, developed from scratch on NASM x86.
-- **Size:** `1489 bytes`
-- **Initial release:** `04.04.25`
+- **Size:** `≈2,2 KB`
+- **Initial release:** `05.04.25`
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader
 - ✔️ VGA text output (80×25)
 - ✔️ Read from disk
 - ✔️ Read the second-stage bootloader with FAT12
-- 🆕 Collecting PC information with Loading screen
-- 🆕 Load files (kernel) with FAT12
-- ⏳ Kernel: Basic command-line interpreter
+- ✔️ Collecting PC information with Loading screen
+- ✔️ Load files (kernel) with FAT12
+- 🆕 Kernel: Basic command-line interpreter
+- ⏳ Simple calculator
+- ⏳ Extended FAT12 support (dir/ls)
 - ❌ No internet support
 - ❌ No sounds
 
@@ -29,11 +31,14 @@ Realix is a **minimal 16-bit OS** designed for x86 architecture, developed from 
 ├─ source/
 │  ├─ bootix.asm
 │  ├─ initrix.asm
+│  ├─ kernel.asm
+│  ├─ symbols.inc
 │  ├─ disk/
-│  │  ├─ disk_params.asm
 │  │  ├─ fat12.asm
+│  │  ├─ params.asm
 │  │  └─ read.asm
 │  └─ kernel/
+│     ├─ input.asm
 │     ├─ print.asm
 │     └─ print_dec.asm
 ├─ build/               # Generated on build

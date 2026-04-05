@@ -79,7 +79,7 @@ load_file:
 
 .save_root_size:
     ; Обновление переменной fat_lba (LBA = root_lba + root_size)
-    mov [root_dir_size], ax
+    mov [root_dir_size], al
     add ax, [root_dir_lba]
     mov [fat_lba], ax
 
@@ -241,7 +241,7 @@ drive_num:           db 0
 
 ; Init параметры FAT
 root_dir_lba:    dw 0
-root_dir_size:   dw 0
+root_dir_size:   db 0
 fat_lba:         dw 0
 fat_initialized: db 0
 
