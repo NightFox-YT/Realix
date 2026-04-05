@@ -10,12 +10,12 @@ print:
     push ax
     push bx
 
-    mov ah, 0x0E ; TTY mode (Вывод с прокруткой курсора)
-    xor bx, bx   ; Сброс номера страницы и цвета
+    mov ah, 0x0E  ; TTY mode (Вывод с прокруткой курсора)
+    xor bx, bx    ; Сброс номера страницы и цвета
 
 .next_char:
-    lodsb       ; Загрузка символа (si > al)
-    test al, al ; Проверка на 0 (Конец строки)
+    lodsb         ; Загрузка символа (si > al)
+    test al, al   ; Проверка на 0 (Конец строки)
     jz .done
 
     int 0x10
