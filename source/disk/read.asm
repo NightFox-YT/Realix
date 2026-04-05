@@ -1,5 +1,5 @@
-; © Realix > Read
-; (03.04.26) v0.04
+; © Realix > Disk Read
+; (05.04.26) v0.06
 ; ================
 ; Зависимости: error_handler (функция)
 
@@ -30,8 +30,8 @@ disk_read:
     call .lba_to_chs
     pop ax           ; Восстанавливаем кол-во секторов (cl > al)
 
-    mov ah, 02h ; Режим чтения секторов
-    mov di, 3   ; Кол-во попыток чтения
+    mov ah, 02h      ; Режим чтения секторов
+    mov di, 3        ; Кол-во попыток чтения
 
 .retry:
     pusha    ; Сохранение регистров (BIOS может изменить)
@@ -96,8 +96,8 @@ disk_read:
     or cl, ah  ; Перемещаем верхние 2 бита [bits 6-7] в cl
 
     pop ax     ; *Восстанавливаем ax ← оригинальный dx
-    mov dl, al ; Восстанавливаем dl (номер диска)
-    pop ax     ; *Восстанавливаем ax (LBA)
+    mov dl, al ; Восстанавливаем номер диска (dl)
+    pop ax     ; *Восстанавливаем LBA (ax)
 
     ret
 
@@ -119,31 +119,6 @@ disk_reset:
     popa
     ret
 
-; > Чтение параметров диска
-; Вывод:
-;  - cx: bpb_sectors_per_track
-;  - dh: bpb_heads
-;  - Ошибка: вызывает error_handler (noreturn)
-disk_params:
-    push ax
-
-    ; Считывание параметров диска (Секторов на дорожку и кол-во голов)
-    push es
-    mov ah, 08h   ; Режим получения параметров диска
-    int 0x13
-    jc read_error
-    pop es
-
-    ; Обновляем переменную с кол-вом секторов на дорожку
-    and cl, 0x3F  ; Убираем верхние 2 бита
-    xor ch, ch
-
-    ; Обновляем кол-во голов (Вывод BIOS: Кол-во голов - 1)
-    inc dh
-
-    pop ax
-    ret
-
 ; > Ошибка чтения
 ; Вывод:
 ;  - Вызывает error_handler (noreturn)
@@ -151,5 +126,5 @@ read_error:
     mov si, err_read_failed
     jmp error_handler
 
-; Сообщения
+; Ошибки
 err_read_failed: db '[!] Read failed!', 0

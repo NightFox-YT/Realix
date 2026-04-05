@@ -1,26 +1,28 @@
-# Realix `v0.05` ![Status](https://img.shields.io/badge/status-latest-brightgreen) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
+# Realix `v0.06` ![Status](https://img.shields.io/badge/status-latest-brightgreen) ![License](https://img.shields.io/github/license/NightFox-YT/Realix) ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
 ✅ This version is officially supported and frequently updated by the author.
 
 ## 📌 About
-Realix is a minimal 16-bit OS designed for x86 architecture, developed from scratch on NASM x86.
-- **Size:** `997 bytes`
-- **Release:** `04.04.25`
+Realix is a **minimal 16-bit OS** designed for x86 architecture, developed from scratch on NASM x86.
+- **Size:** `≈2,2 KB`
+- **Initial release:** `05.04.25`
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader
 - ✔️ VGA text output (80×25)
 - ✔️ Read from disk
-- ✔️ Read the second-stage from FAT12
-- 🆕 Collecting PC information
-- 🆕 Loading screen
-- ❌ No user input
+- ✔️ Read the second-stage bootloader with FAT12
+- ✔️ Collecting PC information with Loading screen
+- ✔️ Load files (kernel) with FAT12
+- 🆕 Kernel: Basic command-line interpreter
+- ⏳ Simple calculator
+- ⏳ Extended FAT12 support (dir/ls)
 - ❌ No internet support
 - ❌ No sounds
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 (8086+ compatible)
-- **RAM:** 1 KB
+- **RAM:** 1 MB
 - **Motherboard:** BIOS-supported
 
 ## 📂 File hierarchy
@@ -29,11 +31,16 @@ Realix is a minimal 16-bit OS designed for x86 architecture, developed from scra
 ├─ source/
 │  ├─ bootix.asm
 │  ├─ initrix.asm
+│  ├─ kernel.asm
+│  ├─ symbols.inc
 │  ├─ disk/
+│  │  ├─ fat12.asm
+│  │  ├─ params.asm
 │  │  └─ read.asm
 │  └─ kernel/
+│     ├─ input.asm
 │     ├─ print.asm
-│     └─ print_reg.asm
+│     └─ print_dec.asm
 ├─ build/               # Generated on build
 ├─ Makefile
 ├─ LICENSE
@@ -42,7 +49,7 @@ Realix is a minimal 16-bit OS designed for x86 architecture, developed from scra
 
 ## 🛠 Build
 ### Linux
-Use the ready-made solution `Makefile`, simply run: `make`.
+Use the ready-made solution `Makefile`. Simply run: `make`.
 
 ### macOS
 1. Replace line `mkfs.fat -F 12 -n "Realix" $(BUILD_DIR)/realix.img` with `newfs_msdos -F 12 -f 2880 $(BUILD_DIR)/realix.img` in the `Makefile`.
@@ -57,8 +64,8 @@ Use the ready-made solution `Makefile`, simply run: `make`.
 
 Contributions of any kind are welcome:
 
-- 🐞 Report bugs
-- 💡 Suggest features
-- 🔧 Optimize or refactor code
+- 🐞 **Report bugs.**
+- 💡 **Suggest features** or improvements.
+- 🔧 **Optimize or refactor code.**
 
 Feel free to open an issue or reach out via Discord.
