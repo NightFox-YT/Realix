@@ -24,4 +24,4 @@ halt:
 %include 'kernel/print.asm'
 
 ; Сообщения
-msg_end: db '[!] System halted. This version of Realix has ended its work.', ENTER, 0
+msg_end: db '[?] Kernel halted. This version of Realix has ended its work.', ENTER, 0

@@ -10,7 +10,6 @@ BUILD_DIR = build
 
 .PHONY: all floppy bootix initrix kernel run clean always
 
-
 # Запуск по умолчанию
 all: floppy
 
