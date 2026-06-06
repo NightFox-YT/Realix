@@ -21,7 +21,7 @@ halt:
     jmp $
 
 ; Подключение модулей
-%include 'kernel/print.asm'
+%include 'kernel16/print.asm'
 
 ; Сообщения
 msg_end: db '[?] Kernel halted. This version of Realix has ended its work.', ENTER, 0

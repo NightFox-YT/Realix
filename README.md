@@ -9,20 +9,21 @@
 
 ## 📌 About
 Realix is a **minimal 16-bit OS** designed for x86 architecture, developed from scratch on NASM x86.
-- **Size:** `≈1,9 KB`
+- **Size:** `≈2,1 KB`
 - **Initial release:** `04.04.25`
 
 ## ✨ Features
 - ✔️ BIOS-based bootloader
-- ✔️ VGA text output (80×25)
+- ✔️ VGA text mode (80×25)
 - ✔️ Read from disk
 - ✔️ Read the second-stage bootloader with FAT12
+- 🆕 VGA video mode (320×200, 256 colors)
+- 🆕 Simple beep sound (char)
 - 🆕 Collecting Memory information with Loading screen
 - 🆕 Load files (kernel) with FAT12
 - ⏳ The ability to switch to 32-bit protected mode
 - ❌ No user input handling
 - ❌ No internet support
-- ❌ No sounds
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 (8086+ compatible)
@@ -33,24 +34,26 @@ Realix is a **minimal 16-bit OS** designed for x86 architecture, developed from 
 ```
 .
 ├─ source/
-│  ├─ bootix.asm
-│  ├─ initrix.asm
-│  ├─ kernel.asm
+│  ├─ bootloader/
+│  │  ├─ bootix.asm
+│  │  └─ initrix.asm
 │  ├─ disk/
 │  │  ├─ params.asm
 │  │  └─ read.asm
+│  ├─ drivers/
+│  │  ├─ sounds.asm
+│  │  └─ vga.asm
 │  ├─ fat12/
 │  │  ├─ file_open.asm
 │  │  └─ init.asm
-│  ├─ kernel/
+│  ├─ kernel16/
+│  │  ├─ kernel.asm
 │  │  ├─ print_reg.asm
 │  │  └─ print.asm
-│  ├─ memory/
-│  │  ├─ get_free.asm
-│  │  ├─ get_lower.asm
-│  │  └─ get_map.asm
-│  ├─ sounds/
-│  │  └─ beep.asm
+│  └─ memory/
+│     ├─ get_free.asm
+│     ├─ get_lower.asm
+│     └─ get_map.asm
 ├─ build/
 ├─ Makefile
 ├─ LICENSE
@@ -61,16 +64,12 @@ Realix is a **minimal 16-bit OS** designed for x86 architecture, developed from 
 
 **Prerequisites**
 * Compiler: `nasm` (Assembly)
-* (Required for MacOS) Disk Tools: `mtools` (FAT12 image formatting)
+* Disk Tools: `mtools` (FAT12 image formatting), `coreutils` (Disk image creation)
 * (Optional) Emulator: `qemu-system-i386`
 
-### Linux
+### Linux & macOS
 Use the ready-made solution `Makefile`. Simply run: `make`.
 (For manual image generation, refer to the `Makefile`)
-
-### macOS
-1. Replace line 22 `mkfs.fat -F 12 -n "Realix" $(BUILD_DIR)/realix.img` with `mformat -i $(BUILD_DIR)/realix.img -f 1440 ::` in the `Makefile`.
-2. Simply run: `make`. (For manual image generation, refer to the `Makefile`)
 
 ### Windows
 > ⚠️ Windows builds are no longer supported as of `v0.03`.
@@ -78,6 +77,7 @@ Use the ready-made solution `Makefile`. Simply run: `make`.
 
 ## 🔗 Links & 🙌 Contributing
 - **TikTok:** [tiktok.com/@mainfox.tt](https://www.tiktok.com/@mainfox.tt)
+- **Discord:** [discord.gg/Realix](https://discord.gg/D7cATZzSAxp)
 
 Contributions of any kind are welcome:
 

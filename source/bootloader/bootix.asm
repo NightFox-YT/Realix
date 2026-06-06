@@ -232,7 +232,7 @@ error_handler:
     jmp 0xFFFF:0
 
 ; Подключение модулей
-%include 'kernel/print.asm'
+%include 'kernel16/print.asm'
 %include 'disk/read.asm'
 %include 'disk/params.asm'
 

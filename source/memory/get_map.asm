@@ -41,7 +41,7 @@ get_memory_map:
     mov ecx, 24                ; Запрашиваем 24 байта
     int 0x15
 
-    jc .end                 ; Установленный Carry Flag - "конец списка достигнут"
+    jc .done                ; Установленный Carry Flag - "конец списка достигнут"
     mov edx, 0x0534D4150    ; Некоторые BIOS, могут затирать этот регистр
 
 .jmpin:
@@ -64,7 +64,7 @@ get_memory_map:
     test ebx, ebx
     jne short .loop
 
-.end:
+.done:
     ; Очищаем флаг переноса и выходим
     clc
 

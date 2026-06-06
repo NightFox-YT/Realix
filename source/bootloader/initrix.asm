@@ -44,7 +44,7 @@ main:
     ; Заголовок экрана загрузки (+Короткий звук)
     mov si, str_title
     call print
-    call print_char_beep
+    call txt_beep
 
     ; Выводим информацию о кол-ве "нижней" памяти
     mov si, str_low_ram
@@ -133,14 +133,15 @@ error_handler:
     jmp 0xFFFF:0
 
 ; Подключение модулей
-%include 'kernel/print.asm'
-%include 'kernel/print_reg.asm'
+%include 'kernel16/print.asm'
+%include 'kernel16/print_reg.asm'
 %include 'disk/read.asm'
 %include 'fat12/file_open.asm'
 %include 'memory/get_free.asm'
 %include 'memory/get_lower.asm'
 %include 'memory/get_map.asm'
-%include 'sounds/beep.asm'
+%include 'drivers/sounds.asm'
+%include 'drivers/vga.asm'
 
 ; Сообщения
 msg_init:    db '[+] Initializing.', ENTER, 0
