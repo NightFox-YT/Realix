@@ -1,36 +1,46 @@
 # 🆕 Realix `v0.05`
-
-![Status](https://img.shields.io/badge/status-latest-brightgreen)
+![Status](https://img.shields.io/badge/status-legacy-yellow)
 ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
-![ASM](https://img.shields.io/badge/assembly-NASM-orange)
 
-✅ This version is officially supported and frequently updated by the author.
+⚠️ Development of this version is mostly complete as focus has shifted to the upcoming v0.06 release.
 
 ## 📌 About
-Realix is a **minimal 16-bit OS** designed for x86 architecture, developed from scratch on NASM x86.
-- **Size:** `≈2,1 KB`
-- **Initial release:** `04.04.25`
+Realix is a **minimal 16-bit OS** designed for x86 architecture, written in NASM.
 
-## ✨ Features
-- ✔️ BIOS-based bootloader
-- ✔️ VGA text mode (80×25)
-- ✔️ Read from disk
-- ✔️ Read the second-stage bootloader with FAT12
+- **OS size:** `≈2.1 KB`
+- **Initial release:** `April 4, 2026`
+
+## ✨ Key Features
+- BIOS-based bootloader
+- VGA text mode (80×25)
+- Reads raw sectors from disk (INT 13h)
+- Read-only FAT12 filesystem support
+  - Loads second-stage bootloader
+  - Loads kernel files by filename
+- 🆕 Detects available system memory (displayed on loading screen)
 - 🆕 VGA video mode (320×200, 256 colors)
-- 🆕 Simple beep sound (char)
-- 🆕 Collecting Memory information with Loading screen
-- 🆕 Load files (kernel) with FAT12
-- ⏳ The ability to switch to 32-bit protected mode
-- ❌ No user input handling
-- ❌ No internet support
+- 🆕 TTY bell character support
+
+### ⏳ Upcoming Features (v0.06-v0.07)
+- Interactive CPU mode selector
+- Transition to 32-bit Protected Mode
+
+### ❌ Current Limitations
+- No runtime user input handling (CLI/GUI)
+- No write operations FAT12 support
+- Runs purely in 16-bit Real Mode (for now).
+- No networking stack
+
+## 📸 Screenshot
+![Realix Boot Screen](screen.png)
 
 ## 📦 Hardware Requirements
-- **CPU:** x86 (8086+ compatible)
-- **RAM:** 1 MB
+- **CPU:** x86 compatible (i386+ recommended)
+- **RAM:** 256 KB or more
 - **Motherboard:** BIOS-supported
 
-## 📂 File hierarchy
+## 📂 Project Structure
 ```
 .
 ├─ source/
@@ -47,6 +57,7 @@ Realix is a **minimal 16-bit OS** designed for x86 architecture, developed from 
 │  │  ├─ file_open.asm
 │  │  └─ init.asm
 │  ├─ kernel16/
+│  │  ├─ clear_screen.asm
 │  │  ├─ kernel.asm
 │  │  ├─ print_reg.asm
 │  │  └─ print.asm
@@ -55,25 +66,31 @@ Realix is a **minimal 16-bit OS** designed for x86 architecture, developed from 
 │     ├─ get_lower.asm
 │     └─ get_map.asm
 ├─ build/
+│     # Output directory for compiled binaries and .img (gitignored)
 ├─ Makefile
 ├─ LICENSE
-└─ README.md
+├─ README.md
+└─ screen.png
 ```
 
 ## 🛠️ Quick Start & Build
 
 **Prerequisites**
 * Compiler: `nasm` (Assembly)
-* Disk Tools: `mtools` (FAT12 image formatting), `coreutils` (Disk image creation)
+* Disk Tools: `mtools` (FAT12 image formatting), `coreutils` (dd/image creation)
 * (Optional) Emulator: `qemu-system-i386`
 
 ### Linux & macOS
-Use the ready-made solution `Makefile`. Simply run: `make`.
-(For manual image generation, refer to the `Makefile`)
+1. Install prerequisites
+  - Ubuntu/Debian example: `sudo apt update && sudo apt install nasm mtools qemu-system-i386`
+  - macOS example (via Homebrew): `brew install nasm mtools qemu`
+2. Build & Run via the `Makefile`
+  - Only build OS image: `make`
+  - Full cycle (build & run in QEMU): `make run`
 
 ### Windows
-> ⚠️ Windows builds are no longer supported as of `v0.03`.
-> Use Linux or macOS instead. WSL2 is also supported.
+> ⚠️ Native Windows builds are no longer supported as of `v0.03`.
+> Please use Linux, macOS, or WSL2 (Recommended) instead.
 
 ## 🔗 Links & 🙌 Contributing
 - **TikTok:** [tiktok.com/@mainfox.tt](https://www.tiktok.com/@mainfox.tt)
@@ -85,4 +102,4 @@ Contributions of any kind are welcome:
 - 💡 **Suggest new features** or improvements.
 - 🔧 **Help optimize or refactor code.**
 
-Feel free to open an issue or reach out via TikTok.
+Feel free to open an issue or reach out via TikTok & Discord.

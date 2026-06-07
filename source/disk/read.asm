@@ -4,10 +4,9 @@
 ; Зависимости: error_handler (функция)
 
 ; > Чтение секторов с диска
-; Параметры (Стек):
-;  - [bp+4]: bpb_heads             (кол-во голов)
-;  - [bp+6]: bpb_sectors_per_track (секторов на дорожку)
-; Параметры (Регистры):
+; Параметры:
+;  - [bp+4]: bpb_heads
+;  - [bp+6]: bpb_sectors_per_track
 ;  - ax: LBA
 ;  - cl: кол-во секторов для чтения (до 128)
 ;  - dl: номер диска
@@ -39,7 +38,7 @@ disk_read:
     int 0x13
     jnc .done
 
-    ; Ошибка > Сбрасываем контроллер диска
+    ; Ошибка, => Сбрасываем контроллер диска
     popa
     call disk_reset
 
@@ -47,8 +46,8 @@ disk_read:
     dec di
     jnz .retry
 
-; Все попытки исчерпаны
 .fail:
+    ; Все попытки исчерпаны
     jmp read_error
 
 .done:
@@ -79,25 +78,25 @@ disk_read:
 
     ; Вычисляем номер сектора (LBA / SectorsPerTrack) + 1
     xor dx, dx
-    div word [bp+6] ; ax = LBA / SPT, dx = LBA % SPT
-    inc dx          ; Сектора нумеруются с 1
-    mov cx, dx      ; Сохраняем номер сектора (cx)
+    div word [bp+6]  ; ax = LBA / SPT, dx = LBA % SPT
+    inc dx           ; Сектора нумеруются с 1
+    mov cx, dx       ; Сохраняем номер сектора (cx)
 
     ; Вычисляем номера:
     ; - (ax) Цилиндра: (LBA / SPT) / Heads
     ; - (dx) Головы:   (LBA / SPT) % Heads
     xor dx, dx
     div word [bp+4]
-    mov dh, dl      ; Сохраняем номер головы (dh)
+    mov dh, dl       ; Сохраняем номер головы (dh)
 
     ; Формируем cx для int 0x13
-    mov ch, al ; Сохраняем [bits 8-15] циллиндра в ch
-    shl ah, 6  ; Оставляем 2 старших бита
-    or cl, ah  ; Перемещаем верхние 2 бита [bits 6-7] в cl
+    mov ch, al  ; Сохраняем [bits 8-15] циллиндра в ch
+    shl ah, 6   ; Оставляем 2 старших бита
+    or cl, ah   ; Перемещаем верхние 2 бита [bits 6-7] в cl
 
-    pop ax     ; *Восстанавливаем ax ← оригинальный dx
-    mov dl, al ; Восстанавливаем номер диска (dl)
-    pop ax     ; *Восстанавливаем LBA (ax)
+    pop ax      ; *Восстанавливаем ax ← оригинальный dx
+    mov dl, al  ; Восстанавливаем номер диска (dl)
+    pop ax      ; *Восстанавливаем LBA (ax)
 
     ret
 
@@ -112,7 +111,7 @@ disk_reset:
     pusha
     stc
 
-    ; Режим сброса диска
+    ; Сброс контроллера диска
     mov ah, 0
     int 0x13
     jc read_error

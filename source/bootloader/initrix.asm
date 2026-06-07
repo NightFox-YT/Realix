@@ -1,5 +1,5 @@
 ; © Realix > Initrix
-; (05.04.26) v0.05
+; (07.06.26) v0.05
 ; ================
 ; ❗️ Бинарный файл должен быть размером <=64 КБ (Ограничение из Bootix)
 
@@ -10,9 +10,9 @@ org 0x0
 ; Символы
 %define ENTER 0x0D, 0x0A
 
-; Основной код
+; > Основной код
 main:
-    ; Сохранение номера диска, переданного из bootix
+    ; Сохраняем номер диска, переданного из bootix
     mov [boot_drive], dl
 
     ; "Инициализация"
@@ -31,20 +31,36 @@ main:
     call get_memory_map
     jc memory_map_error
 
-    ; Сохранение собранной информации (*Доп. сегмент 0x0)
+    ; Сохраняем оставшуюся собранную информацию (*Доп. сегмент 0x0)
+    mov ax, [low_memory_kb]
     mov word [es:PCINFO_ADDR], ax      ; Размер нижней памяти (КБ)
     mov byte [es:PCINFO_ADDR + 2], dl  ; Номер загрузочного диска
     mov [es:PCINFO_ADDR + 3], bp       ; Кол-во записей в карте памяти
 
     ; Очистка экрана
-    mov ah, 0h
-    mov al, 3h
-    int 10h
+    call clear_screen
 
     ; Заголовок экрана загрузки (+Короткий звук)
     mov si, str_title
     call print
     call txt_beep
+
+    ; Показ строк с информацией о памяти
+    call show_memory_info
+
+    mov si, double_new_line
+    call print
+
+    ; Загрузка 16 битного ядра
+    call load_kernel16
+
+
+; > Вывод на экран информации о памяти ПК
+; (Часть загрузочного экрана)
+show_memory_info:
+    push si
+    push ax
+    push es
 
     ; Выводим информацию о кол-ве "нижней" памяти
     mov si, str_low_ram
@@ -57,16 +73,15 @@ main:
     mov si, new_line
     call print
 
-    ; Считаем кол-во свободной памяти
+    ; Считаем и выводим кол-во свободной памяти
     xor cx, cx
     mov es, cx
     mov di, PCINFO_ADDR
     call get_free_memory
     
-    ; Выводим кол-во свободной памяти
     mov si, str_free_ram
     call print
-    call print_reg  ; ax - содержит число из `call get_free_memory`
+    call print_reg  ; ax содержит нужное число после `call get_free_memory`
     mov si, str_mb
     call print
 
@@ -81,9 +96,14 @@ main:
     mov si, str_entries
     call print
 
-    mov si, double_new_line
-    call print
+    pop es
+    pop ax
+    pop si
+    ret
 
+; > Загрузка в память и передача управления 16 битному ядру
+; ❗️ Обратный процесс не обратим.
+load_kernel16:
     ; "Загрузка ядра..."
     mov si, msg_loading
     call print
@@ -104,7 +124,7 @@ main:
     ; Передача управления ядру
     jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
 
-; Остановка CPU
+; > Остановка CPU
 halt:
     cli
     hlt
@@ -135,6 +155,7 @@ error_handler:
 ; Подключение модулей
 %include 'kernel16/print.asm'
 %include 'kernel16/print_reg.asm'
+%include 'kernel16/clear_screen.asm'
 %include 'disk/read.asm'
 %include 'fat12/file_open.asm'
 %include 'memory/get_free.asm'
@@ -144,8 +165,10 @@ error_handler:
 %include 'drivers/vga.asm'
 
 ; Сообщения
-msg_init:    db '[+] Initializing.', ENTER, 0
-msg_loading: db '[+] Loading kernel.', ENTER, 0
+msg_init:             db '[+] Initializing.', ENTER, 0
+msg_loading:          db '[+] Loading kernel.', ENTER, 0
+err_get_memory_map:   db '[!] Get memory map failed (int 15h)!', 0
+err_get_lower_memory: db '[!] Get lower memory failed (int 12h)!', 0
 
 ; Строки загрузочного экрана
 str_title:
@@ -165,18 +188,12 @@ new_line:        db ENTER, 0
 double_new_line: db ENTER, ENTER, 0
 
 ; Данные о ПК
-boot_drive:      db 0
-low_memory_kb:   dw 0
+boot_drive:    db 0
+low_memory_kb: dw 0
+PCINFO_ADDR    equ 0x4500
 
 ; Переменные и константы Kernel
 kernel_filename: db 'KERNEL  BIN'
 
 KERNEL_LOAD_SEGMENT equ 0x1000
 KERNEL_LOAD_OFFSET  equ 0x0000
-PCINFO_ADDR equ 0x4500
-
-; Ошибки:
-err_get_memory_map:
-    db '[!] Get memory map failed (int 15h)!', 0
-
-err_get_lower_memory: db '[!] Get lower memory failed (int 12h)!', 0
