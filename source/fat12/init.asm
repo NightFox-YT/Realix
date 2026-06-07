@@ -14,7 +14,7 @@ fat_init:
     cmp byte [fat_initialized], 1
     je .done
 
-.initialization:
+.read_bpb:
     ; Читаем данные BPB из сектора Bootix
     xor ax, ax
     mov es, ax
@@ -36,6 +36,7 @@ fat_init:
     mov ax, [es:0x7C00 + 26]
     mov [heads], ax
 
+.calculations:
     ; Вычисление LBA корневого каталога
     ; > LBA = sectors_per_fat * fats + reserved
     mov ax, [sectors_per_fat]

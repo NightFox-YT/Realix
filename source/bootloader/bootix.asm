@@ -13,29 +13,29 @@ org 0x7C00
 jmp short start
 nop
 
-bpb_oem:                 db 'MSWIN4.1' ; OEM (8 байт)
-bpb_bytes_per_sector:    dw 512        ; Байт на сектор (Floppy: 512)
-bpb_sectors_per_cluster: db 1          ; Секторов на кластер
-bpb_reserved_sectors:    dw 1          ; Кол-во зарезервированных секторов
-bpb_fat_count:           db 2          ; Кол-во FAT таблиц
-bpb_dir_entries:         dw 0x0E0      ; Кол-во записей в корневом каталоге
-bpb_total_sectors:       dw 2880       ; Кол-во секторов (2880 * 512 = 1.44 мб)
-bpb_media_type:          db 0x0F0      ; Тип диска (F0 - 3.5" floppy disk)
-bpb_sectors_per_fat:     dw 9          ; Секторов на FAT таблицу
-bpb_sectors_per_track:   dw 18         ; Секторов на дорожку
-bpb_heads:               dw 2          ; Кол-во голов
-bpb_hidden_sectors:      dd 0          ; Кол-во скрытых секторов
-bpb_large_sectors:       dd 0          ; Кол-во секторов свыше 65535
+bpb_oem:                 db 'MSWIN4.1'  ; OEM (8 байт)
+bpb_bytes_per_sector:    dw 512         ; Байт на сектор
+bpb_sectors_per_cluster: db 1           ; Секторов на кластер
+bpb_reserved_sectors:    dw 1           ; Кол-во зарезервированных секторов
+bpb_fat_count:           db 2           ; Кол-во FAT таблиц
+bpb_dir_entries:         dw 0x0E0       ; Кол-во записей в корневом каталоге
+bpb_total_sectors:       dw 2880        ; Кол-во секторов (2880 * 512 = 1.44 мб)
+bpb_media_type:          db 0x0F0       ; Тип диска (F0 - 3.5" floppy disk)
+bpb_sectors_per_fat:     dw 9           ; Секторов на FAT таблицу
+bpb_sectors_per_track:   dw 18          ; Секторов на дорожку
+bpb_heads:               dw 2           ; Кол-во голов
+bpb_hidden_sectors:      dd 0           ; Кол-во скрытых секторов
+bpb_large_sectors:       dd 0           ; Кол-во секторов свыше 65535
 
 ; Дополнительные параметры (extended boot record)
 ebr_drive_number: db 0                  ; Номер диска (0x00 floppy / 0x80 hdd)
                   db 0                  ; Зарезервировано
-ebr_signature:    db 0x29               ; Подпись (0x28 или 0x29)
+ebr_signature:    db 29h                ; Подпись (0x28 или 0x29)
 ebr_volume_id:    db 23h, 07h, 20h, 25h ; Серийный номер (Произвольный)
 ebr_volume_label: db 'Realix     '      ; Название тома (11 байт)
 ebr_system_id:    db 'FAT12   '         ; Тип файловой системы (8 байт)
 
-; Запуск
+; > Запуск
 start:
     ; Настройка сегментных регистров (Напрямую настроить нельзя)
     xor ax, ax
@@ -49,11 +49,10 @@ start:
     ; Обновление номера диска (BIOS устанавливает его в dl)
     mov [ebr_drive_number], dl
 
-    ; Настройка сегмента кода (cs) дальним переходом
-    ; (BIOS может запуститься по адресу 07C0:0000 вместо 0000:7C00)
+    ; Сброс сегмента кода (cs) дальним переходом
     jmp 0:main
 
-; Основной код
+; > Основной код
 main:
     ; Считывание параметров диска
     call disk_params
@@ -75,7 +74,7 @@ main:
     ; Вычисление размера корневого каталога
     ; > root_dir_size = (number_of_entries * 32) / bytes_per_sector
     mov ax, [bpb_dir_entries]
-    shl ax, 5                 ; *32 (number_of_entries * 32)
+    shl ax, 5                  ; *32 (number_of_entries * 32)
     xor dx, dx
     div word [bpb_bytes_per_sector]
 
@@ -84,7 +83,7 @@ main:
     jz .read_root_dir
     inc ax
 
-; Чтение корневого каталога
+; > Чтение корневого каталога
 .read_root_dir:
     ; Обновление переменной data_lba (root_dir_lba + root_dir_size)
     add cx, ax
@@ -94,7 +93,7 @@ main:
     mov cl, al                        ; Кол-во секторов - размер каталога
     pop ax                            ; *Восстанавливаем LBA каталога (72 стр)
     mov dl, [ebr_drive_number]        ; Номер диска
-    mov bx, 0x0500                    ; Адрес данных для записи
+    mov bx, 0x0500                    ; Адрес записи
     push word [bpb_sectors_per_track]
     push word [bpb_heads]
     call disk_read
@@ -103,7 +102,7 @@ main:
     xor bx, bx      ; Кол-во пройденных записей корневого каталога
     mov di, 0x0500  ; Адрес текущей записи корневого каталога
 
-; Поиск initrix
+; > Поиск initrix
 .search_initrix:
     ; Подготовка к сравнению названий (до 11 символов)
     mov si, file_initrix_bin
@@ -126,17 +125,17 @@ main:
     mov si, err_initrix_not_found
     jmp error_handler
 
-; Найден initrix
+; > Найден initrix
 .found_initrix:
     ; Обновление номера кластера (di - адрес записи корневого каталога)
-    mov ax, [di + 26]         ; Поле первого кластера (Смещение 26 байтов)
-    push ax                   ; *Сохраняем номер кластера
+    mov ax, [di + 26]  ; Поле первого кластера (Смещение 26 байтов)
+    push ax            ; *Сохраняем номер кластера
 
     ; Чтение FAT таблицы
     mov ax, [bpb_reserved_sectors]     ; LBA
     mov cl, [bpb_sectors_per_fat]      ; Кол-во секторов - размер FAT
     mov dl, [ebr_drive_number]         ; Номер диска
-    mov bx, 0x0500                     ; Адрес данных для записи
+    mov bx, 0x0500                     ; Адрес записи
     push word [bpb_sectors_per_track]
     push word [bpb_heads]
     call disk_read
@@ -146,9 +145,9 @@ main:
     mov es, bx
     mov bx, INITRIX_LOAD_OFFSET
 
-; Чтение initrix и обработка FAT цепочки
+; > Чтение initrix и обработка FAT цепочки
 .load_initrix_loop:
-    ; *Восстанавливаем (133 стр для 1-ой, 205 для след.) и сохраняем номер кластера
+    ; *Восстанавливаем (133 стр или 205 стр) и сохраняем номер кластера
     pop ax
     push ax
 
@@ -166,7 +165,7 @@ main:
     call disk_read
 
     ; Увеличиваем адрес смещения initrix на кол-во прочитанных байт
-    ; ! NOTE: Initrix должен быть <=64 КБ, т.к. мы не обновляем сегмент
+    ; ❗️ NOTE: Initrix должен быть <=64 КБ, т.к. мы не обновляем сегмент
     xor ah, ah
     mov al, [bpb_sectors_per_cluster]
     mul word [bpb_bytes_per_sector]
@@ -198,7 +197,7 @@ main:
 .even_cluster:
     and ax, 0x0FFF
 
-; Обработка следующего кластера
+; > Обработка следующего кластера
 .next_cluster_after: 
     ; Проверка на конец файла
     cmp ax, 0x0FF8
@@ -208,7 +207,7 @@ main:
     push ax
     jmp .load_initrix_loop
 
-; Заканчиваем чтение файла
+; > Заканчиваем чтение файла
 .read_initrix_finish: 
     ; Настройка сегментов под initrix
     mov ax, INITRIX_LOAD_SEGMENT
@@ -232,7 +231,7 @@ error_handler:
     jmp 0xFFFF:0
 
 ; Подключение модулей
-%include 'kernel/print.asm'
+%include 'kernel16/print.asm'
 %include 'disk/read.asm'
 %include 'disk/params.asm'
 

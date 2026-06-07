@@ -1,9 +1,10 @@
-; © Realix > Beep simulation
-; (02.06.26) v0.05
+; © Realix > Sounds driver
+; (05.06.26) v0.05
 ; ================
 
 ; > Выводит на экран невидимый символ "Beep"
-print_char_beep:
+; ❗️ Для вызова должен быть включён текстовый режим
+txt_beep:
     push ax
     push bx
 
