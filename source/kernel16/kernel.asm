@@ -9,12 +9,12 @@ org 0x0
 ; Символы
 %define ENTER 0x0D, 0x0A
 
-; Основной код
+; > Основной код
 main:
     mov si, msg_end
     call print
 
-; Остановка CPU
+; > Остановка CPU
 halt:
     cli
     hlt

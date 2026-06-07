@@ -7,7 +7,6 @@ VGA_WIDTH   equ 320
 VGA_HEIGHT  equ 200
 VGA_SEGMENT equ 0xA000
 
-
 ; > Инициализация видеорежима 13h (320x200, 256 цветов)
 vga_video_mode:
     push ax
@@ -19,7 +18,6 @@ vga_video_mode:
     pop ax
     ret
 
-
 ; > Включение текстового режима (80x25)
 vga_text_mode:
     push ax
@@ -30,7 +28,6 @@ vga_text_mode:
 
     pop ax
     ret
-
 
 ; > Очистка экрана выбранным цветом
 ; Параметры:
