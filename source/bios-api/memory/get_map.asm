@@ -2,6 +2,9 @@
 ; (02.06.26) v0.05
 ; ================
 
+; Основные константы
+%include 'config.asm'
+
 ; > Получение карты памяти через прерывание int 0x15 (E820)
 ; Параметры:
 ;  - es:di: адрес, куда мы будем сохранять таблицу карт памяти
@@ -19,18 +22,18 @@ get_memory_map:
     xor bp, bp
     mov edx, 0x0534D4150
 
-    ; Получение 1 записи
+    ; Получение 1-й записи
     mov eax, 0xe820
     mov [es:di + 20], dword 1  ; Делаем запись валидной для ACPI 3.X (Она сможет перезаписаться)
     mov ecx, 24                ; Запрашиваем 24 байта
     int 0x15
-
-    jc .fail              ; Установленный Carry Flag при первом вызове - "функция не поддерживается"
-    mov edx, 0x0534D4150  ; Некоторые BIOS, могут затирать этот регистр
-    cmp eax, edx          ; В случае успеха eax должен быть сброшен в "SMAP"
+    jc .fail                   ; Установленный CF при первом вызове - "функция не поддерживается"
+    mov edx, 0x0534D4150       ; Некоторые BIOS, могут затирать этот регистр
+    cmp eax, edx               ; В случае успеха eax должен быть сброшен в "SMAP"
     jne .fail
 
-    test ebx, ebx  ; Ebx = 0 означает, что список состоит всего из 1 записи (бесполезно)
+    ; Ebx = 0 означает, что список состоит всего из 1 записи (бесполезно)
+    test ebx, ebx
     je .fail
 
     jmp .jmpin
@@ -45,11 +48,11 @@ get_memory_map:
     mov edx, 0x0534D4150    ; Некоторые BIOS, могут затирать этот регистр
 
 .jmpin:
-    jcxz .skipentry         ; Пропускаем записи с нулевой длиной
-    cmp cl, 20              ; Есть ли расширенные атрибуты ACPI 3.X?
+    jcxz .skipentry            ; Пропускаем записи с нулевой длиной
+    cmp cl, 20                 ; Есть ли расширенные атрибуты ACPI 3.X?
     jbe short .notext
 
-    test byte [es:di + 20], 1 ; Есть атрибуты: очищен ли бит "игнорировать эти данные"?
+    test byte [es:di + 20], 1  ; Есть атрибуты: очищен ли бит "игнорировать эти данные"?
     je short .skipentry
 
 .notext:
@@ -83,3 +86,33 @@ get_memory_map:
     pop ebx
     pop eax
     ret
+
+
+; > Вывод кол-ва записей карты памяти в текстовом режиме
+; ❗️ Зависимости: kernel16/print.asm
+show_map_entries_cnt:
+    push si
+    push ax
+    push es
+
+    ; Настраиваем сегмент `es` под PCINFO
+    xor ax, ax
+    mov es, ax
+
+    ; Выводим информацию о кол-ве записей карты памяти
+    mov si, str_memory_map
+    call print
+    mov ax, word [es:PCINFO_ADDR + 3]
+    call print_reg
+    mov si, str_entries
+    call print
+
+.done:
+    pop es
+    pop ax
+    pop si
+    ret
+
+; Строки
+str_memory_map: db 'Memory Map: ', 0
+str_entries:    db ' entries', 0

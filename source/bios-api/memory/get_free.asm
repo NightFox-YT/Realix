@@ -1,12 +1,15 @@
 ; © Realix > Free Memory
-; (02.06.26) v0.05
+; (13.06.26) v0.06
 ; ================
+
+; Основные константы
+%include 'config.asm'
 
 ; > Получение общей длины всех отрезкой памяти по её карте
 ; Параметры:
 ;  - es:di: Указатель на карту памяти (`get_memory_map`)
 ; Вывод:
-;  - ax: Число свободной памяти (МБ)
+;  - ax: Число свободной памяти (КБ)
 get_free_memory:
     push ebx
     push ecx
@@ -40,11 +43,11 @@ get_free_memory:
     loop .loop
 
 .empty:
-    ; Переводим байты в Мегабайты (Деление на 1 048 576)
-    shrd ebx, edx, 20  ; Сдвигаем ebx на 20 бит, заполняя верх из edx
-    shr edx, 20        ; Сдвигаем edx на 20 бит
+    ; Переводим байты в Килобайты (Деление на 2 ** 10)
+    shrd ebx, edx, 10  ; Сдвигаем ebx на 10 бит, заполняя верх из edx
+    shr edx, 10        ; Сдвигаем edx на 10 бит
 
-    ; Результат в ebx (МБ | До 64 ГБ поместится в ax)
+    ; Результат в ebx (КБ)
     mov ax, bx
 
     pop si
@@ -52,3 +55,34 @@ get_free_memory:
     pop ecx
     pop ebx
     ret
+
+
+; > Вывод кол-ва свободной памяти в текстовом режиме
+; ❗️ Зависимости: kernel16/print.asm, kernel16/print_reg.asm
+show_free_memory:
+    push si
+    push ax
+    push es
+
+    ; Считаем и выводим кол-во свободной памяти
+    xor ax, ax
+    mov es, ax
+    mov di, PCINFO_ADDR
+    call get_free_memory
+    
+    ; NOTE: ax содержит нужное число после `call get_free_memory`
+    mov si, str_free_ram
+    call print
+    call print_reg
+    mov si, str_kb
+    call print
+
+.done:
+    pop ax
+    pop si
+    pop es
+    ret
+
+; Строки
+str_free_ram:   db 'Free RAM: ', 0
+str_kb:         db ' KB', 0
