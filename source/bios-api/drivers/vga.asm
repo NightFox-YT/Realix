@@ -1,11 +1,9 @@
 ; © Realix > VGA driver
-; (05.06.26) v0.05
+; (13.06.26) v0.06
 ; ================
 
-; Константы
-VGA_WIDTH   equ 320
-VGA_HEIGHT  equ 200
-VGA_SEGMENT equ 0xA000
+; Основные константы
+%include 'config.asm'
 
 ; > Инициализация видеорежима 13h (320x200, 256 цветов)
 vga_video_mode:
@@ -92,7 +90,7 @@ vga_set_pixel:
 ;  - bx, ax: X, Y (0-319, 0-199)
 ; Вывод:
 ;  - dl: цвет найденного пикселя
-;  - Установка Carry Flag в случае неудачи
+;  - CF (Carry Flag): 0 - успех, 1 - ошибка
 vga_get_pixel:
     push ax
     push cx
@@ -117,22 +115,16 @@ vga_get_pixel:
     mov dl, [es:di]
     mov [.pixel], dl
 
+    clc
     jmp .done
 
+; Выход за границы экрана
 .fail:
-    ; Если вышли за границы экрана, устанавливаем dl и carry flag
+    ; Сброс dl и установка CF (Carry Flag)
     stc
     xor dl, dl
-    
-    pop es
-    pop di
-    pop cx
-    pop ax
-    ret
 
 .done:
-    clc
-    
     pop es
     pop di
     pop cx

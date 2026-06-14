@@ -1,13 +1,13 @@
 ; © Realix > Bootix
-; (05.04.26) v0.04
+; (14.06.26) v0.06
 ; ================
 
 ; Настройка компиляции
 bits 16
 org 0x7C00
 
-; Символы
-%define ENTER 0x0D, 0x0A
+; Основные константы
+%include 'config.asm'
 
 ; Настройка FAT12 (48 байт)
 jmp short start
@@ -30,41 +30,40 @@ bpb_large_sectors:       dd 0           ; Кол-во секторов свыш�
 ; Дополнительные параметры (extended boot record)
 ebr_drive_number: db 0                  ; Номер диска (0x00 floppy / 0x80 hdd)
                   db 0                  ; Зарезервировано
-ebr_signature:    db 29h                ; Подпись (0x28 или 0x29)
-ebr_volume_id:    db 23h, 07h, 20h, 25h ; Серийный номер (Произвольный)
+ebr_signature:    db 29h                ; Подпись (28h или 29h)
+ebr_volume_id:    db 52h, 45h, 41h, 4Ch ; Серийный номер (Произвольный)
 ebr_volume_label: db 'Realix     '      ; Название тома (11 байт)
 ebr_system_id:    db 'FAT12   '         ; Тип файловой системы (8 байт)
 
-; > Запуск
+
 start:
     ; Настройка сегментных регистров (Напрямую настроить нельзя)
     xor ax, ax
     mov ds, ax
     mov es, ax
 
-    ; Настройка стека (Стек растёт вниз от адреса загрузки)
+    ; Настройка стека
     mov ss, ax
     mov sp, 0x7C00
 
     ; Обновление номера диска (BIOS устанавливает его в dl)
     mov [ebr_drive_number], dl
 
-    ; Сброс сегмента кода (cs) дальним переходом
+    ; Сброс сегмента кода `cs` дальним переходом
     jmp 0:main
 
-; > Основной код
+
 main:
-    ; Считывание параметров диска
-    call disk_params
+    ; Инициализация драйвера диска
+    call disk_init
     mov [bpb_sectors_per_track], cx
     mov [bpb_heads], dh
 
     ; Вычисление LBA корневого каталога
-    ; > LBA = sectors_per_fat * fats + reserved
-    mov ax, [bpb_sectors_per_fat]
-    mov bl, [bpb_fat_count]
-    xor bh, bh
-    mul bx
+    ; > LBA = fats * sectors_per_fat + reserved
+    xor ah, ah
+    mov al, [bpb_fat_count]
+    mul word [bpb_sectors_per_fat]
     add ax, [bpb_reserved_sectors]
 
     ; *Сохраняем LBA корневого каталога
@@ -83,32 +82,28 @@ main:
     jz .read_root_dir
     inc ax
 
-; > Чтение корневого каталога
 .read_root_dir:
     ; Обновление переменной data_lba (root_dir_lba + root_dir_size)
     add cx, ax
     mov [data_lba], cx
 
     ; Чтение корневого каталога
-    mov cl, al                        ; Кол-во секторов - размер каталога
-    pop ax                            ; *Восстанавливаем LBA каталога (72 стр)
-    mov dl, [ebr_drive_number]        ; Номер диска
-    mov bx, 0x0500                    ; Адрес записи
-    push word [bpb_sectors_per_track]
-    push word [bpb_heads]
+    mov cl, al                  ; Кол-во секторов - размер каталога
+    pop ax                      ; *Восстанавливаем сохранённый LBA каталога
+    mov dl, [ebr_drive_number]  ; Номер диска
+    mov bx, 0x0500              ; Адрес записи
     call disk_read
 
     ; Подготовка к поиску файла
     xor bx, bx      ; Кол-во пройденных записей корневого каталога
     mov di, 0x0500  ; Адрес текущей записи корневого каталога
 
-; > Поиск initrix
 .search_initrix:
     ; Подготовка к сравнению названий (до 11 символов)
     mov si, file_initrix_bin
     mov cx, 11
 
-    ; Сравниваем по символу названия файлов, сохраняя адрес записи
+    ; Сравнение по символу названия файлов, сохраняя адрес записи
     ; > si:di++ до cx == 0
     push di
     repe cmpsb
@@ -121,23 +116,20 @@ main:
     cmp bx, [bpb_dir_entries]
     jl .search_initrix        ; Если не вышли за предел, продолжаем поиск
 
-    ; Вышли за предел, => файла второго этапа загрузчика нет
+    ; Выход за предел, => файла второго этапа загрузчика нет
     mov si, err_initrix_not_found
     jmp error_handler
 
-; > Найден initrix
 .found_initrix:
     ; Обновление номера кластера (di - адрес записи корневого каталога)
     mov ax, [di + 26]  ; Поле первого кластера (Смещение 26 байтов)
     push ax            ; *Сохраняем номер кластера
 
     ; Чтение FAT таблицы
-    mov ax, [bpb_reserved_sectors]     ; LBA
-    mov cl, [bpb_sectors_per_fat]      ; Кол-во секторов - размер FAT
-    mov dl, [ebr_drive_number]         ; Номер диска
-    mov bx, 0x0500                     ; Адрес записи
-    push word [bpb_sectors_per_track]
-    push word [bpb_heads]
+    mov ax, [bpb_reserved_sectors]  ; LBA
+    mov cl, [bpb_sectors_per_fat]   ; Кол-во секторов - размер FAT
+    mov dl, [ebr_drive_number]      ; Номер диска
+    mov bx, 0x0500                  ; Адрес записи
     call disk_read
 
     ; Установка сегмента и смещения для чтения initrix
@@ -145,41 +137,39 @@ main:
     mov es, bx
     mov bx, INITRIX_LOAD_OFFSET
 
-; > Чтение initrix и обработка FAT цепочки
 .load_initrix_loop:
-    ; *Восстанавливаем (133 стр или 205 стр) и сохраняем номер кластера
+    ; *Восстанавливаем и сохраняем номер кластера
     pop ax
     push ax
 
     ; Вычисление LBA кластера
     ; > LBA = (initrix_cluster - 2) * sectors_per_cluster + data_lba
     sub ax, 2
+    xor ch, ch
     mov cl, [bpb_sectors_per_cluster]
     mul cx
     add ax, [data_lba]
 
-    ; Чтение следующего кластера
+    ; Чтение следующего кластера (cl уже содержит нужное кол-во секторов)
     mov dl, [ebr_drive_number]
-    push word [bpb_sectors_per_track]
-    push word [bpb_heads]
     call disk_read
 
     ; Увеличиваем адрес смещения initrix на кол-во прочитанных байт
-    ; ❗️ NOTE: Initrix должен быть <=64 КБ, т.к. мы не обновляем сегмент
+    ; ❗️ NOTE: Initrix должен быть <=64 КБ, т.к. мы не обновляем сегмент ES
     xor ah, ah
     mov al, [bpb_sectors_per_cluster]
     mul word [bpb_bytes_per_sector]
     add bx, ax
 
-    ; Вычисляем LBA следующего кластера
-    ; > ax - индекс записи, dx - Cluster % 2
-    pop ax     ; *Восстанавливаем номер кластера (154 стр)
+    ; Вычисление смещения след. кластера в таблице FAT
+    ; (ax - индекс записи, dx - Cluster % 2)
+    pop ax     ; *Восстанавливаем номер кластера
     mov cx, 3
     mul cx
     mov cx, 2
     div cx
 
-    ; Считывание записи из таблицы FAT по индексу (ax)
+    ; Считывание записи из таблицы FAT
     mov si, 0x0500
     add si, ax
     mov ax, [ds:si]
@@ -188,16 +178,15 @@ main:
     or dx, dx
     jz .even_cluster
 
-; Нечётный кластер (Оставляем старшие 12 бит)
 .odd_cluster:
+    ; Нечётный кластер - оставляем старшие 12 бит
     shr ax, 4
     jmp .next_cluster_after
 
-; Чётный кластер (Оставляем младшие 12 бит)
 .even_cluster:
+    ; Чётный кластер - оставляем младшие 12 бит
     and ax, 0x0FFF
 
-; > Обработка следующего кластера
 .next_cluster_after: 
     ; Проверка на конец файла
     cmp ax, 0x0FF8
@@ -207,9 +196,8 @@ main:
     push ax
     jmp .load_initrix_loop
 
-; > Заканчиваем чтение файла
 .read_initrix_finish: 
-    ; Настройка сегментов под initrix
+    ; Настройка сегментных регистров под initrix
     mov ax, INITRIX_LOAD_SEGMENT
     mov ds, ax
     mov es, ax
@@ -218,32 +206,30 @@ main:
     ; Переход к initrix
     jmp INITRIX_LOAD_SEGMENT:INITRIX_LOAD_OFFSET
 
+
 ; > Обработчик ошибок
 ; Параметры:
 ;  - si: сообщение об ошибке
 error_handler:
-    ; Вывод сообщения и ожидание нажатия
     call print
+
+    ; Ожидание нажатия
     mov ah, 0
     int 0x16
 
-    ; Переход в вектор сброса BIOS
+    ; Аппаратный сброс процессора через вектор BIOS
     jmp 0xFFFF:0
 
 ; Подключение модулей
-%include 'kernel16/print.asm'
-%include 'disk/read.asm'
-%include 'disk/params.asm'
+%include 'kernel16/io/print.asm'
+%include 'bios-api/disk/read.asm'
 
 ; Сообщения
 err_initrix_not_found: db '[!] No Initrix!', 0
 
-; Переменные (Для чтения второго этапа загрузчика)
+; Переменные (Для чтения initrix)
 file_initrix_bin: db 'INITRIX BIN'
 data_lba:         dw 0
-
-INITRIX_LOAD_SEGMENT equ 0x07E0
-INITRIX_LOAD_OFFSET  equ 0
 
 ; Сигнатура AA55 (BIOS)
 times 510-($-$$) db 0

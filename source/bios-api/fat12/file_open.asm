@@ -1,7 +1,8 @@
-; © Realix > FAT12: File Open
-; (02.06.26) v0.05
+; © Realix > FAT12 File Open
+; (13.06.26) v0.06
 ; ================
-; Зависимости: fat12/init.asm, disk/read.asm, error_handler (функция)
+; ❗️ Зависимости: bios-api/disk/read.asm, error_handler (внешний обработчик)
+; TODO: Сделать динамический буфер под таблицу FAT и Root_dir
 
 ; > Загрузка файла с диска в память
 ; Параметры:
@@ -32,18 +33,18 @@ file_open:
     ; dx - Старшие биты линейного адреса (4 бита)
     mov ax, cx
     shl ax, 4
+
     mov dx, cx
     shr dx, 12
+
+    ; В случае переполнения смещения, мы прибавим этот бит к dx
     add ax, bx
     adc dx, 0
 
-    ; Проверка, что адрес записи не затирает буфер.
+    ; Проверка, что адрес записи (до 0xFFFF) не затирает буфер.
     cmp dx, 0x0
     mov si, err_buffer_overlap
     je error_handler
-
-    ; Вызываем инициализацию FAT параметров
-    call fat_init
 
 ; Чтение корневого каталога
 .read_root_dir:
@@ -54,8 +55,6 @@ file_open:
     mov cx, [root_dir_size]
     mov dl, [drive_num]
     mov bx, 0x0500
-    push word [sectors_per_track]
-    push word [heads]
     call disk_read
 
     ; Подготовка к поиску файла
@@ -97,8 +96,6 @@ file_open:
     mov cx, [sectors_per_fat]
     mov dl, [drive_num]
     mov bx, 0x0500
-    push word [sectors_per_track]
-    push word [heads]
     call disk_read
 
     ; Установка сегмента и смещения для чтения файла
@@ -119,9 +116,16 @@ file_open:
 
     ; Чтение следующего кластера
     mov dl, [drive_num]
-    push word [sectors_per_track]
-    push word [heads]
     call disk_read
+
+    ; Индикатор прогресса чтения (с «кубиками»)
+    push bx
+    mov ah, 0x0E
+    xor bx, bx
+
+    mov al, 0xFE
+    int 0x10
+    pop bx
 
     ; Увеличиваем адрес смещения назначения на кол-во прочитанных байт
     xor ah, ah
@@ -181,6 +185,14 @@ file_open:
     jmp .load_loop
 
 .done:
+    ; Переводим на новую строку при завершении
+    mov ah, 0x0E
+    xor bx, bx
+    mov al, 0x0D
+    int 0x10
+    mov al, 0x0A
+    int 0x10
+
     pop es
     pop di
     pop si
@@ -192,7 +204,7 @@ file_open:
     ret
 
 ; Подключение FAT12: Init модуля
-%include "fat12/init.asm"
+%include "bios-api/fat12/init.asm"
 
 ; Параметры файла
 filename:     dw 0

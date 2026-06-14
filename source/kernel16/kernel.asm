@@ -1,27 +1,52 @@
 ; © Realix > Kernel
-; (05.04.26) v0.05
+; (13.06.26) v0.06
 ; ================
 
 ; Настройка компиляции
 bits 16
 org 0x0
 
-; Символы
-%define ENTER 0x0D, 0x0A
+; Основные константы
+%include 'config.asm'
 
-; > Основной код
+; > Установка ядра
+kernel_start:
+	mov si, msg_start_kernel
+	call print
+
+    call print_new_line
+
+	mov si, msg_enter_os
+	call print
+
+    ; Ожидание нажатия
+	mov ah, 0x0
+    int 0x16
+
+    ; Настройка консоли
+    call cmd_cls
+	mov si, cli_title
+	call print
+
 main:
-    mov si, msg_end
-    call print
+    call run_cli
 
-; > Остановка CPU
-halt:
+.halt:
     cli
     hlt
     jmp $
 
 ; Подключение модулей
-%include 'kernel16/print.asm'
+%include 'kernel16/io/print.asm'
+%include 'kernel16/io/print_nl.asm'
+%include 'kernel16/io/print_reg.asm'
+%include 'kernel16/shell/cli.asm'
+%include 'kernel16/shell/commands.asm'
+%include 'bios-api/memory/get_free.asm'
+%include 'bios-api/memory/get_lower.asm'
+%include 'bios-api/memory/get_map.asm'
 
-; Сообщения
-msg_end: db '[?] Kernel halted. This version of Realix has ended its work.', ENTER, 0
+; Сообщения и строки
+msg_start_kernel: db '[+] Starting kernel.', ENTER, 0
+msg_enter_os:     db 'Welcome, press any key to continue.', 0
+cli_title:            db 'Realix v0.06 / (C) NightFox developer', ENTER, ENTER, 0
