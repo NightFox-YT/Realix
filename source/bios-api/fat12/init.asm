@@ -1,20 +1,19 @@
-; © Realix > FAT12: Initialization
-; (01.06.26) v0.05
+; © Realix > FAT12 Initialization
+; (13.06.26) v0.06
 ; ================
 
-; > Инициализация параметров FAT12 (При необходимости)
-fat_init:
+; Защита от повторного включения
+%ifndef FAT12_INIT
+%define FAT12_INIT
+
+; > Инициализация параметров FAT12 (Вызывается 1 раз при подключении)
+fat12_init:
     push ax
     push bx
     push cx
     push dx
     push es
 
-    ; Проверка на необходимость инициализации
-    cmp byte [fat_initialized], 1
-    je .done
-
-.read_bpb:
     ; Читаем данные BPB из сектора Bootix
     xor ax, ax
     mov es, ax
@@ -49,23 +48,20 @@ fat_init:
     ; Вычисление размера корневого каталога
     ; > root_dir_size = (number_of_entries * 32) / bytes_per_sector
     mov ax, [dir_entries]
-    shl ax, 5             ; *32 (number_of_entries * 32)
+    shl ax, 5
     xor dx, dx
     div word [bytes_per_sector]
 
     ; Округление размера корневого каталога до целого вверх
     or dx, dx
-    jz .save_fat_params
+    jz .save_other_fat_params
     inc ax
 
-.save_fat_params:
+.save_other_fat_params:
     ; Обновление переменных
     mov [root_dir_size], ax
     add ax, [root_dir_lba]
     mov [data_lba], ax
-
-    ; Обновление флага инициализации
-    mov byte [fat_initialized], 1
 
 .done:
     pop es
@@ -76,7 +72,6 @@ fat_init:
     ret
 
 ; Параметры FAT12
-fat_initialized: db 0
 root_dir_lba:    dw 0
 root_dir_size:   dw 0
 data_lba:        dw 0
@@ -90,3 +85,5 @@ dir_entries:         dw 0
 sectors_per_fat:     dw 0
 sectors_per_track:   dw 0
 heads:               dw 0
+
+%endif
