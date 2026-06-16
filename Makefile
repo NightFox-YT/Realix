@@ -4,6 +4,8 @@
 
 # Конфигурация
 ASM = nasm
+CC = gcc # gcc обычно у всех есть, если нет то надо установить build-essential
+CFLAGS = -ffreestanding -m32
 ASMFLAGS = -f bin -i $(SRC_DIR)
 SRC_DIR = source
 BUILD_DIR = build
