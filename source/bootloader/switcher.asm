@@ -56,6 +56,13 @@ boot_switcher:
     mov si, msg_loading_32
     call print
 
+    ; Загружаем 32-битное ядро пока есть прерывания BIOS
+    mov si, kernel32_file 				; указатель на имя самого ядра
+	mov cx, 0x2000						; загрузочный сегмент 		  			 
+	mov bx, 0x0000						; загрузочное смещение
+	mov dl, [boot_drive_num][cite: 4]	
+	call file_open
+	
     ; Динамически вычисляем физический адрес GDT перед загрузкой
     xor eax, eax
     mov ax, ds
@@ -113,35 +120,21 @@ gdt_end:
 
 
 ; > Точка входа в 32-битный режим
-bits 32
+bits 32[cite: 4]
 pmode_entry:
     ; Настройка 32-битных сегментов данных
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    mov ss, ax
+    mov ax, 0x10[cite: 4]
+    mov ds, ax[cite: 4]
+    mov es, ax[cite: 4]
+    mov fs, ax[cite: 4]
+    mov gs, ax[cite: 4]
+    mov ss, ax[cite: 4]
 
     ; Настройка стека
-    mov ebp, 0x90000
-    mov esp, ebp
+    mov ebp, 0x90000[cite: 4]
+    mov esp, ebp[cite: 4]
 
-    ; Вывод 'DONE' напрямую в видеопамять (0xB8000) для проверки
-    mov byte [0xB8000], 'D'
-    mov byte [0xB8001], 0x0A
-    mov byte [0xB8002], 'O'
-    mov byte [0xB8003], 0x0A
-    mov byte [0xB8004], 'N'
-    mov byte [0xB8005], 0x0A
-    mov byte [0xB8006], 'E'
-    mov byte [0xB8007], 0x0A
-
-    ; Остановка CPU (Ещё нет ядра Rust)
-    cli
-    hlt
-    jmp $
-
+	jmp 0x08:0x20000
 
 ; Сообщения и строки (16 бит для строковых данных)
 bits 16
@@ -153,3 +146,4 @@ str_choose_mode:
 
 msg_loading_16: db '[+] Loading 16-bit kernel.', ENTER, 0
 msg_loading_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
+kernel32_file: db 'RLXKRNL32BIN'
