@@ -1,3 +1,8 @@
 .DS_Store
 build/
 tools/
+source/crypto/clibc
+source/crypto/aead
+source/crypto/cipher
+source/crypto/hash
+source/crypto/kdf
