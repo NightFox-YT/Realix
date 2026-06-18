@@ -4,13 +4,14 @@
 
 ; Настройка компиляции
 bits 16
-org 0x0
+
+global _start
 
 ; Основные константы
 %include 'config.asm'
-
+section .text
 ; > Установка ядра
-kernel_start:
+_start:
 	mov si, msg_start_kernel
 	call print
 
