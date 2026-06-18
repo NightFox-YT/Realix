@@ -5,5 +5,3 @@ The realix libc, IO module.
 */
 
 #include "io.h"
-
-int vsnprintf ()

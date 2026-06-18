@@ -15,6 +15,6 @@ typedef struct _IO_FILE {
 	int ungetc_buf;		// доп. поле
 } FILE;
 
-int vsnprintf(char *str, size_t maxlen, const char *format, va_list ap);
-int printf(const char *format, ...);
+//int vsnprintf(char *str, size_t maxlen, const char *format, va_list ap);
+//int printf(const char *format, ...);
 #endif /*__realix_io_h__*/
