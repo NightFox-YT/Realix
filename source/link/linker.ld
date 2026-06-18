@@ -6,7 +6,6 @@ SECTIONS
 	. = 0x20000;
 
 	.text : {
-		entry32.o(.text)
 		*(.text)
 	}
 
