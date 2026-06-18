@@ -57,12 +57,12 @@ boot_switcher:
     call print
 
     ; Загружаем 32-битное ядро пока есть прерывания BIOS
-    mov si, kernel32_file 				; указатель на имя самого ядра
-	mov cx, 0x2000						; загрузочный сегмент 		  			 
-	mov bx, 0x0000						; загрузочное смещение
-	mov dl, [boot_drive_num][cite: 4]	
-	call file_open
-	
+    mov si, kernel32_file               ; указатель на имя самого ядра
+    mov cx, 0x2000                      ; загрузочный сегмент                    
+    mov bx, 0x0000                      ; загрузочное смещение
+    mov dl, [boot_drive_num]            ; ИСПРАВЛЕНО: Убран лишний мусор в скобках
+    call file_open
+    
     ; Динамически вычисляем физический адрес GDT перед загрузкой
     xor eax, eax
     mov ax, ds
@@ -92,10 +92,12 @@ boot_switcher:
     mov cr0, eax
 
     ; Выполняем 32-битный дальний прыжок через структуру в памяти.
+    ; ИСПРАВЛЕНО: Правильный синтаксис для 16-битного ассемблера, прыгающего в 32-битный сегмент
     jmp dword far [pmode_target]
 
 
 ; > Структура-указатель для совершения дальнего перехода в 32-битный сегмент кода
+align 4
 pmode_target:
     pmode_target_offset: dd 0     ; Физический адрес pmode_entry (заполняется динамически)
     pmode_target_sel:    dw 0x08  ; Селектор кода в GDT (gdt_code)
@@ -114,29 +116,32 @@ gdt_data:
     ; Дескриптор данных (Смещение 0x10)
     dw 0xFFFF, 0x0, 0x9200, 0x00CF
 gdt_end:
-    gdt_descriptor:
-        dw gdt_end - gdt_start - 1
-        dd gdt_start
+
+gdt_descriptor:
+    dw gdt_end - gdt_start - 1
+    dd gdt_start
 
 
 ; > Точка входа в 32-битный режим
-bits 32[cite: 4]
+bits 32
 pmode_entry:
     ; Настройка 32-битных сегментов данных
-    mov ax, 0x10[cite: 4]
-    mov ds, ax[cite: 4]
-    mov es, ax[cite: 4]
-    mov fs, ax[cite: 4]
-    mov gs, ax[cite: 4]
-    mov ss, ax[cite: 4]
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
 
     ; Настройка стека
-    mov ebp, 0x90000[cite: 4]
-    mov esp, ebp[cite: 4]
+    mov ebp, 0x90000
+    mov esp, ebp
 
-	jmp 0x08:0x20000
+    ; Прыгаем на адрес 0x20000
+    jmp 0x08:0x20000
 
-; Сообщения и строки (16 бит для строковых данных)
+
+; Сообщения и строки
 bits 16
 
 str_choose_mode: 
