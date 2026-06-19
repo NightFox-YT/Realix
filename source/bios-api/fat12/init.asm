@@ -36,6 +36,12 @@ fat12_init:
     mov [heads], ax
 
 .calculations:
+    ; Валидация BPB перед вычислениями
+    cmp word [bytes_per_sector], 512
+    jne read_error
+    cmp word [dir_entries], 224
+    ja read_error
+
     ; Вычисление LBA корневого каталога
     ; > LBA = sectors_per_fat * fats + reserved
     mov ax, [sectors_per_fat]
