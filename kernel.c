@@ -31,22 +31,29 @@ void clear_screen() {
         video_memory[i * 2 + 1] = LIGHT_GRAY;
     }
     cursor = 0;
-    }
+}
 
-    void command_terminal(char* command) {
-        if(command == "clear") {
-            clear_screen();
-        }
-        else if(command == '\n'){
-            print("\n");
-        }
-        else {
-            print("Unknown command: ");
-            print(command);
-            print("\n");
-        }
+int strcmp(const char* s1, const char* s2) {
+    while(*s1 && (*s1 == *s2)) {
+        s1++;
+        s2++;
     }
+    return *(const unsigned char*)s1 - *(const unsigned char*)s2;
+}
 
+void command_terminal(char* command) {
+    if(strcmp(command, "clear") == 0) {
+        clear_screen();
+    }
+    else if(strcmp(command, "\n") == 0) {
+        print("\n");
+    }
+    else {
+        print("Unknown command: ");
+        print(command);
+        print("\n");
+    }
+}
 
 void kernel_main() {
     clear_screen();
