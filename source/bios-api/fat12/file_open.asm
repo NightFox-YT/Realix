@@ -180,6 +180,15 @@ file_open:
     cmp ax, 0x0FF8
     jae .done
 
+    ; Проверка на "плохой" кластер (Bad Cluster)
+    cmp ax, 0x0FF7
+    je read_error
+
+    ; Защита от бесконечного цикла (не более 2847 кластеров для 1.44MB)
+    inc word [cluster_count]
+    cmp word [cluster_count], 2847
+    ja read_error
+
     ; Обновляем номер текущего кластера, продолжая чтение
     mov [file_cluster], ax
     jmp .load_loop
@@ -207,10 +216,11 @@ file_open:
 %include "bios-api/fat12/init.asm"
 
 ; Параметры файла
-filename:     dw 0
-file_segment: dw 0
-file_offset:  dw 0
-file_cluster: dw 0
+filename:      dw 0
+file_segment:  dw 0
+file_offset:   dw 0
+file_cluster:  dw 0
+cluster_count: dw 0
 
 ; Параметры устройства загрузки
 drive_num: db 0
