@@ -180,6 +180,15 @@ file_open:
     cmp ax, 0x0FF8
     jae .done
 
+    ; Проверка на Bad Cluster
+    cmp ax, 0x0FF7
+    je read_error
+
+    ; Защита от бесконечного цикла
+    inc word [cluster_count]
+    cmp word [cluster_count], 2847
+    ja read_error
+
     ; Обновляем номер текущего кластера, продолжая чтение
     mov [file_cluster], ax
     jmp .load_loop
@@ -211,6 +220,7 @@ filename:     dw 0
 file_segment: dw 0
 file_offset:  dw 0
 file_cluster: dw 0
+cluster_count: dw 0
 
 ; Параметры устройства загрузки
 drive_num: db 0
