@@ -1,4 +1,4 @@
-# ⚠️ Realix `v0.06` [`DEV`]
+# ⚠️ Realix `v0.07` [`DEV`]
 ![Status](https://img.shields.io/badge/status-latest-brightgreen)
 ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
