@@ -68,6 +68,12 @@ disk_read:
     push ax
     push dx
 
+    ; Проверка делителей на 0 (Защита от Divide by Zero / Triple Fault)
+    cmp word [disk_spt], 0
+    je read_error
+    cmp word [disk_heads], 0
+    je read_error
+
     ; Вычисление номера сектора (LBA / SectorsPerTrack) + 1
     xor dx, dx
     div word [disk_spt]  ; ax = LBA / SPT, dx = LBA % SPT
