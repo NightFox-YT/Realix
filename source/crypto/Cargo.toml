@@ -1,0 +1,17 @@
+[package]
+name = "crypto"
+version = "0.0.1"
+edition = "2024"
+authors = ["Gleb Obitotsky <https://github.com/oxxx1mif>"]
+
+[lib]
+name = "crypto"
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+panic = "abort"
+opt-level = 3
+lto = true
+
+[dependencies]
+sha256 = { path = "./sha256" }

@@ -6,3 +6,8 @@ source/crypto/aead
 source/crypto/cipher
 source/crypto/hash
 source/crypto/kdf
+target/
+
+# Added by cargo
+
+/target
