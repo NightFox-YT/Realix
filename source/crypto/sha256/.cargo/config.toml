@@ -1,0 +1,5 @@
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"

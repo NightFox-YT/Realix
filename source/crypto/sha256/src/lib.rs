@@ -10,7 +10,8 @@
 // Thanks to the authors:
 // https://datatracker.ietf.org/doc/html/rfc6234
 
-#![no_std]
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+// #![cfg_attr(not(test), no_std)]
 
 //! # SHA-256 (RFC 6234)
 //! 
@@ -217,9 +218,27 @@ pub extern "C" fn sha256_finalize(ctx: *mut Sha256, out_digest: *mut u8) {
     }
 }
 
+/*
+// ------------------------------------------------------------------
+// Панический обработчик (только standalone, не для тестов)
+// ------------------------------------------------------------------
+#[cfg(not(test))]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
+*/
+
+#[cfg(not(any(test, feature = "std")))]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! { loop {} }
+
 // ------------------------------------------------------------------
 // Тесты
 // ------------------------------------------------------------------
+
+#[cfg(test)]
+extern crate std;
 
 #[cfg(test)]
 mod tests {
