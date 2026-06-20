@@ -124,7 +124,7 @@ fn clear(
 
 #[cfg(test)]
 mod padding_tests {
-    use crate::padding::{self, *};
+    use crate::padding::*;
 
     // ------------------------------------------------------------------
     // needs_extra_block
