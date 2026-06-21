@@ -15,6 +15,7 @@ cmd_table:
     dw .str_shutdown, cmd_shutdown
     dw .str_meminfo,  cmd_meminfo
     dw .str_echo,     cmd_echo
+    dw .str_secret,   cmd_secret
     dw 0, 0
 
 .str_help:     db 'help', 0
@@ -24,6 +25,7 @@ cmd_table:
 .str_shutdown: db 'shutdown', 0
 .str_meminfo:  db 'meminfo', 0
 .str_echo:     db 'echo', 0
+.str_secret:   db 'secret', 0
 
 
 ; > Исполнитель команд
@@ -219,6 +221,36 @@ cmd_echo:
 
     ret
 
+; > Команда вывода расшифрованного груза хранилища (демонстрация Vault API)
+cmd_secret:
+    push ax
+    push bx
+    push cx
+    push si
+
+    ; Получаем указатель и длину открытого текста
+    call vault_get_secret      ; ds:si = груз, cx = длина
+    test cx, cx
+    jz .done
+
+.print_loop:
+    lodsb
+    push cx
+    mov ah, 0x0E
+    xor bx, bx
+    int 0x10
+    pop cx
+    loop .print_loop
+
+.done:
+    call print_new_line
+
+    pop si
+    pop cx
+    pop bx
+    pop ax
+    ret
+
 err_unknown_cmd: db '[!] Unknown command, write help for list of commands.', 0
 err_shutdown:    db '[!] PC shutdown failed! (No APM)', 0
 
@@ -229,6 +261,7 @@ msg_help:
     db '> clear/cls - Clear screen', ENTER
     db '> help - Show this manual', ENTER
     db '> echo [text] - Print [text] to console', ENTER
+    db '> secret - Print decrypted vault payload', ENTER
     db '> meminfo - Display RAM configuration', ENTER
     db '  [Power]', ENTER
     db '> reboot - Reboot PC', ENTER
