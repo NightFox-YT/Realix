@@ -1,6 +1,6 @@
 ; © Realix > CPU Entropy: RDRAND и RDSEED
+; ø Copyright Gleb Obitotsky <https://github.com/oxxx1mif>
 ; (18.06.26) v0.07
-; ø Copyright Gleb Obitotsky <https://github.com/oxxx1mif> 2026
 ; ================
 
 ; Экспорт функций наружу

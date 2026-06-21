@@ -1,4 +1,4 @@
-# ⚠️ Realix `v0.07` [`DEV`]
+# [`DEV`] Realix `v0.07`
 ![Status](https://img.shields.io/badge/status-latest-brightgreen)
 ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
@@ -10,8 +10,7 @@ We are working hard to bring you new features and stability improvements.
 Realix is a **hybrid OS** designed for x86 architecture, written in NASM.
 It supports a built-in boot switcher that lets users choose between a 16-bit Real Mode kernel for legacy compatibility and a high-performance 32-bit Protected Mode kernel.
 
-- **OS size:** `≈3.8 KB`
-- **Initial release:** `N/A`
+- **Development start:** `June 19, 2026`
 
 ## 🔗 Links & 🙌 Contributing
 - **TikTok:** [tiktok.com/@mainfox.tt](https://www.tiktok.com/@mainfox.tt)

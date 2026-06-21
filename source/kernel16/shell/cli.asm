@@ -1,8 +1,8 @@
 ; © Realix > Command Line Interface
-; (13.06.26) v0.06
 ; ø Вдохновлено @nyxmalware
+; (13.06.26) v0.06
 ; ================
-; ❗️ Зависимости: kernel16/io/print.asm, kernel16/io/print_nl.asm
+; ❗️ Зависимости: kernel16/io
 
 ; Основные константы
 %include 'config.asm'
