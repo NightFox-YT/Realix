@@ -6,7 +6,6 @@
 section .text
 global irq0_handler
 global irq1_handler
-global irq_common_handler
 
 extern pit_irq_handler
 extern keyboard_irq_handler

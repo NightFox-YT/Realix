@@ -1,4 +1,4 @@
-#include "idt.h"
+#include "../include/idt.h"
 
 struct idt_entry idt[256];
 struct idt_pointer idtptr;
@@ -41,4 +41,9 @@ void idt_init(void)
 
 	// загрузка IDT в процессор(вирус, пк взорвется)
 	__asm__ volatile("lidt %0" : : "m"(idtptr));
+}
+
+uint32_t pit_irq_handler(uint32_t esp) {
+    __asm__ volatile("mov $0x20, %%al; out %%al, $0x20" ::: "eax");
+    return esp; 
 }

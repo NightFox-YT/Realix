@@ -77,7 +77,7 @@ boot_switcher:
     add eax, pmode_entry            ; Прибавляем смещение метки `pmode_entry`
     mov [pmode_target_offset], eax  ; Записываем адрес в структуру памяти для дальнего перехода
 
-    ; Включаем A20 (С отключением прерываний)
+    ; Включаем A20
     cli
     in al, 0x92   ; Читаем состояние системного порта 0x92
     or al, 2      ; Устанавливаем во 2-й бит единицу (Fast A20 gate)
@@ -92,9 +92,7 @@ boot_switcher:
     mov cr0, eax
 
     ; Выполняем 32-битный дальний прыжок через структуру в памяти.
-    ; ИСПРАВЛЕНО: Правильный синтаксис для 16-битного ассемблера, прыгающего в 32-битный сегмент
     jmp dword far [pmode_target]
-
 
 ; > Структура-указатель для совершения дальнего перехода в 32-битный сегмент кода
 align 4
@@ -140,7 +138,6 @@ pmode_entry:
     ; Прыгаем на адрес 0x20000
     jmp 0x08:0x20000
 
-
 ; Сообщения и строки
 bits 16
 
@@ -151,4 +148,4 @@ str_choose_mode:
 
 msg_loading_16: db '[+] Loading 16-bit kernel.', ENTER, 0
 msg_loading_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
-kernel32_file: db 'RLXKRNL32BIN'
+kernel32_file: db 'KERNEL  BIN'

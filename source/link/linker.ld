@@ -1,15 +1,16 @@
 ENTRY(_start)
-OUTPUT_FORMAT("binary")
+OUTPUT_FORMAT("elf32-i386")
 
 SECTIONS
 {
-	. = 0x20000;
+    . = 0x20000;
 
-	.text : {
-		*(.text)
-	}
+    .text : {
+        build/entry32.o(.text)
+        *(.text)
+    }
 
-	.data : { *(.data) }
-	.rodata : { *(.rodata) }
-	.bss : { *(.bss) }
+    .data : { *(.data) }
+    .rodata : { *(.rodata) }
+    .bss : { *(.bss) }
 }
