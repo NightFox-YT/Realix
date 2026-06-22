@@ -27,4 +27,8 @@ VGA_SEGMENT equ 0xA000
 ; Настройки CLI
 INPUT_BUFFER_LEN equ 64
 
+; Настройки Vault (хранилище, защищённое паролем)
+VAULT_PLAIN_MAX equ 512    ; Макс. размер открытого текста (байт)
+VAULT_BLOB_MAX  equ 1024   ; Макс. размер VAULT.BIN в памяти (байт)
+
 %endif

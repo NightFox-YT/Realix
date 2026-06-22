@@ -24,6 +24,7 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
 - TTY bell character support
 - 🆕 Interactive CPU mode selector (`switcher.asm`)
 - 🆕 Kernel16: Basic command-line interface
+- 🆕 Kernel16: Password-gated Vault (PBKDF2-HMAC-SHA256, Encrypt-then-MAC)
 
 ### ⏳ Upcoming Features (v0.07-v0.08)
 - Kernel32: Development of the 32-bit Protected Mode kernel space
@@ -89,6 +90,7 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
 
 **Prerequisites**
 * Compiler: `nasm` (Assembly)
+* Vault tool: `python3` (forges `VAULT.BIN` at build time)
 * Disk Tools: `mtools` (FAT12 image formatting), `coreutils` (dd/image creation)
 * (Optional) Emulator: `qemu-system-i386`
 
