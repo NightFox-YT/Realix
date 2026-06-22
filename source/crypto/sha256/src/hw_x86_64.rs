@@ -7,6 +7,8 @@
 // The code was written for Realix.
 // 19 june 2026
 
+// [!!!! WARNING] This code cannot yet be used in the kernel or other tasks. It is in an untested and unstable version.
+
 //! Аппаратное сжатие блока SHA‑256 через Intel SHA Extensions (x86_64).
 //!
 //! # Требования безопасности для ядра
