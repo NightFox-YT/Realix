@@ -3,7 +3,7 @@
 */
 #define __RVFS_INTERNAL_FUNCTIONS__
 #include "vfs.h"
-#include "../libc/string/string.h"
+#include "../libc/klibc/string/string.h"
 
 int vfs_read(struct vfs_file *file, uint8_t *buf, uint32_t size) 
 {

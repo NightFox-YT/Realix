@@ -6,13 +6,17 @@
 bits 32
 
 global _start
+
+extern __bss_start
+extern __bss_end
+
 extern kernel_exec
 
 section .bss
 align 16
 kernel_stack_bottom:
 	resb 16384
-kernel_stack_top
+kernel_stack_top:
 
 section .text
 _start:
@@ -24,6 +28,14 @@ _start:
 	mov ss, ax
 	mov esp, kernel_stack_top
 	mov ebp, esp
+
+    ; я дебил, забыл обнулить bss, бляя, это наверное самая тупая ошибка
+    mov edi, __bss_start
+    mov ecx, __bss_end
+    sub ecx, edi
+    xor al, al
+    cld
+    rep stosb   
 
 	call kernel_exec
 

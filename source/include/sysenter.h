@@ -1,11 +1,16 @@
 #ifndef __realix_sysenter__
 #define __realix_sysenter__
 
-#include "../libc/stdint.h"
+#include "../libc/klibc/stdint.h"
+#include "../libc/klibc/stddef.h"
+#include "../vfs/vfs.h"
 
 #define IA32_SYSENTER_CS 0x174
 #define IA32_SYSENTER_ESP 0x175
 #define IA32_SYSENTER_EIP 0x176
+
+#define FONT_WIDTH 8
+#define FONT_HEIGHT 16
 
 typedef enum {
     SYS_EXIT=0,
@@ -56,15 +61,51 @@ static inline uint32_t __attribute__((always_inline)) syscall(uint32_t num, uint
     return ret;
 }
 
-static inline uint32_t sys_exit(int code) {return syscall(SYS_EXIT, (uint32_t)code, 0, 0);}
-static inline uint32_t sys_puts(const char *s) {return syscall(SYS_PUTS, (uint32_t)s, 0, 0);}
-static inline uint32_t sys_getc(void) {return syscall(SYS_GETC, 0, 0, 0);}
-static inline uint32_t sys_read(int fd, void *buf, uint32_t count) {return syscall(SYS_READ, (uint32_t)fd, (uint32_t)buf, count);}
-static inline uint32_t sys_write(int fd, const void *buf, uint32_t count) {return syscall(SYS_WRITE, (uint32_t)fd, (uint32_t)buf, count);}
-static inline uint32_t sys_yield(void) {return syscall(SYS_YIELD, 0, 0, 0);}
-static inline uint32_t sys_getpid(void) {return syscall(SYS_GETPID, 0, 0, 0);}
-static inline uint32_t sys_mmap(void *addr, uint32_t len, int prot) {return syscall(SYS_MMAP, (uint32_t)addr, len, (uint32_t)prot);}
-static inline uint32_t sys_brk(void *addr) {return syscall(SYS_BRK, (uint32_t)addr, 0, 0);}
+/*-----------EXTERN AREA------------------*/
+extern char keyboard_getc(void);
 
+extern void rxbdph_put_pixel (uint16_t x, uint16_t y, uint32_t color);
+extern uint32_t rxbdph_get_pixel (uint16_t x, uint16_t y);
+
+extern void rxbdph_draw_line (uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint32_t color);
+extern void rxbdph_draw_rect (uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color);
+extern void rxbdph_fill_rect (uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color);
+extern void rxbdph_draw_circle (uint16_t cx, uint16_t cy, uint16_t r, uint32_t color);
+extern void rxbdph_fill_circle (uint16_t cx, uint16_t cy, uint16_t r, uint32_t color);
+
+extern void rxbdph_clear (uint32_t color);
+extern void rxbdph_clear_black (void);
+
+extern void rxbdph_draw_char (uint16_t x, uint16_t y, char c, uint32_t fg, uint32_t bg, int transparent);
+extern void rxbdph_draw_string (uint16_t x, uint16_t y, const char *str, uint32_t fg, uint32_t bg, int transparent);
+extern void rxbdph_draw_stringn (uint16_t x, uint16_t y, const char *str, size_t n, uint32_t fg, uint32_t bg, int transparent);
+
+extern uint16_t rxbdph_get_width (void);
+extern uint16_t rxbdph_get_height (void);
+extern uint8_t rxbdph_is_initialized (void);
+
+#define RGB(r, g, b) (((uint32_t)(r) << 16) | ((uint32_t)(g) << 8) | (uint32_t)(b))
+#define VGA_BLACK RGB(0, 0, 0)
+#define VGA_WHITE RGB(255, 255, 255)
+#define VGA_RED RGB(200, 50, 50)
+#define VGA_GREEN RGB(50, 180, 50)
+#define VGA_BLUE RGB(50, 100, 220)
+#define VGA_YELLOW RGB(220, 200, 50)
+#define VGA_CYAN RGB(50, 200, 220)
+#define VGA_MAGENTA RGB(200, 50, 180)
+#define VGA_GRAY RGB(128, 128, 128)
+#define VGA_DGRAY RGB(64, 64, 64)
+#define VGA_LGRAY RGB(192, 192, 192)
+
+/*-----------------END-------------------------*/
+
+int sys_create_impl(const char *path);
+int sys_readdir_impl(int fd, struct vfs_dirent *dir, uint32_t index);
+int sys_close_impl(int fd);
+int sys_write_impl(int fd, const uint8_t *buf, uint32_t size);
+int sys_read_impl(int fd, uint8_t *buf, uint32_t size);
+int sys_open_impl(const char *path);
+uint32_t sys_gets_impl(int fd, void *buf, uint32_t count);
+uint32_t sys_puts_impl(const char *str);
 
 #endif

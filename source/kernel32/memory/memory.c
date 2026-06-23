@@ -1,5 +1,5 @@
-#include "memory.h"
-#include "../../libc/string/string.h"
+#include "../../include/memory.h"
+#include "../../libc/klibc/string/string.h"
 
 static uint32_t page_pool_start = 0;
 static uint32_t page_pool_end = 0;

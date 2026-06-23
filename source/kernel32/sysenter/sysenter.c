@@ -1,10 +1,10 @@
 #include "../../include/sysenter.h"
 #include "../../include/slab.h"
+#include "../../init/ramfs.h"
 #include "../../drivers-32/serial/com.h"
-#include "../../drivers-32/rxbdph/graphics.h"
-#include "../../libc/string/string.h"
-#include "../../drivers-32/keyboard/keyboard.h"
-#include "../../vfs/vfs.h"
+#include "../../libc/klibc/string/string.h" 
+
+extern struct kernel_io_interfaces g_kernel_io;
 
 /* Minimal process table for future userspace */
 #define MAX_PROCS 64
@@ -93,11 +93,11 @@ static uint16_t g_term_y = 30;
 
 /*=== Syscall implementations ===*/
 
-static uint32_t sys_puts_impl(const char *str)
+uint32_t sys_puts_impl(const char *str)
 {
-    if (!str || !rxbdph_is_initialized()) return -1;
-    uint16_t screen_width = rxbdph_get_width();
-    uint16_t screen_height = rxbdph_get_height();
+    if (!str || !g_kernel_io.is_graphics_initialized()) return -1;
+    uint16_t screen_width = g_kernel_io.get_width();
+    uint16_t screen_height = g_kernel_io.get_height();
 
     while (*str)
     {
@@ -113,7 +113,7 @@ static uint32_t sys_puts_impl(const char *str)
                 for (uint16_t px = 0; px < screen_height; px++)
                 {
                     for (uint16_t py = 0; py < FONT_HEIGHT; py++) 
-                        rxbdph_put_pixel(px, g_term_y + py, VGA_BLACK);
+                        g_kernel_io.put_pixel(px, g_term_y + py, VGA_BLACK);
                 }
             }
         } else if (c == '\r')
@@ -121,7 +121,7 @@ static uint32_t sys_puts_impl(const char *str)
             g_term_x = 10;
         } else
         {
-            rxbdph_draw_char(g_term_x, g_term_y, c, VGA_WHITE, VGA_BLACK, 1);
+            g_kernel_io.draw_char(g_term_x, g_term_y, c, VGA_WHITE, VGA_BLACK, 1);
             g_term_x += FONT_WIDTH;
 
             if (g_term_x + FONT_WIDTH > screen_width)
@@ -133,7 +133,7 @@ static uint32_t sys_puts_impl(const char *str)
         
         if (g_term_y + FONT_HEIGHT > screen_height)
         {
-            rxbdph_clear_black();
+            g_kernel_io.clear_black();
             g_term_x = 10;
             g_term_y = 10;
         }
@@ -143,12 +143,12 @@ static uint32_t sys_puts_impl(const char *str)
     return 0;
 }
 
-static uint32_t sys_getc_impl(void)
+uint32_t sys_getc_impl(void)
 {
-    return (uint32_t)keyboard_getc();
+    return g_kernel_io.get_char();
 }
 
-static uint32_t sys_gets_impl(int fd, void *buf, uint32_t count)
+uint32_t sys_gets_impl(int fd, void *buf, uint32_t count)
 {
     if (fd != 0 || !buf || count == 0) return (uint32_t)-1;
 
@@ -175,7 +175,7 @@ static uint32_t sys_gets_impl(int fd, void *buf, uint32_t count)
                 if (g_term_x >= 10 + FONT_WIDTH) {
                     g_term_x -= FONT_WIDTH;
                 }
-                rxbdph_draw_char(g_term_x, g_term_y, ' ', VGA_WHITE, VGA_BLACK, 0);
+                g_kernel_io.draw_char(g_term_x, g_term_y, ' ', VGA_WHITE, VGA_BLACK, 0);
             }
         }
         /* Обычный печатный символ */
@@ -192,7 +192,7 @@ static uint32_t sys_gets_impl(int fd, void *buf, uint32_t count)
     return index;         /* Возвращаем длину прочитанной строки */
 }
 
-static int sys_open_impl(const char *path)
+int sys_open_impl(const char *path)
 {
     if (!path) return -1;
 
@@ -208,7 +208,7 @@ static int sys_open_impl(const char *path)
     return fd;
 }
 
-static int sys_read_impl(int fd, uint8_t *buf, uint32_t size) 
+int sys_read_impl(int fd, uint8_t *buf, uint32_t size) 
 {
     if (!buf || size == 0) return 0;
     

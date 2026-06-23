@@ -7,8 +7,9 @@
 #ifndef __realix_rxbdph__
 #define __realix_rxbdph__
 
-#include "../../libc/stdint.h"
-#include "../../libc/stddef.h"
+#include "../../libc/klibc/stdint.h"
+#include "../../libc/klibc/stddef.h"
+#include "../../libc/klibc/stdbool.h"
 
 #if defined (__cplusplus)
 extern "C" {
@@ -81,7 +82,7 @@ typedef struct {
 #define FONT_HEIGHT 16
 
 /* === FUNCTIONS === */
-int rxbdph_init (void);
+int rxbdph_init (struct kernel_io_interfaces *io);
 int rxbdph_init_hardware(uint16_t width, uint16_t height);
 
 void rxbdph_put_pixel (uint16_t x, uint16_t y, uint32_t color);

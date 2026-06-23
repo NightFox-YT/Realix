@@ -2,7 +2,7 @@
 #define __realix_keyboard__
 
 #include "../../include/io.h"
-#include "../../libc/stdint.h"
+#include "../../libc/klibc/stdint.h"
 
 #define KB_DATA_PORT 0x60
 #define KB_STATUS_PORT 0x64

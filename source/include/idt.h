@@ -1,7 +1,7 @@
 #ifndef __realix_idt__
 #define __realix_idt__
 
-#include "../include/io.h"
+#include "io.h"
 
 struct idt_entry {
 	uint16_t base_low; // младшие 16 бит адреса обработчика

@@ -1,6 +1,6 @@
-#include "slab.h"
-#include "memory.h"
-#include "../../libc/string/string.h"
+#include "../../include/slab.h"
+#include "../../include/memory.h"
+#include "../../libc/klibc/string/string.h"
 
 #define ALIGN(x, a)     (((x) + (a) - 1) & ~((a) - 1))
 #define ALIGN4(x)       ALIGN(x, 4)

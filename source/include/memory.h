@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-#include "../../libc/stdint.h"
+#include "../libc/klibc/stdint.h"
 
 #define LARRY_SIZE 4096
 #define PCINFO_ADDR 0x4500

@@ -1,5 +1,5 @@
 #include "../include/gdt.h"
-#include "../libc/string/string.h"
+#include "../libc/klibc/string/string.h"
 
 #define GDT_BASE_ADDRESS 0x00007000
 #define TSS_BASE_ADDRESS 0x00007500

@@ -8,7 +8,7 @@ global irq0_handler
 global irq1_handler
 
 extern pit_irq_handler
-extern keyboard_irq_handler
+extern realix_irq1_generic_handler
 
 ; макрос для сохранения контекста
 %macro SAVE_CONTEXT 0
@@ -54,7 +54,7 @@ irq0_handler:
 irq1_handler:
     SAVE_CONTEXT
     cld
-    call keyboard_irq_handler
+    call realix_irq1_generic_handler
     mov al, 0x20
     out 0x20, al
     RESTORE_REGS

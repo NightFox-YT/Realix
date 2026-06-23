@@ -3,7 +3,7 @@
 */
 #define __RVFS_INTERNAL_FUNCTIONS__
 #include "vfs.h"
-#include "../libc/string/string.h"
+#include "../libc/klibc/string/string.h"
 
 int vfs_mount(const char *path, struct vfs_node_ops *ops, void *priv_data)
 {

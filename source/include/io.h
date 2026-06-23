@@ -1,11 +1,10 @@
 #ifndef __realix_io__
 #define __realix_io__
 
-#include "../libc/stdint.h"
+#include "../libc/klibc/stdint.h"
 
 static inline void outb(uint16_t port, uint8_t val)
 {
-    // Использование %b0 (AL) и %w1 (DX/короткое число) гарантирует правильный порядок в AT&T синтаксисе
     __asm__ volatile("outb %b0, %w1" : : "a"(val), "Nd"(port));
 }
 
@@ -41,7 +40,5 @@ static inline void outw(uint16_t port, uint16_t value)
 }
 
 static inline void io_wait(void) { outb(0x80, 0); }
-
-#define gcc_packed __attribute__((packed))
 
 #endif /*__realix_io__*/

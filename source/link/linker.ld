@@ -10,7 +10,22 @@ SECTIONS
         *(.text)
     }
 
-    .data : { *(.data) }
-    .rodata : { *(.rodata) }
-    .bss : { *(.bss) }
+    .rodata : { 
+        *(.rodata)
+        *(.rodata.*) 
+    }
+
+    .data : {
+        *(.data)
+        *(.data.*) 
+    }
+
+    .bss (NOLOAD) : ALIGN(4) {
+        __bss_start = .;
+        *(.bss)
+        *(.bss.*)
+        *(COMMON)
+        __bss_end = .;
+    }
+
 }

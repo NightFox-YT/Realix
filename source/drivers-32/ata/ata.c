@@ -1,8 +1,9 @@
 #include "ata.h"
-#include "../../libc/stddef.h"
-#include "../pci/pci.h"
+#include "../../libc/klibc/stddef.h"
 #include "../../include/io.h"
 #include "../../include/slab.h"
+#include "../../include/errors.h"
+#include "../../include/driver.h"
 #include "../../drivers-32/serial/com.h"	
 
 struct ata_channel *ata_primary_ptr = 0;
@@ -99,12 +100,21 @@ static void ata_identify_device(struct ata_channel *ch, uint8_t dev_idx)
 	} else dev->sectors = 0;
 }
 
-void ata_init(void) 
-{
-	ata_primary_ptr = (struct ata_channel*)kmalloc(sizeof(struct ata_channel));
-	ata_secondary_ptr = (struct ata_channel*)kmalloc(sizeof(struct ata_channel));
+static struct ata_dependencies env;
 
-	if(!ata_primary_ptr || !ata_secondary_ptr) return;
+int ata_init(struct kernel_io_interfaces *io, struct ata_dependencies *dep/*johnny*/) 
+{
+	if (!io || !dep) return -1;
+	env = *dep;
+
+	if (!env.kmalloc || !env.memset || !env.pci_read_config || !env.pci_write_config) 
+		return -2;
+
+	ata_primary_ptr = (struct ata_channel*)env.kmalloc(sizeof(struct ata_channel));
+	if (ata_primary_ptr) env.memset(ata_primary_ptr, 0, sizeof(struct ata_channel));
+	ata_secondary_ptr = (struct ata_channel*)env.kmalloc(sizeof(struct ata_channel));
+	if (ata_secondary_ptr) env.memset(ata_secondary_ptr, 0, sizeof(struct ata_channel));
+	if(!ata_primary_ptr || !ata_secondary_ptr) return ENOMEM;
 
     ata_primary_ptr->cmd_base  = 0x1F0;
     ata_primary_ptr->ctrl_base = 0x3F6;
@@ -120,29 +130,43 @@ void ata_init(void)
         {
             for (uint8_t func = 0; func < 8; func++) 
             {    
-                uint32_t id_reg = pci_read_config(bus, slot, func, 0x00);
+                uint32_t id_reg = env.pci_read_config(bus, slot, func, 0x00);
                 if ((id_reg & 0xFFFF) == 0xFFFF) continue; // Пустой слот
 
-                uint32_t class_reg = pci_read_config(bus, slot, func, 0x08);
+                uint32_t class_reg = env.pci_read_config(bus, slot, func, 0x08);
                 uint8_t base_class = (class_reg >> 24) & 0xFF;
                 uint8_t subclass   = (class_reg >> 16) & 0xFF;
 
                 if (base_class == PCI_CLASS_MASS_STORAGE && subclass == PCI_SUBCLASS_IDE) 
                 {
-                    uint32_t pci_cmd = pci_read_config(bus, slot, func, 0x04);
-                    
-                    pci_cmd |= 0x05; 
-                    ata_identify_device(ata_primary_ptr, 0); // master
+                    uint32_t pci_cmd = env.pci_read_config(bus, slot, func, 0x04);
+                    pci_cmd |= 0x05;
+					env.pci_write_config(bus, slot, func, 0x04, pci_cmd);
+					
+					uint32_t bar0 = env.pci_read_config(bus, slot, func, 0x10);
+					uint32_t bar1 = env.pci_read_config(bus, slot, func, 0x14);
+					uint32_t bar2 = env.pci_read_config(bus, slot, func, 0x18);
+					uint32_t bar3 = env.pci_read_config(bus, slot, func, 0x1C);
+
+					ata_primary_ptr->cmd_base = (bar0 & 0x1) ? (bar0 & ~0x3) : 0x1F0;
+					ata_primary_ptr->ctrl_base = (bar1 & 0x1) ? (bar1 & ~0x3) : 0x3F6;
+					ata_secondary_ptr->cmd_base = (bar2 & 0x1) ? (bar2 & ~0x3) : 0x170;
+					ata_secondary_ptr->ctrl_base = (bar3 & 0x1) ? (bar3 & ~0x3) : 0x376;
+
+					ata_identify_device(ata_primary_ptr, 0); // master
                     ata_identify_device(ata_primary_ptr, 1); // slave
 
                     ata_identify_device(ata_secondary_ptr, 0);
                     ata_identify_device(ata_secondary_ptr, 1);
-                    return;
+                    return 0;
                 }
             }
         }
     }
+	return 1;
 }
+
+REALIX_COMPONENT("ata_driver", ata_init);
 
 int ata_read_sector(struct ata_channel *ch, uint8_t dev_idx, uint32_t lba, uint16_t *buf)
 {

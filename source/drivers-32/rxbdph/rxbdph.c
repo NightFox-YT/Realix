@@ -4,10 +4,14 @@
  */
 
 #include "graphics.h"
-#include "../../include/slab.h"
+#include "../../include/vmm.h"
 #include "../../include/io.h"
 #include "../pci/pci.h"
 #include "../../include/errors.h"
+#include "../../include/driver.h"
+
+extern struct kernel_io_interfaces g_kernel_io;
+
 /* === Global Context === */
 static fb_ctx_t g_vga = {0};
 
@@ -315,10 +319,28 @@ static inline uint32_t *fb_ptr (uint16_t x, uint16_t y)
 
 /* ====== Initialization ====== */
 
-int rxbdph_init(void)
+int rxbdph_init(struct kernel_io_interfaces *io)
 {
+    if (!io) return -1;
+
+    io->clear = (void*)rxbdph_clear;
+    io->clear_black = (void*)rxbdph_clear_black;
+    io->draw_char = (void*)rxbdph_draw_char;
+    io->draw_line = (void*)rxbdph_draw_line;
+    io->draw_circle = (void*)rxbdph_draw_circle;
+    io->draw_rect = (void*)rxbdph_draw_rect;
+    io->draw_string = (void*)rxbdph_draw_string;
+    io->draw_stringn = (void*)rxbdph_draw_stringn;
+    io->fill_circle = (void*)rxbdph_fill_circle;
+    io->fill_rect = (void*)rxbdph_fill_rect;
+    io->get_height = (void*)rxbdph_get_height;
+    io->get_pixel = (void*)rxbdph_get_pixel;
+    io->get_width = (void*)rxbdph_get_width;
+    
     return rxbdph_init_hardware(1024, 768);
 }
+
+REALIX_COMPONENT("rxbdph_driver", rxbdph_init);
 
 int rxbdph_init_hardware(uint16_t width, uint16_t height)
 {
@@ -350,6 +372,14 @@ int rxbdph_init_hardware(uint16_t width, uint16_t height)
     if (bar0 & 1) return -103;
 
     uint32_t raw_fb = bar0 & ~0xF;
+    uint32_t raw_fb_align = raw_fb & ~0xFFF; // Выровнил чтобы vmm не капризничал
+    uint32_t fb_size = width * height * 4;
+
+    for (uint32_t offset = 0; offset < fb_size; offset += 4096)
+    {
+        bool res = vmm_map_page(kernel_vmm, raw_fb + offset, raw_fb + offset, PTE_PRESENT | PTE_WRITE);
+        if (!res) return -104;
+    }
 
     uint32_t cmd_status = pci_read_config(vbus, vdev, vfunc, 0x04);
     uint32_t updated_cmd = (cmd_status & 0xFFFF0000) | (cmd_status & 0xFFFF) | (1 << 1) | (1 << 2);

@@ -4,7 +4,7 @@
 #ifndef __realix_vfs__
 #define __realix_vfs__
 
-#include "../libc/stdint.h"
+#include "../libc/klibc/stdint.h"
 #include "../include/slab.h"
 
 struct vfs_node;

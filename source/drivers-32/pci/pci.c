@@ -1,7 +1,8 @@
 #include "pci.h"
 #include "../../include/io.h"
 #include "../serial/com.h"
-#include "../../libc/stdio.h"
+#include "../../libc/klibc/stdio.h"
+#include "../../include/driver.h"
 
 uint32_t pci_read_config(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset)
 {
@@ -65,8 +66,27 @@ void pci_check_device(uint8_t bus, uint8_t device)
     }
 }
 
+void pci_write_config(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint32_t value)
+{
+    uint32_t b = ((uint32_t)bus)    & 0xFF;
+    uint32_t s = ((uint32_t)slot)   & 0x1F;
+    uint32_t f = ((uint32_t)func)   & 0x07;
+    uint32_t o = ((uint32_t)offset) & 0xFC;
 
-void pci_init(void)
+    uint32_t address = (1            << 31) | 
+                       (b            << 16) | 
+                       (s            << 11) | 
+                       (f            << 8)  | 
+                       o;
+
+    outl(PCI_CONFIG_ADDRESS, address);
+    io_wait();
+    
+    outl(PCI_CONFIG_DATA, value);
+    io_wait();
+}
+
+int pci_init(void)
 {
     serial_print("PCI: Initializing and scanning bus...\n");
     
@@ -74,4 +94,8 @@ void pci_init(void)
     {
         pci_check_device(0, device);
     }
+
+    return 0;
 }
+
+REALIX_COMPONENT("pci_driver", pci_init);

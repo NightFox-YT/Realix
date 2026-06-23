@@ -3,7 +3,7 @@
 */
 #define __RVFS_INTERNAL_FUNCTIONS__
 #include "vfs.h"
-#include "../libc/string/string.h"
+#include "../libc/klibc/string/string.h"
 
 struct vfs_node *mount_table[MAX_MOUNTS];
 struct vfs_node *mount_list_head = 0;

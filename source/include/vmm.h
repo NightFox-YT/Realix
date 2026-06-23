@@ -5,9 +5,9 @@
 extern "C" {
 #endif
 
-#include "../../libc/stdint.h"
-#include "../../libc/stddef.h"
-#include "../../libc/stdbool.h"
+#include "../libc/klibc/stdint.h"
+#include "../libc/klibc/stddef.h"
+#include "../libc/klibc/stdbool.h"
 
 /*i386 page table флаги*/
 #define PTE_PRESENT   (1 << 0)

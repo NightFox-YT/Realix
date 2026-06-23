@@ -220,14 +220,13 @@ error_handler:
     ; Аппаратный сброс процессора через вектор BIOS
     jmp 0xFFFF:0
 
-; Подключение модулей
 %include 'kernel16/io/print.asm'
 %include 'bios-api/disk/read.asm'
 
 ; Сообщения
 err_initrix_not_found: db '[!] No Initrix!', 0
 
-; Переменные (Для чтения initrix)
+; Переменные
 file_initrix_bin: db 'INITRIX BIN'
 data_lba:         dw 0
 

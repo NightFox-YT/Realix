@@ -1,7 +1,7 @@
 #ifndef __realix_gdt__
 #define __realix_gdt__
 
-#include "../libc/stdint.h"
+#include "../libc/klibc/stdint.h"
 
 /* the GDT structure */
 struct gdt_entry {

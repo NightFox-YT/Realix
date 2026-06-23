@@ -1,10 +1,18 @@
 #ifndef __realix_ata__
 #define __realix_ata__
 
-#include "../../libc/stdint.h"
+#include "../../libc/klibc/stdint.h"
+#include "../../include/driver.h"
 
 #define PCI_CLASS_MASS_STORAGE 0x01
 #define PCI_SUBCLASS_IDE 0x01
+
+struct ata_dependencies {
+    void* (*kmalloc)(size_t size);
+    void  (*memset)(void *ptr, int value, size_t num);
+    uint32_t (*pci_read_config)(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset);
+    void (*pci_write_config)(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset, uint32_t value);
+};
 
 #define ATA_REG_DATA 			0
 #define ATA_REG_ERROR 			1
@@ -45,7 +53,7 @@ struct ata_channel {
 	struct ata_device dev[2]; /*[0] - Master, [1] - Slave*/
 };
 
-void ata_init(void);
+int ata_init(struct kernel_io_interfaces *io, struct ata_dependencies *dep);
 int ata_read_sector(struct ata_channel *ch, uint8_t dev_idx, uint32_t lba, uint16_t *buf);
 int ata_write_sector(struct ata_channel *ch, uint8_t dev_idx, uint32_t lba, const uint16_t *buf);
 

@@ -1,7 +1,7 @@
-#include "vmm.h"
-#include "slab.h"
-#include "memory.h"
-#include "../../libc/string/string.h"
+#include "../../include/vmm.h"
+#include "../../include/slab.h"
+#include "../../include/memory.h"
+#include "../../libc/klibc/string/string.h"
 
 #define LARRY_SIZE      4096
 #define PAGE_MASK       (~(LARRY_SIZE - 1))

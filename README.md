@@ -41,7 +41,7 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
 ![Realix Experience](screencast.gif)
 
 ## 📦 Hardware Requirements
-- **CPU:** x86 compatible (i386+ recommended)
+- **CPU:** x86 compatible (pentium II+ recommended)
 - **RAM:** 256 KB or more
 - **Motherboard:** BIOS-supported
 
@@ -89,6 +89,8 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
 
 **Prerequisites**
 * Compiler: `nasm` (Assembly)
+* Compiler: `gcc` (C)
+* Python: `python3` 
 * Disk Tools: `mtools` (FAT12 image formatting), `coreutils` (dd/image creation)
 * (Optional) Emulator: `qemu-system-i386`
 

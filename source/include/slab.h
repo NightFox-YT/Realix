@@ -5,9 +5,9 @@
 extern "C" {
 #endif
 
-#include "../libc/stdint.h"
-#include "../libc/stddef.h"
-#include "../libc/stdbool.h"
+#include "../libc/klibc/stdint.h"
+#include "../libc/klibc/stddef.h"
+#include "../libc/klibc/stdbool.h"
 #define KMALLOC_MAGIC   0xA110CA7E
 /* Freelist node внутри свободного объекта */
 typedef struct slab_obj {
@@ -24,7 +24,7 @@ typedef struct slab {
 } slab_t;
 
 typedef struct kmem_cache {
-    uint32_t         obj_size;      /* размер одного объекта (выровнен) */
+    uint32_t         obj_size;      /* размер одного объекта */
     uint32_t         obj_per_slab;  /* объектов на страницу */
     slab_t          *slabs_partial; /* есть свободные слоты */
     slab_t          *slabs_full;    /* полностью заняты */

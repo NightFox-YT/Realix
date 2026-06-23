@@ -4,109 +4,116 @@
 #include "../include/sysenter.h"
 #include "../include/gdt.h"
 #include "../include/idt.h"
-#include "../libc/stdio.h"
 #include "../include/slab.h"
 #include "../drivers-32/rxbdph/graphics.h"
-#include "../drivers-32/ata/ata.h"
-#include "../drivers-32/fat32/fat32.h"
 #include "../vfs/vfs.h"
-
+#include "../init/ramfs.h" 
+#include "../libc/klibc/string/string.h"
 
 extern void _jump_to_userspace(uint32_t user_eip, uint32_t user_esp);
+extern void temporary_user_stub(void);
 
-void temporary_user_stub(void)
+void temporary_user_stub(void) 
 {
-	//serial_print("printing string\n");
-	printf("Hello from ring 3!");
-    FILE *file = fopen("kakashka.bin", "w");
-    if (file) { printf("hey, FAT32 is works!"); fclose(file); }
-    else { printf("file doesnt work :("); }
-    while(1);
+    while(1) {
+        __asm__ volatile("hlt");
+    }
 }
 
-struct vfs_node *root_fs_node = NULL;
+struct ata_channel *ata_primary_ptr = NULL;
+struct ata_channel *ata_secondary_ptr = NULL;
+void (*keyboard_callback)(void) = NULL;
 
-int mount_fat32_root(struct ata_channel *ch, uint8_t drive)
-{
-    struct fat32_volume *vol = kmalloc(sizeof(struct fat32_volume));
-    if (!vol) return -1;
+static void kernel_put_pixel_adapter(int x, int y, uint32_t color) {(void)x; (void)y; (void)color;}
+static void kernel_draw_char_adapter(char c, int x, int y, uint32_t fg, uint32_t bg, int t) {(void)x; (void)c; (void)y; (void)t; (void)bg; (void)fg;}
+static int kernel_get_char_adapter(void) {return 0;}
+static uint32_t kernel_get_pixel_adapter(uint16_t x, uint16_t y) { (void)x; (void)y; return 0; }
+static void kernel_draw_line_adapter(int16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint32_t color) { (void)x0; (void)y0; (void)x1; (void)y1; (void)color; }
+static void kernel_draw_rect_adapter(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color) { (void)x; (void)y; (void)w; (void)h; (void)color; }
+static void kernel_fill_rect_adapter(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint32_t color) { (void)x; (void)y; (void)w; (void)h; (void)color; }
+static void kernel_draw_circle_adapter(uint16_t cx, uint16_t cy, uint16_t r, uint32_t color) { (void)cx; (void)cy; (void)r; (void)color; }
+static void kernel_fill_circle_adapter(uint16_t cx, uint16_t cy, uint16_t r, uint32_t color) { (void)cx; (void)cy; (void)r; (void)color; }
+static void kernel_draw_string_adapter(uint16_t x, uint16_t y, const char *s, uint32_t fg, uint32_t bg, int t) { (void)x; (void)y; (void)s; (void)fg; (void)bg; (void)t; }
+static void kernel_draw_stringn_adapter(uint16_t x, uint16_t y, const char *s, size_t n, uint32_t fg, uint32_t bg, int t) { (void)x; (void)y; (void)s; (void)n; (void)fg; (void)t; (void)bg; }
+static uint16_t kernel_get_width(void) { return 1024; }
+static uint16_t kernel_get_height(void) { return 768; }
+static uint8_t kernel_graphics_is_initialized(void) { return 0; }
+static void kernel_graphics_clear(uint32_t color) { (void)color; }
+static void kernel_graphics_clear_black(void) { }
 
-    int status = fat32_init_volume(vol, ch, drive);
-    if (status != 0)
-    {
-        kfree(vol);
-        return status;
-    }
+struct kernel_io_interfaces g_kernel_io = {
+    .put_pixel = kernel_put_pixel_adapter,
+    .draw_char = kernel_draw_char_adapter,
+    .get_char  = kernel_get_char_adapter,
+    .get_pixel = kernel_get_pixel_adapter,
+    .draw_line = kernel_draw_line_adapter,
+    .draw_rect = kernel_draw_rect_adapter,
+    .draw_circle = kernel_draw_circle_adapter,
+    .draw_string = kernel_draw_string_adapter,
+    .draw_stringn = kernel_draw_stringn_adapter,
+    .fill_rect = kernel_fill_rect_adapter,
+    .fill_circle = kernel_fill_circle_adapter,
+    .get_height = kernel_get_height,
+    .get_width = kernel_get_width,
+    .is_graphics_initialized = kernel_graphics_is_initialized,
+    .clear = kernel_graphics_clear,
+    .clear_black = kernel_graphics_clear_black,
+    .kmalloc = kmalloc,
+    .memset = memset,
+    .kfree = kfree
+};
 
-    struct vfs_node *node = kmalloc(sizeof(struct vfs_node));
-    if (!node)
-    {
-        kfree(vol);
-        return -1;
-    }
-
-    char *name_src = "dsk0";
-    for(int i = 0; i < 5; i++) node->name[i] = name_src[i];
-
-    node->type = 1;
-    node->oprs = &fat32_node_ops;
-    node->priv_data = vol;
-    node->next = NULL;
-
-    root_fs_node = node;
-
-    return 0;
-}
-
-void kernel_exec(void)
+void kernel_exec(void *ramfs_addr)
 {
     gdt_init();
-    idt_init();
-    pic_init();
+    idt_init(); 
     kmalloc_init();
-    pci_init();
-    ata_init();
     
-    serial_print("Info: Attempting to mount root...\n");
-
-    uint8_t raw_status = inb(0x1F7);
-    char dbg_msg[64];
-    snprintf(dbg_msg, sizeof(dbg_msg), "[DBG] Raw ATA Status Port (0x1F7) = 0x%02X\n", (uint32_t)raw_status);
-    serial_print(dbg_msg);
-
-    snprintf(dbg_msg, sizeof(dbg_msg), "[DBG] ata_primary_ptr Addr = 0x%08X\n", (uint32_t)ata_primary_ptr);
-    serial_print(dbg_msg);
-    if (ata_primary_ptr) {
-        snprintf(dbg_msg, sizeof(dbg_msg), "[DBG] ata_primary_ptr->cmd_base = 0x%04X\n", (uint32_t)ata_primary_ptr->cmd_base);
-        serial_print(dbg_msg);
+    if (init_serial() == 0) {
+        serial_print("Realix: Info: Initialized Serial Logging.\n");
     }
 
-    int mount_res = mount_fat32_root(ata_primary_ptr, 0);
-    
-    if (rxbdph_init() == 0) 
+    if (ramfs_addr == NULL) {
+        serial_print("Realix: Critical: Ramfs addr is null, stopping system.\n");
+        while(1) __asm__ volatile("hlt");
+    }
+    ramfs_init(ramfs_addr);
+
+    serial_print("Realix: Info: Loading modules...\n");
+
+    void *kbd_module = ramfs_find_file("keyboard.rcom");
+    if (kbd_module) {
+        ramfs_load_driver(kbd_module);
+    }
+
+    //pci_init(); 
+
+    void *ata_module = ramfs_find_file("ata.rcom");
+    if (ata_module) {
+        ramfs_load_driver(ata_module);
+    }
+
+    void *fat_module = ramfs_find_file("fat32.rcom");
+    if (fat_module) {
+        ramfs_load_driver(fat_module);
+    }
+
+    if (g_kernel_io.is_graphics_initialized() == 0) 
     {
-        serial_print("Initialized RXBDPH Driver\n");
-        rxbdph_clear(VGA_LGRAY);
-
-        rxbdph_fill_rect(50, 50, 300, 200, VGA_BLUE);
-        rxbdph_draw_rect(50, 50, 300, 200, VGA_BLACK); 
-        rxbdph_fill_circle(200, 150, 40, VGA_RED);
-
-        rxbdph_draw_line(0, 0, 1024, 768, VGA_YELLOW);
+        serial_print("Realix: Info: Initializing Display Driver\n");
+        g_kernel_io.clear(VGA_LGRAY);
+        g_kernel_io.fill_rect(50, 50, 300, 200, VGA_BLUE);
+        g_kernel_io.draw_rect(50, 50, 300, 200, VGA_BLACK); 
+        g_kernel_io.fill_circle(200, 150, 40, VGA_RED);
+        g_kernel_io.draw_line(0, 0, 1024, 768, VGA_YELLOW);
     } 
 
     uint32_t *sysenter_stack = kmalloc(4096);
     uint32_t sysenter_stack_top = (uint32_t)sysenter_stack + 4096;
     sysenter_init(sysenter_stack_top);
-    
     set_tss_esp0(sysenter_stack_top);
     
-    if (init_serial() == 0)
-    {
-        serial_print("Realix Info: OS started up, the Realix Serial\n");
-    }
-
-    serial_print("Kernel: Allocating user stack and dropping to Ring 3...\n");
+    serial_print("Realix: Info: Allocating user stack and dropping to Ring 3...\n");
 
     uint32_t *user_stack = kmalloc(4096);
     uint32_t user_stack_top = (uint32_t)user_stack + 4096;

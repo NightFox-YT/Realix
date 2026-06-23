@@ -3,10 +3,12 @@
 struct idt_entry idt[256];
 struct idt_pointer idtptr;
 
+extern void (*keyboard_callback)(void);
+
 void idt_set_gate(uint8_t num, uint32_t base, uint16_t selector, uint8_t flags)
 {
 	idt[num].base_low = (base & 0xFFFF);
-	idt[num].base_high = (base >> 16) && 0xFFFF;
+	idt[num].base_high = (base >> 16) & 0xFFFF;
 	idt[num].selector = selector;
 	idt[num].zero = 0;
 	idt[num].flags = flags;
@@ -46,4 +48,12 @@ void idt_init(void)
 uint32_t pit_irq_handler(uint32_t esp) {
     __asm__ volatile("mov $0x20, %%al; out %%al, $0x20" ::: "eax");
     return esp; 
+}
+
+void realix_irq1_generic_handler(void)
+{
+	if (keyboard_callback)
+		keyboard_callback();
+	else
+		outb(0x20, 0x20);	
 }
