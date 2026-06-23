@@ -5,6 +5,7 @@
 # Конфигурация
 TARGET_BIN = ../../build/kernel32.bin
 CARGO_OUTPUT = ../../target/i386/release/kernel32
+OBJCOPY = $(HOME)/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objcopy
 
 .PHONY: all clean
 
@@ -15,9 +16,9 @@ all: kernel32
 kernel32: $(TARGET_BIN)
 
 $(TARGET_BIN):
-	cargo build --release --manifest-path ../../Cargo.toml
-	rust-objcopy -O binary $(CARGO_OUTPUT) $(TARGET_BIN)
+	cargo +nightly build --release --manifest-path ../../Cargo.toml -Z json-target-spec
+	$(OBJCOPY) -O binary $(CARGO_OUTPUT) $(TARGET_BIN)
 
 # Очистка
 clean:
-	cargo clean --manifest-path ../../Cargo.toml
+	cargo +nightly clean --manifest-path ../../Cargo.toml
