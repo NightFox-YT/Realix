@@ -1,0 +1,12 @@
+[package]
+name = "sha256"
+version = "0.0.1"
+edition = "2024"
+
+[lib]
+crate-type = ["lib", "staticlib"]
+
+[features]
+std = []
+
+[dependencies]
