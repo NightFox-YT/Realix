@@ -5,6 +5,7 @@ use core::panic::PanicInfo;
 mod vga;
 mod keyboard;
 mod shell;
+mod matrix;
 
 #[link_section = ".text.entry"]
 #[no_mangle]

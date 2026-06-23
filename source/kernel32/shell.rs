@@ -17,6 +17,11 @@ pub fn run() {
 
 fn execute(input: &str) {
     match input {
+	"matrix" => {
+            vga::print_str("Entering Matrix... (press any key to exit)\n", Color::Green);
+            crate::matrix::run();
+        }
+
         "help" => {
             vga::print_str("Commands:\n", Color::Cyan);
             vga::print_str("  help     - Show this manual\n", Color::LightGray);
@@ -25,6 +30,7 @@ fn execute(input: &str) {
             vga::print_str("  meminfo  - Show memory info\n", Color::LightGray);
             vga::print_str("  reboot   - Reboot PC\n", Color::LightGray);
             vga::print_str("  shutdown - Power off PC\n", Color::LightGray);
+	    vga::print_str("  matrix   - Matrix rain animation\n", Color::LightGray);	
         }
         "clear" => {
             vga::clear_screen();
