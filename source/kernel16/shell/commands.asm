@@ -4,10 +4,12 @@
 ; ================
 ; ❗️ Зависимости: bios-api/memory (модуль)
 ; TODO: Возвращение carry_flag при ошибке
+%include "kernel16/shell/cmd_calc.asm"
 
 ; Таблица команд (С названиями)
 align 2
 cmd_table:
+    dw .str_calc,     cmd_calc
     dw .str_help,     cmd_help
     dw .str_cls,      cmd_cls
     dw .str_clear,    cmd_cls
@@ -17,6 +19,7 @@ cmd_table:
     dw .str_echo,     cmd_echo
     dw 0, 0
 
+.str_calc:     db 'calc', 0
 .str_help:     db 'help', 0
 .str_cls:      db 'cls', 0
 .str_clear:    db 'clear', 0
