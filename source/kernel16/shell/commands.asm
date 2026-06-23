@@ -15,6 +15,7 @@ cmd_table:
     dw .str_shutdown, cmd_shutdown
     dw .str_meminfo,  cmd_meminfo
     dw .str_echo,     cmd_echo
+    dw .str_calc,     cmd_calc
     dw 0, 0
 
 .str_help:     db 'help', 0
@@ -24,6 +25,7 @@ cmd_table:
 .str_shutdown: db 'shutdown', 0
 .str_meminfo:  db 'meminfo', 0
 .str_echo:     db 'echo', 0
+.str_calc:     db 'calc', 0
 
 
 ; > Исполнитель команд
@@ -200,23 +202,37 @@ cmd_echo:
     push ax
     push si
 
-.skip_spaces:
-    lodsb
-    cmp al, ' '
-    je .skip_spaces
+    ; Пропускаем пробелы
+    call skip_spaces
 
     ; Если аргументов нет (сразу конец строки)
-    test al, al
+    cmp byte [si], 0
     jz .done
 
-    ; Возвращаем si назад на первый символ аргументов, выводим
-    dec si                 
+    ; Вывод сообщения         
     call print
 
 .done:
     pop si
     pop ax
 
+    ret
+
+; > Команда простого калькулятора
+%include "kernel16/shell/cmd_calc.asm"
+
+; > Пропуск пробелов до первого символа
+; Вывод:
+;  - si: указатель на первый символ строки
+skip_spaces:
+    ; Пропуск пробела c переходом к след. символу
+    lodsb
+    cmp al, ' '
+    je skip_spaces
+
+.done:
+    ; Возвращаем si назад на первый символ строки
+    dec si
     ret
 
 err_unknown_cmd: db '[!] Unknown command, write help for list of commands.', 0
@@ -230,6 +246,7 @@ msg_help:
     db '> help - Show this manual', ENTER
     db '> echo [text] - Print [text] to console', ENTER
     db '> meminfo - Display RAM configuration', ENTER
+    db '> calc [num1] [+ - * /] [num2] - Simple Calculator (Ooly positive nums)', ENTER
     db '  [Power]', ENTER
     db '> reboot - Reboot PC', ENTER
     db '> shutdown - Power off PC', 0
