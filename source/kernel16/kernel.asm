@@ -42,6 +42,7 @@ main:
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/shell/cli.asm'
 %include 'kernel16/shell/commands.asm'
+%include 'bios-api/network/rtl8139.asm'
 %include 'bios-api/memory/get_free.asm'
 %include 'bios-api/memory/get_lower.asm'
 %include 'bios-api/memory/get_map.asm'

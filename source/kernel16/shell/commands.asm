@@ -1,8 +1,8 @@
 ; © Realix > Shell Commands
-; (13.06.26) v0.06
 ; ø Вдохновлено @nyxmalware
+; (13.06.26) v0.06
 ; ================
-; ❗️ Зависимости: bios-api/memory (модуль)
+; ❗️ Зависимости: bios-api/memory (модуль), bios-api/network
 ; TODO: Возвращение carry_flag при ошибке
 
 ; Таблица команд (С названиями)

@@ -180,6 +180,10 @@ file_open:
     cmp ax, 0x0FF8
     jae .done
 
+    ; Проверка на Bad Cluster
+    cmp ax, 0x0FF7
+    je bad_cluster_error
+
     ; Обновляем номер текущего кластера, продолжая чтение
     mov [file_cluster], ax
     jmp .load_loop
@@ -202,6 +206,14 @@ file_open:
     pop ax
     
     ret
+
+; > Ошибки
+bad_cluster_error:
+    mov si, err_bad_cluster_found
+    jmp error_handler
+
+; Сообщения
+err_bad_cluster_found: db '[!] Bad cluster found...', 0
 
 ; Подключение FAT12: Init модуля
 %include "bios-api/fat12/init.asm"

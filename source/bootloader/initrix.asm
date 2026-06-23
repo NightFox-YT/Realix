@@ -14,10 +14,11 @@ main:
     ; Сохраняем номер диска, переданного из bootix
     mov [boot_drive_num], dl
 
-    ; Инициализация драйверов диска и FAT12
+    ; Инициализация драйверов
     call disk_init
     call fat12_init
-
+    call net_init
+    
     mov si, msg_init
     call print
 
@@ -73,7 +74,6 @@ memory_map_error:
     mov si, err_get_memory_map
     jmp error_handler
 
-
 ; > Обработчик ошибок
 ; Параметры:
 ;  - si: сообщение об ошибке
@@ -99,13 +99,15 @@ error_handler:
 %include 'bios-api/memory/get_map.asm'
 %include 'bios-api/drivers/sounds.asm'
 %include 'bios-api/drivers/vga.asm'
+%include 'bios-api/network/rtl8139.asm'
 %include 'bootloader/switcher.asm'
 
 ; Сообщения и строки
 msg_init:             db '[+] Initializing...', ENTER, 0
 
-err_get_memory_map:   db '[!] Get memory map failed (int 15h)!', 0
-err_get_lower_memory: db '[!] Get lower memory failed (int 12h)!', 0
+err_get_memory_map:         db '[!] Get memory map failed (int 15h)!', 0
+err_get_lower_memory:       db '[!] Get lower memory failed (int 12h)!', 0
+err_network_card_not_found: db '[!] Network card Realtek RTL8139 not found!', 0
 
 str_title:
     db '     Realix v0.06', ENTER,
