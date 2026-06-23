@@ -1,16 +1,15 @@
-# [`DEV`] Realix `v0.07`
-![Status](https://img.shields.io/badge/status-latest-brightgreen)
+# 🧪 Realix `Cryptography`
+![Status](https://img.shields.io/badge/status-experiment-green)
 ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
-❗ This version is currently under active development and **has not been officially released yet**.
-We are working hard to bring you new features and stability improvements.
+❗️ This version is just a sample, used to test new features and new ideas.
+- **Hosted by:** @oxxximif
 
-## 📌 About
-Realix is a **hybrid OS** designed for x86 architecture, written in NASM.
-It supports a built-in boot switcher that lets users choose between a 16-bit Real Mode kernel for legacy compatibility and a high-performance 32-bit Protected Mode kernel.
+## 📌 About experiment
+Introducing new cryptography features in Realix. (SHA256, PBKDF2 and etc)
 
-- **Development start:** `June 19, 2026`
+- **Started:** `June 23, 2026`
 
 ## 🔗 Links & 🙌 Contributing
 - **TikTok:** [tiktok.com/@mainfox.tt](https://www.tiktok.com/@mainfox.tt)
