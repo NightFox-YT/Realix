@@ -119,3 +119,15 @@ pub fn backspace() {
         update_cursor();
     }
 }
+
+pub fn write_char_at(row: usize, col: usize, byte: u8, color: Color) {
+    if row >= VGA_HEIGHT || col >= VGA_WIDTH {
+        return;
+    }
+    let offset = (row * VGA_WIDTH + col) * 2;
+    unsafe {
+        let vga_ptr = 0xB8000 as *mut u8;
+        vga_ptr.add(offset).write_volatile(byte);
+        vga_ptr.add(offset + 1).write_volatile(color as u8);
+    }
+}

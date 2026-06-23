@@ -16,7 +16,7 @@ all: kernel32
 kernel32: $(TARGET_BIN)
 
 $(TARGET_BIN):
-	cargo +nightly build --release --manifest-path ../../Cargo.toml -Z json-target-spec
+	cargo +nightly build --release --manifest-path ../../Cargo.toml --target ../../.cargo/i386.json -Z json-target-spec
 	$(OBJCOPY) -O binary $(CARGO_OUTPUT) $(TARGET_BIN)
 
 # Очистка
