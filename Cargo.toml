@@ -1,0 +1,23 @@
+[package]
+name = "kernel32"
+version = "0.0.7"
+edition = "2021"
+
+# Путь к исходному коду
+[[bin]]
+name = "kernel32"
+path = "source/kernel32/main.rs"
+
+# Настройки для сборки с отладкой & сборки релиза
+# 1. opt-level
+# 2. lto - Link-Time Optimization: выкидывает неиспользуемый код из всех модулей
+# 3. codegen-units: 1 - Генерация кода в один поток одним блоком для глубокого удаления мертвого кода
+[profile.dev]
+opt-level = "s"
+lto = true
+codegen-units = 1
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

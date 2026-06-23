@@ -1,4 +1,4 @@
-; © Realix > FAT12 File Open
+; © Realix > FAT12 File Load
 ; (13.06.26) v0.06
 ; ================
 ; ❗️ Зависимости: bios-api/disk/read.asm, error_handler (внешний обработчик)
@@ -13,7 +13,7 @@
 ; Вывод:
 ;  - Успех: возвращает управление
 ;  - Ошибка: вызывает error_handler
-file_open:
+file_load:
     push ax
     push bx
     push cx
@@ -212,9 +212,6 @@ bad_cluster_error:
     mov si, err_bad_cluster_found
     jmp error_handler
 
-; Сообщения
-err_bad_cluster_found: db '[!] Bad cluster found...', 0
-
 ; Подключение FAT12: Init модуля
 %include "bios-api/fat12/init.asm"
 
@@ -228,5 +225,6 @@ file_cluster: dw 0
 drive_num: db 0
 
 ; Ошибки
-err_file_not_found: db '[!] File not found!', 0
-err_buffer_overlap: db '[!] The destination file address will overwrite the FAT buffer!', 0
+err_bad_cluster_found: db '[!] Bad cluster found...', 0
+err_file_not_found:    db '[!] File not found!', 0
+err_buffer_overlap:    db '[!] The destination file address will overwrite the FAT buffer!', 0

@@ -1,5 +1,5 @@
 ; © Realix > Switcher CPU modes
-; (13.06.26) v0.06
+; (21.06.26) v0.07
 ; ================
 ; ❗️ Зависимости: bootloader/initrix.asm (+kernel16/io)
 
@@ -9,6 +9,8 @@ bits 16
 ; Основные константы
 %include 'config.asm'
 
+; Параметр загрузки 32-битного ядра
+KERNEL32_PHYS_ADDR equ (KERNEL_LOAD_SEGMENT*16 + KERNEL_LOAD_OFFSET)
 
 boot_switcher:
     mov si, str_choose_mode
@@ -35,11 +37,11 @@ boot_switcher:
     call print
 
     ; Чтение файла ядра с диска
-    mov si, kernel_filename
+    mov si, kernel16_filename
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
     mov dl, [boot_drive_num]
-    call file_open
+    call file_load
 
     ; Передача собранной структуры данных в ядро и настройка сегментов
     mov ax, KERNEL_LOAD_SEGMENT
@@ -55,6 +57,13 @@ boot_switcher:
     call print_new_line
     mov si, msg_loading_32
     call print
+
+    ; Чтение файла 32-битного ядра с диска
+    mov si, kernel32_filename
+    mov cx, KERNEL_LOAD_SEGMENT
+    mov bx, KERNEL_LOAD_OFFSET
+    mov dl, [boot_drive_num]
+    call file_load
 
     ; Динамически вычисляем физический адрес GDT перед загрузкой
     xor eax, eax
@@ -128,15 +137,13 @@ pmode_entry:
     mov ebp, 0x90000
     mov esp, ebp
 
-    ; Вывод 'DONE' напрямую в видеопамять (0xB8000) для проверки
-    mov byte [0xB8000], 'D'
-    mov byte [0xB8001], 0x0A
-    mov byte [0xB8002], 'O'
-    mov byte [0xB8003], 0x0A
-    mov byte [0xB8004], 'N'
-    mov byte [0xB8005], 0x0A
-    mov byte [0xB8006], 'E'
-    mov byte [0xB8007], 0x0A
+    ; Передача управления Rust-ядру
+    mov eax, KERNEL32_PHYS_ADDR
+    jmp eax
+
+    ; Вывод '!' 
+    mov byte [0xB8000], '!'
+    mov byte [0xB8001], 0x04
 
     ; Остановка CPU (Ещё нет ядра Rust)
     cli
@@ -154,3 +161,7 @@ str_choose_mode:
 
 msg_loading_16: db '[+] Loading 16-bit kernel.', ENTER, 0
 msg_loading_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
+
+; Переменные
+kernel16_filename: db 'KERNEL16BIN'
+kernel32_filename: db 'KERNEL32BIN'

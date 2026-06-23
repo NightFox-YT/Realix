@@ -93,7 +93,7 @@ error_handler:
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/shell/cmd_cls.asm'
 %include 'bios-api/disk/read.asm'
-%include 'bios-api/fat12/file_open.asm'
+%include 'bios-api/fat12/file_load.asm'
 %include 'bios-api/memory/get_free.asm'
 %include 'bios-api/memory/get_lower.asm'
 %include 'bios-api/memory/get_map.asm'
@@ -110,10 +110,9 @@ err_get_lower_memory:       db '[!] Get lower memory failed (int 12h)!', 0
 err_network_card_not_found: db '[!] Network card Realtek RTL8139 not found!', 0
 
 str_title:
-    db '     Realix v0.06', ENTER,
+    db '     Realix v0.07', ENTER,
     db '(C) NightFox developer', ENTER, ENTER, 0
 
 ; Данные о ПК и Kernel
 boot_drive_num:  db 0
 low_memory_kb:   dw 0
-kernel_filename: db 'KERNEL  BIN'
