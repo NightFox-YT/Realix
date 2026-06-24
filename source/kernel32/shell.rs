@@ -3,6 +3,12 @@ use crate::keyboard;
 
 const PROMPT: &str = "Realix> ";
 
+fn print_hex_byte(n: u8) {
+    let hex = b"0123456789ABCDEF";
+    vga::put_char(hex[(n >> 4) as usize], vga::Color::White);
+    vga::put_char(hex[(n & 0x0F) as usize], vga::Color::White);
+}
+
 pub fn run() {
     vga::print_str("Type 'help' for commands.\n", Color::LightGray);
     loop {
@@ -25,10 +31,44 @@ fn execute(input: &str) {
             vga::print_str("  meminfo  - Show memory info\n", Color::LightGray);
             vga::print_str("  reboot   - Reboot PC\n", Color::LightGray);
             vga::print_str("  shutdown - Power off PC\n", Color::LightGray);
+	    vga::print_str("  snake    - Play Snake game\n", vga::Color::LightGray);
+	    vga::print_str("  fetch    - Show OS information\n", vga::Color::LightGray);
+	    vga::print_str("  matrix   - Matrix rain animation\n", vga::Color::LightGray);
+            vga::print_str("  calc     - Simple calculator\n", vga::Color::LightGray);
+            vga::print_str("  netinfo  - Show network card MAC\n", vga::Color::LightGray);
+        }
+        "matrix" => {
+            vga::print_str("Entering Matrix... (press any key to exit)\n", vga::Color::Green);
+            crate::matrix::run();
+        }
+        "netinfo" => {
+            if crate::rtl8139::is_ready() {
+                let mut mac: [u8; 6] = [0; 6];
+                crate::rtl8139::get_mac(&mut mac);
+                vga::print_str("MAC: ", vga::Color::Green);
+                for i in 0..6 {
+                    print_hex_byte(mac[i]);
+                    if i < 5 {
+                        vga::put_char(b':', vga::Color::White);
+                    }
+                }
+                vga::put_char(b'\n', vga::Color::LightGray);
+            } else {
+                vga::print_str("RTL8139 not found\n", vga::Color::Red);
+            }
         }
         "clear" => {
             vga::clear_screen();
         }
+	"fetch" | "neofetch" | "fastfetch" => {
+	    crate::fetch::run();
+        }
+	
+	"snake" => {
+	    vga::print_str("Starting Snake...(WASD to move, Q to quit)\n", vga::Color::Green);
+	    crate::snake::run();
+        }
+
         "reboot" => {
             vga::print_str("Rebooting...\n", Color::Red);
             unsafe {
@@ -57,6 +97,10 @@ fn execute(input: &str) {
                 unsafe { core::arch::asm!("hlt"); }
             }
         }
+        _ if input.starts_with("calc ") => {
+            crate::calc::run(&input[5..]);
+        }
+
         _ if input.starts_with("echo ") => {
             vga::print_str(&input[5..], Color::LightGray);
             vga::print_str("\n", Color::LightGray);
