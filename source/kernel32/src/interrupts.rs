@@ -15,6 +15,18 @@ pub fn init() {
         core::arch::asm!("out 0xA1, al", in("al") 0xFFu8);
     }
 }
+#[unsafe(naked)]
+pub unsafe extern "C" fn irq0_handler() {
+    unsafe {
+        naked_asm!(
+            "push eax",
+            "mov al, 0x20",
+            "out 0x20, al",
+            "pop eax",
+            "iret",
+        );
+    }
+}
 
 #[unsafe(naked)]
 pub unsafe extern "C" fn keyboard_handler() {

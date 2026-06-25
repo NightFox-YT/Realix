@@ -4,6 +4,11 @@ use core::arch::asm;
 
 static mut IO_BASE: u16 = 0;
 
+use core::sync::atomic::AtomicU16;
+
+static mut RX_BUF: [u8; 8192 + 4096] = [0; 8192 + 4096];
+static RX_PTR: AtomicU16 = AtomicU16::new(0);
+
 /// Инициализация RTL8139
 pub fn init() -> bool {
     // Ищем карту на PCI
@@ -122,4 +127,46 @@ pub fn send_packet(data: &[u8]) {
         // Следующий дескриптор
         NEXT_TX_DESC.store((desc_idx + 1) % 4, Ordering::Relaxed);
     }
+}
+
+pub fn receive_packet(buf: &mut [u8; 2048]) -> Option<usize> {
+    unsafe {
+        let port = IO_BASE;
+        let rx_addr = ((RX_BUF.as_ptr() as usize + 4095) & !4095) as *const u8;
+        let rx_ptr = RX_PTR.load(Ordering::Relaxed);
+        
+        let cmd = read_reg8(port, 0x37);
+        if (cmd & 0x01) != 0 { return None; }
+        
+        let header = core::ptr::read_unaligned(rx_addr.add(rx_ptr as usize) as *const u32);
+        let status = (header & 0xFFFF) as u16;
+        let length = ((header >> 16) & 0xFFFF) as usize;
+        
+        if (status & 0x0001) == 0 { return None; }
+        
+        let data_len = length - 4;
+        let copy_len = data_len.min(2048);
+        let src = rx_addr.add(rx_ptr as usize + 4);
+        for i in 0..copy_len { buf[i] = core::ptr::read_volatile(src.add(i)); }
+        
+        let next = (rx_ptr as usize + length + 4 + 3) & !3;
+        let next = (next % 0x2000) as u16;
+        RX_PTR.store(next, Ordering::Relaxed);
+        
+        // CAPR = next - 16
+        write_reg16(port, 0x38, next.wrapping_sub(16));
+        write_reg16(port, 0x3E, 0x0001); // Clear ROK
+        
+        Some(copy_len)
+    }
+}
+
+unsafe fn read_reg8(port: u16, off: u16) -> u8 {
+    let v: u8;
+    asm!("in al, dx", out("al") v, in("dx") port + off);
+    v
+}
+
+unsafe fn write_reg16(port: u16, off: u16, val: u16) {
+    asm!("out dx, ax", in("dx") port + off, in("ax") val);
 }

@@ -61,6 +61,8 @@ fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x33 => Some(if shift { b'<' } else { b',' }),
         0x34 => Some(if shift { b'>' } else { b'.' }),
         0x35 => Some(if shift { b'?' } else { b'/' }),
+        0x48 => Some(0x80), // Стрелка вверх
+        0x50 => Some(0x81), // Стрелка вниз
         0x39 => Some(b' '),
         _ => None,
     }
@@ -102,9 +104,11 @@ fn try_read_key() -> Option<u8> {
 
 pub fn read_key_blocking() -> u8 {
     loop {
+        // Проверяем буфер IDT (на случай если прерывания сработают)
         if let Some(c) = try_read_key() {
             return c;
         }
+        // Polling — работает всегда
         unsafe {
             let status: u8;
             asm!("in al, 0x64", out("al") status);

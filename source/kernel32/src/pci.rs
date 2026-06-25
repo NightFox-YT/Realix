@@ -33,10 +33,27 @@ pub fn find_device(vendor: u16, device_id: u16) -> Option<(u8, u8, u8, u32)> {
                 if vend == vendor && dev == device_id {
                     // Читаем BAR0 (смещение 0x10)
                     let bar0 = pci_read(bus, device, func, 0x10);
+                // Включаем Bus Mastering (бит 2 в Command Register)
+                    let cmd = pci_read(bus, device, func, 0x04);
+                    pci_write(bus, device, func, 0x04, cmd | 0x0004);
                     return Some((bus, device, func, bar0 & 0xFFFFFFFC));
                 }
             }
         }
     }
     None
+}
+
+fn pci_write(bus: u8, device: u8, func: u8, offset: u8, value: u32) {
+    let address: u32 = 
+        0x80000000 |
+        ((bus as u32) << 16) |
+        (((device & 0x1F) as u32) << 11) |
+        (((func & 0x07) as u32) << 8) |
+        ((offset & 0xFC) as u32);
+    
+    unsafe {
+        asm!("out dx, eax", in("dx") PCI_CONFIG_ADDRESS, in("eax") address);
+        asm!("out dx, eax", in("dx") PCI_CONFIG_DATA, in("eax") value);
+    }
 }
