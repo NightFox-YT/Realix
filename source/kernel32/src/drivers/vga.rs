@@ -1,3 +1,7 @@
+// © Realix > VGA
+// (25.06.26) v0.07
+// ================
+
 // Константы
 const VGA_BUFFER: *mut u8 = 0xB8000 as *mut u8; // Указатель
 const VGA_WIDTH: usize = 80;
@@ -36,7 +40,7 @@ pub fn clear_screen() {
     }
 }
 
-/// Печатает строку, начиная со строки `row` (0..24) и столбца `col` (0..79).
+/// Вывод строки на экран
 pub fn print_str(row: usize, col: usize, s: &str, color: Color) {
     let color_byte = color as u8;
     let start_offset = (row * VGA_WIDTH + col) * 2;

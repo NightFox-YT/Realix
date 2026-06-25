@@ -3,7 +3,8 @@
 
 bits 16
 
-%include 'config.asm'
+; Основные константы
+%include 'shared/config.asm'
 
 HISTORY_SLOTS    equ 5
 HISTORY_LINE_LEN equ INPUT_BUFFER_LEN + 1

@@ -7,7 +7,7 @@ bits 16
 org 0x0
 
 ; Основные константы
-%include 'config.asm'
+%include 'shared/config.asm'
 
 ; > Установка ядра
 kernel_start:
