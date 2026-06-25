@@ -1,3 +1,4 @@
+use core::sync::atomic::{AtomicUsize, Ordering};
 use crate::pci;
 use core::arch::asm;
 
@@ -85,5 +86,40 @@ fn set_rx_buffer(addr: u32) {
 fn write_rcr(val: u32) {
     unsafe {
         asm!("out dx, eax", in("dx") IO_BASE + 0x44u16, in("eax") val);
+    }
+}
+
+/// Отправка сырого Ethernet-пакета
+static NEXT_TX_DESC: AtomicUsize = AtomicUsize::new(0);
+
+pub fn send_packet(data: &[u8]) {
+    unsafe {
+        let port = IO_BASE;
+        
+        let desc_idx = NEXT_TX_DESC.load(Ordering::Relaxed);
+        let tsd_port = port + 0x10 + (desc_idx * 4) as u16;
+        let tsad_port = port + 0x20 + (desc_idx * 4) as u16;
+        
+        let phys_addr = data.as_ptr() as u32;
+        
+        // Устанавливаем адрес
+        asm!("out dx, eax", in("dx") tsad_port, in("eax") phys_addr);
+        // Размер + старт передачи
+        asm!("out dx, eax", in("dx") tsd_port, in("eax") data.len() as u32);
+        
+        // Ждём ТОЛЬКО наш дескриптор
+        loop {
+            let status: u32;
+            asm!("in eax, dx", out("eax") status, in("dx") tsd_port);
+            if status & 0x8000 != 0 {
+                break;
+            }
+        }
+        
+        // Очищаем ISR (критически важно!)
+        asm!("out dx, ax", in("dx") port + 0x3Eu16, in("ax") 0x0004u16);
+        
+        // Следующий дескриптор
+        NEXT_TX_DESC.store((desc_idx + 1) % 4, Ordering::Relaxed);
     }
 }

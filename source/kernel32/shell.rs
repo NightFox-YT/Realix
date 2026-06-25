@@ -36,10 +36,22 @@ fn execute(input: &str) {
 	    vga::print_str("  matrix   - Matrix rain animation\n", vga::Color::LightGray);
             vga::print_str("  calc     - Simple calculator\n", vga::Color::LightGray);
             vga::print_str("  netinfo  - Show network card MAC\n", vga::Color::LightGray);
+            vga::print_str("  divzero  - Test divide-by-zero handler\n", vga::Color::LightGray);
+            vga::print_str("  arp      - Send ARP request\n", vga::Color::LightGray);
         }
         "matrix" => {
             vga::print_str("Entering Matrix... (press any key to exit)\n", vga::Color::Green);
             crate::matrix::run();
+        }
+        "arp" => {
+            vga::print_str("Sending ARP to 10.0.2.2...\n", vga::Color::Cyan);
+            crate::arp::send_arp_request([10, 0, 2, 2]);
+        }
+        "divzero" => {
+            vga::print_str("Testing division by zero...\n", vga::Color::Red);
+            unsafe {
+                core::arch::asm!("mov ax, 0", "div ax");
+            }
         }
         "netinfo" => {
             if crate::rtl8139::is_ready() {

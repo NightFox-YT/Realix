@@ -4,10 +4,14 @@ use crate::vga::{self, Color};
 const INPUT_MAX: usize = 64;
 static mut SHIFT_PRESSED: bool = false;
 
+// Буфер для IDT-прерываний
+static mut KEY_BUFFER: [u8; 16] = [0; 16];
+static mut KEY_BUF_HEAD: usize = 0;
+static mut KEY_BUF_TAIL: usize = 0;
+
 fn scancode_to_ascii(scancode: u8) -> Option<u8> {
     let shift = unsafe { SHIFT_PRESSED };
     match scancode {
-        // Цифры
         0x02 => Some(if shift { b'!' } else { b'1' }),
         0x03 => Some(if shift { b'@' } else { b'2' }),
         0x04 => Some(if shift { b'#' } else { b'3' }),
@@ -18,14 +22,10 @@ fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x09 => Some(if shift { b'*' } else { b'8' }),
         0x0A => Some(if shift { b'(' } else { b'9' }),
         0x0B => Some(if shift { b')' } else { b'0' }),
-        // Символы
         0x0C => Some(if shift { b'_' } else { b'-' }),
         0x0D => Some(if shift { b'+' } else { b'=' }),
-        // Backspace
         0x0E => Some(b'\x08'),
-        // Tab
         0x0F => Some(b'\t'),
-        // Буквы
         0x10 => Some(if shift { b'Q' } else { b'q' }),
         0x11 => Some(if shift { b'W' } else { b'w' }),
         0x12 => Some(if shift { b'E' } else { b'e' }),
@@ -38,7 +38,7 @@ fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x19 => Some(if shift { b'P' } else { b'p' }),
         0x1A => Some(if shift { b'{' } else { b'[' }),
         0x1B => Some(if shift { b'}' } else { b']' }),
-        0x1C => Some(b'\n'), // Enter
+        0x1C => Some(b'\n'),
         0x1E => Some(if shift { b'A' } else { b'a' }),
         0x1F => Some(if shift { b'S' } else { b's' }),
         0x20 => Some(if shift { b'D' } else { b'd' }),
@@ -50,7 +50,6 @@ fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x26 => Some(if shift { b'L' } else { b'l' }),
         0x27 => Some(if shift { b':' } else { b';' }),
         0x28 => Some(if shift { b'"' } else { b'\'' }),
-        0x29 => Some(if shift { b'~' } else { b'`' }),
         0x2B => Some(if shift { b'|' } else { b'\\' }),
         0x2C => Some(if shift { b'Z' } else { b'z' }),
         0x2D => Some(if shift { b'X' } else { b'x' }),
@@ -62,52 +61,67 @@ fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x33 => Some(if shift { b'<' } else { b',' }),
         0x34 => Some(if shift { b'>' } else { b'.' }),
         0x35 => Some(if shift { b'?' } else { b'/' }),
-        // Пробел
         0x39 => Some(b' '),
-        // Shift
-        0x2A | 0x36 => {
-            unsafe { SHIFT_PRESSED = true; }
-            None
-        }
-        0xAA | 0xB6 => {
-            unsafe { SHIFT_PRESSED = false; }
-            None
-        }
         _ => None,
+    }
+}
+
+pub unsafe fn handle_scancode(scancode: u8) {
+    if scancode & 0x80 != 0 {
+        if scancode == 0xAA || scancode == 0xB6 {
+            SHIFT_PRESSED = false;
+        }
+        return;
+    }
+    
+    if scancode == 0x2A || scancode == 0x36 {
+        SHIFT_PRESSED = true;
+        return;
+    }
+    
+    if let Some(ascii) = scancode_to_ascii(scancode) {
+        let next = (KEY_BUF_TAIL + 1) % 16;
+        if next != KEY_BUF_HEAD {
+            KEY_BUFFER[KEY_BUF_TAIL] = ascii;
+            KEY_BUF_TAIL = next;
+        }
+    }
+}
+
+fn try_read_key() -> Option<u8> {
+    unsafe {
+        if KEY_BUF_HEAD != KEY_BUF_TAIL {
+            let c = KEY_BUFFER[KEY_BUF_HEAD];
+            KEY_BUF_HEAD = (KEY_BUF_HEAD + 1) % 16;
+            Some(c)
+        } else {
+            None
+        }
     }
 }
 
 pub fn read_key_blocking() -> u8 {
     loop {
+        if let Some(c) = try_read_key() {
+            return c;
+        }
         unsafe {
             let status: u8;
             asm!("in al, 0x64", out("al") status);
-            if status & 1 != 0 {
-                if status & 0x20 != 0 {
-                    let _trash: u8;
-                    asm!("in al, 0x60", out("al") _trash);
-                    continue;
-                }
+            if status & 1 != 0 && status & 0x20 == 0 {
                 let scancode: u8;
                 asm!("in al, 0x60", out("al") scancode);
-                
-                // Обрабатываем нажатие и отпускание
-                let pressed = scancode & 0x80 == 0;
-                let key_code = scancode & 0x7F;
-                
-                // Обновляем Shift
-                if key_code == 0x2A || key_code == 0x36 {
-                    if pressed {
-                        unsafe { SHIFT_PRESSED = true; }
-                    } else {
-                        unsafe { SHIFT_PRESSED = false; }
+                if scancode & 0x80 == 0 {
+                    if scancode == 0x2A || scancode == 0x36 {
+                        SHIFT_PRESSED = true;
+                        continue;
                     }
-                    continue;
-                }
-                
-                if pressed {
-                    if let Some(ascii) = scancode_to_ascii(key_code) {
+                    if let Some(ascii) = scancode_to_ascii(scancode) {
                         return ascii;
+                    }
+                } else {
+                    if scancode == 0xAA || scancode == 0xB6 {
+                        SHIFT_PRESSED = false;
                     }
                 }
             }
@@ -141,4 +155,32 @@ pub fn read_line() -> [u8; INPUT_MAX] {
             _ => {}
         }
     }
+}
+
+pub unsafe fn enable_interrupts() {
+    while (inb(0x64) & 2) != 0 {}
+    outb(0x64, 0x20);
+    while (inb(0x64) & 1) == 0 {}
+    let mut config = inb(0x60);
+    config |= 0x01;
+    while (inb(0x64) & 2) != 0 {}
+    outb(0x64, 0x60);
+    while (inb(0x64) & 2) != 0 {}
+    outb(0x60, config);
+}
+
+pub unsafe fn flush_buffer() {
+    while (inb(0x64) & 1) == 1 {
+        inb(0x60);
+    }
+}
+
+unsafe fn inb(port: u16) -> u8 {
+    let result: u8;
+    asm!("in al, dx", out("al") result, in("dx") port);
+    result
+}
+
+unsafe fn outb(port: u16, val: u8) {
+    asm!("out dx, al", in("dx") port, in("al") val);
 }
