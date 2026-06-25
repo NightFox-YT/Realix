@@ -53,7 +53,8 @@ kernel32: always
 # Запуск собранного образа диска
 run: floppy
 	qemu-system-x86_64 -drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy
-
+run-net: floppy
+	qemu-system-i386 -drive format=raw,file=build/realix.img -netdev user,id=n0 -device rtl8139,netdev=n0
 
 # Подготовка к сборке
 always:
