@@ -7,7 +7,7 @@ bits 16
 org 0x7C00
 
 ; Основные константы
-%include 'config.asm'
+%include 'shared/config.asm'
 
 ; Настройка FAT12 (48 байт)
 jmp short start
