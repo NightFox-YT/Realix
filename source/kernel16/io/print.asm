@@ -18,7 +18,11 @@ print:
     test al, al   ; Достигнут ли конец строки?
     jz .done
 
+%ifdef KERNEL_CONSOLE
+    call console_putc
+%else
     int 0x10
+%endif
     jmp .next_char
 
 .done:

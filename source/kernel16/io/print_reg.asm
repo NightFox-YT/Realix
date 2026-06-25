@@ -26,8 +26,12 @@ print_reg:
 
 .print_char:
     pop ax        ; Достаём цифру из стека
+%ifdef KERNEL_CONSOLE
+    call console_putc
+%else
     mov ah, 0x0E  ; TTY mode (Вывод с прокруткой курсора)
     int 0x10
+%endif
     loop .print_char
 
 .done:

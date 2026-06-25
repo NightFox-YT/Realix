@@ -11,6 +11,9 @@ org 0x0
 
 ; > Установка ядра
 kernel_start:
+    call console_init
+    call install_exception_handlers
+
 	mov si, msg_start_kernel
 	call print
 
@@ -37,9 +40,12 @@ main:
     jmp $
 
 ; Подключение модулей
+%define KERNEL_CONSOLE
+%include 'kernel16/console/console.asm'
 %include 'kernel16/io/print.asm'
 %include 'kernel16/io/print_nl.asm'
 %include 'kernel16/io/print_reg.asm'
+%include 'kernel16/debug/panic.asm'
 %include 'kernel16/shell/cli.asm'
 %include 'kernel16/shell/commands.asm'
 %include 'bios-api/memory/get_free.asm'
