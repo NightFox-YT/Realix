@@ -7,10 +7,8 @@
 bits 16
 
 ; Основные константы
-%include 'config.asm'
+%include 'shared/config.asm'
 
-; Параметр загрузки 32-битного ядра
-KERNEL32_PHYS_ADDR equ (KERNEL_LOAD_SEGMENT*16 + KERNEL_LOAD_OFFSET)
 
 boot_switcher:
     mov si, str_choose_mode
@@ -103,23 +101,37 @@ pmode_target:
     pmode_target_offset: dd 0     ; Физический адрес pmode_entry (заполняется динамически)
     pmode_target_sel:    dw 0x08  ; Селектор кода в GDT (gdt_code)
 
-; Global Descriptor Table
+
+; Временный GDT для загрузчика
 align 4
+
+; 0: Null дескриптор
 gdt_start:
-    ; Null-дескриптор
     dd 0x0, 0x0
 
+; (Ring 0) 1: Дескриптор кода (Смещение 0x08)
 gdt_code:
-    ; Дескриптор кода (Смещение 0x08)
-    dw 0xFFFF, 0x0, 0x9A00, 0x00CF
-    
+    dw 0xFFFF     ; Лимит (Нижние 16 бит)
+    dw 0x0000     ; Адрес начала (Нижние 16 бит)
+    db 0x00       ; Адрес начала (Средние 8 бит)
+    db 10011010b  ; Access Byte
+    db 11001111b  ; Flags (4 бита) + Лимит (Старшие 4 бита)
+    db 0x00       ; Адрес начала (Старшие 8 бит)
+
+; (Ring 0) Дескриптор данных (Смещение 0x10)
 gdt_data:
-    ; Дескриптор данных (Смещение 0x10)
-    dw 0xFFFF, 0x0, 0x9200, 0x00CF
+    dw 0xFFFF     ; Лимит (Нижние 16 бит)
+    dw 0x0000     ; Адрес начала (Нижние 16 бит)
+    db 0x00       ; Адрес начала (Средние 8 бит)
+    db 10010010b  ; Access Byte
+    db 11001111b  ; Flags (4 бита) + Лимит (Старшие 4 бита)
+    db 0x00       ; Адрес начала (Старшие 8 бит)
+    
 gdt_end:
+    ; Структура-указатель для LGDT
     gdt_descriptor:
-        dw gdt_end - gdt_start - 1
-        dd gdt_start
+        dw gdt_end - gdt_start - 1  ; Лимит (Размер GDT)
+        dd gdt_start                ; Адрес начала DGT
 
 
 ; > Точка входа в 32-битный режим

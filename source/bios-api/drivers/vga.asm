@@ -3,7 +3,7 @@
 ; ================
 
 ; Основные константы
-%include 'config.asm'
+%include 'shared/config.asm'
 
 ; > Инициализация видеорежима 13h (320x200, 256 цветов)
 vga_video_mode:

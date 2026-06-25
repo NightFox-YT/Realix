@@ -5,7 +5,7 @@
 ; ❗️ Зависимости: kernel16/io
 
 ; Основные константы
-%include 'config.asm'
+%include 'shared/config.asm'
 
 ; > Главный цикл CLI (Вызывается из ядра для обработки команд)
 run_cli:

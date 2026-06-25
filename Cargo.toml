@@ -6,7 +6,7 @@ edition = "2021"
 # Путь к исходному коду
 [[bin]]
 name = "kernel32"
-path = "source/kernel32/main.rs"
+path = "source/kernel32/src/main.rs"
 
 # Настройки для сборки с отладкой & сборки релиза
 # 1. opt-level
