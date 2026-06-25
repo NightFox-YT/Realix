@@ -10,12 +10,14 @@
 use core::panic::PanicInfo;
 mod drivers;
 mod gdt;
+mod idt;
 
 // > Настройка окружения ядра (Не изменять название функции при компиляции)
 #[link_section = ".text.entry"]
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     gdt::init();
+    idt::init();
 
     drivers::vga::clear_screen();
     drivers::vga::print_str(0, 0, "Welcome, Realix v0.07 with Rust kernel...", drivers::vga::Color::Cyan);

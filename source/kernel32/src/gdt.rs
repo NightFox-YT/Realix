@@ -4,6 +4,7 @@
 
 // Подключение функций
 use core::mem::size_of;
+use core::ptr::addr_of;
 
 // Константы GDT
 const GDT_SIZE: usize = 5;
@@ -40,7 +41,6 @@ pub struct GdtDescriptor {
     base_high:   u8,   // Старшие 8 бат
 }
 
-// Методы GDT дескриптора
 impl GdtDescriptor {
     // Обязательный Null дексриптор (Создаётся во время компиляции)
     pub const fn null() -> Self {
@@ -100,13 +100,15 @@ unsafe fn gdt_flush(ptr: *const GdtPointer) {
         ptr = in(reg) ptr,
         ax  = out(reg) _,
         tmp = out(reg) _,
+        options(nostack, preserves_flags),
     );
 }
 
 // > Инициализация GDT
-use access::*;
-use gran::*;
 pub fn init() {
+    use access::*;
+    use gran::*;
+
     unsafe {
         // Null Descriptor (обязателен по спецификации x86)
         GDT[0] = GdtDescriptor::null();
@@ -145,7 +147,7 @@ pub fn init() {
 
         // Заполняем указатель GDT
         GDT_POINTER.limit = (size_of::<[GdtDescriptor; GDT_SIZE]>() - 1) as u16;
-        GDT_POINTER.base = GDT.as_ptr() as u32;
+        GDT_POINTER.base = addr_of!(GDT) as u32;
 
         // Загружаем GDT
         gdt_flush(&raw const GDT_POINTER);
