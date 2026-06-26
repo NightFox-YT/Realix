@@ -3,7 +3,7 @@
 ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
-[!] This version is just a sample, used to test new features and new ideas.
+**[!] This version is just a sample, used to test new features and new ideas.**
 - **Hosted by:** @oxxx1mif
 
 - **Started:** `June 23, 2026`
@@ -29,9 +29,9 @@ Introducing new cryptography features in Realix.
 - [**Telegram (oxxximif)**](https://t.me/oxxximif)
 
 
-***[!]If you've noticed a critical cryptographic bug and it's currently present in the latest published version of the operating system, don't trumpet it in pull requests or issues. Contact the leading cryptographic developers or the operating system's founder and describe the bug you've discovered.
+**[!]If you've noticed a critical cryptographic bug and it's currently present in the latest published version of the operating system, don't trumpet it in pull requests or issues. Contact the leading cryptographic developers or the operating system's founder and describe the bug you've discovered.**
 
-If you discovered the bug before the feature was included in the latest version, create a pull request using the form and, if possible, contact the leading cryptographic developers. Thanks in advance.***
+**If you discovered the bug before the feature was included in the latest version, create a pull request using the form and, if possible, contact the leading cryptographic developers. Thanks in advance.**
 
 ## Contribution Information:
 
