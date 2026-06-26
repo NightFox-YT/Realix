@@ -9,7 +9,7 @@
 ; Параметры:
 ;  - es:di: Указатель на карту памяти (`get_memory_map`)
 ; Вывод:
-;  - ax: Число свободной памяти (КБ)
+;  - ax: Число свободной памяти (МБ)
 get_free_memory:
     push ebx
     push ecx
@@ -43,11 +43,11 @@ get_free_memory:
     loop .loop
 
 .empty:
-    ; Переводим байты в Килобайты (Деление на 2 ** 10)
-    shrd ebx, edx, 10  ; Сдвигаем ebx на 10 бит, заполняя верх из edx
-    shr edx, 10        ; Сдвигаем edx на 10 бит
+    ; Переводим байты (edx:ebx) в Мегабайты (Деление на 2 ** 20)
+    shrd ebx, edx, 20  ; Сдвигаем ebx на 20 бит, заполняя верх ebx из edx
+    shr edx, 20        ; Сдвигаем edx на 20 бит
 
-    ; Результат в ebx (КБ)
+    ; Результат в ebx (МБ | До 64 ГБ)
     mov ax, bx
 
     pop si
@@ -74,7 +74,7 @@ show_free_memory:
     mov si, str_free_ram
     call print
     call print_reg
-    mov si, str_kb
+    mov si, str_mb
     call print
 
 .done:
@@ -85,4 +85,4 @@ show_free_memory:
 
 ; Строки
 str_free_ram:   db 'Free RAM: ', 0
-str_kb:         db ' KB', 0
+str_mb:         db ' MB', 0

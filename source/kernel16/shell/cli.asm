@@ -130,7 +130,13 @@ input_buffer_overflow_error:
     mov byte [di], 0
 
     pop si
-    jmp cli_input.enter_pressed
+
+    ; Завершение текущего ввода
+    call print_new_line
+    pop di
+    pop bx
+    pop ax
+    ret
 
 
 ; Сообщения и строки

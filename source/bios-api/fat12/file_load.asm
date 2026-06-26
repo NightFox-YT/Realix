@@ -42,7 +42,13 @@ file_load:
     adc dx, 0
 
     ; Проверка, что адрес записи (до 0xFFFF) не затирает буфер.
-    cmp dx, 0x0
+    cmp dx, 0
+    jne .read_root_dir
+    cmp ax, 0x0500
+    jb .read_root_dir
+    cmp ax, 0x7C00
+    ja .read_root_dir
+    
     mov si, err_buffer_overlap
     je error_handler
 

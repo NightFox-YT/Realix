@@ -3,7 +3,9 @@
 ; (13.06.26) v0.06
 ; ================
 ; ❗️ Зависимости: bios-api/memory (модуль), bios-api/network
-; TODO: Возвращение carry_flag при ошибке
+; TODO:
+;  - Возвращение carry_flag при ошибке
+;  - В shutdown полагаться не только на APM
 
 ; Таблица команд (С названиями)
 align 2
@@ -145,6 +147,13 @@ cmd_meminfo:
     mov di, PCINFO_ADDR
     call show_map_entries_cnt
 
+    call print_new_line
+    call print_new_line
+
+    ; Небольшая заметка
+    mov si, note_meminfo
+    call print
+
     pop si
     pop di
     ret
@@ -250,6 +259,8 @@ msg_help:
     db '  [Power]', ENTER
     db '> reboot   - Reboot PC', ENTER
     db '> shutdown - Power off PC', 0
+
+note_meminfo: db 'Note: In Real mode you can access only up to 1 MB RAM.', 0
 
 ; Буфер ввода
 input_str: times 64 db 0
