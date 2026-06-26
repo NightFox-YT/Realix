@@ -26,10 +26,11 @@ Introducing new cryptography features in Realix.
 - **Discord:** [discord.gg/Realix](https://discord.gg/D7cATZzSAxp)
 
 ### Crypto developes
-- [**Telegram (oxxximif)**](https://t.me/oxxximif)
+- [**Telegram (oxxx1mif || oxxximif)**](https://t.me/oxxximif)
+___
 
 
-**[!]If you've noticed a critical cryptographic bug and it's currently present in the latest published version of the operating system, don't trumpet it in pull requests or issues. Contact the leading cryptographic developers or the operating system's founder and describe the bug you've discovered.**
+**[!] If you've noticed a critical cryptographic bug and it's currently present in the latest published version of the operating system, don't trumpet it in pull requests or issues. Contact the leading cryptographic developers or the operating system's founder and describe the bug you've discovered.**
 
 **If you discovered the bug before the feature was included in the latest version, create a pull request using the form and, if possible, contact the leading cryptographic developers. Thanks in advance.**
 
