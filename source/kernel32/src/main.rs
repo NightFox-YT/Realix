@@ -1,35 +1,33 @@
 // © Realix > Kernel32: Main
 // (25.06.26) v0.07
 // ================
-
-// Настройка компиляции (Без стандартной библиотеки и обёртки main())
 #![no_std]
 #![no_main]
 
 // Импорт модулей
 use core::panic::PanicInfo;
 mod drivers;
+mod shell;
 mod gdt;
 mod idt;
 
-// > Настройка окружения ядра (Не изменять название функции при компиляции)
+// > Настройка окружения ядра
 #[link_section = ".text.entry"]
 #[no_mangle]
-pub extern "C" fn _start() -> ! {
+pub fn _start() -> ! {
     gdt::init();
     idt::init();
 
     drivers::vga::clear_screen();
-    drivers::vga::print_str(0, 0, "Welcome, Realix v0.07 with Rust kernel...", drivers::vga::Color::Cyan);
+    drivers::vga::print_str("Welcome, Realix (Protected Mode with Rust kernel)...\n", drivers::vga::Color::Cyan);
+    shell::run();
     halt_loop();
 }
 
 // > Бесконечная остановка процессора
 fn halt_loop() -> ! {
     loop {
-        unsafe {
-            core::arch::asm!("hlt");
-        }
+        unsafe { core::arch::asm!("hlt"); }
     }
 }
 

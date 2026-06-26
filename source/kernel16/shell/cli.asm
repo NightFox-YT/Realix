@@ -134,7 +134,7 @@ input_buffer_overflow_error:
 
 
 ; Сообщения и строки
-prompt_sign:               db 'Realix@User >> ', 0
+prompt_sign:               db 'Realix >> ', 0
 err_input_buffer_overflow: db '[!] The input buffer maximum is 64 symbols!', 0
 
 ; Переменные

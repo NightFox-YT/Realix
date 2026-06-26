@@ -27,6 +27,8 @@ kernel_start:
     call cmd_cls
 	mov si, cli_title
 	call print
+    mov si, cli_hint
+	call print
 
 main:
     call run_cli
@@ -49,5 +51,6 @@ main:
 
 ; Сообщения и строки
 msg_start_kernel: db '[+] Starting kernel.', ENTER, 0
-msg_enter_os:     db 'Welcome, press any key to continue.', 0
-cli_title:            db 'Realix v0.06 / (C) NightFox developer', ENTER, ENTER, 0
+msg_enter_os:     db 'Press any key to continue.', 0
+cli_title:        db 'Welcome, Realix (Real Mode with NASM kernel)...', ENTER, 0
+cli_hint:         db 'Type "help" for list of commands.', ENTER, ENTER, 0

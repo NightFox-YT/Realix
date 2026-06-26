@@ -240,15 +240,15 @@ err_shutdown:    db '[!] PC shutdown failed! (No APM)', 0
 
 ; Сообщения
 msg_help:
-    db 'Realix - Help:', ENTER
+    db 'Commands:', ENTER
     db '  [Base]', ENTER
+    db '> help      - Show this manual', ENTER
     db '> clear/cls - Clear screen', ENTER
-    db '> help - Show this manual', ENTER
-    db '> echo [text] - Print [text] to console', ENTER
-    db '> meminfo - Display RAM configuration', ENTER
-    db '> calc [num1] [+ - * /] [num2] - Simple Calculator (Ooly positive nums)', ENTER
+    db '> echo [t]  - Print [text] to console', ENTER
+    db '> meminfo   - Display RAM configuration', ENTER
+    db '> calc [num1] [+ - * /] [num2] - Simple Calculator (Only positive nums)', ENTER
     db '  [Power]', ENTER
-    db '> reboot - Reboot PC', ENTER
+    db '> reboot   - Reboot PC', ENTER
     db '> shutdown - Power off PC', 0
 
 ; Буфер ввода
