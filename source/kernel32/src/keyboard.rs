@@ -1,11 +1,9 @@
-use core::arch::asm;
 use crate::vga::{self, Color};
 
-const INPUT_MAX: usize = 64;
 static mut SHIFT_PRESSED: bool = false;
 
-// Буфер для IDT-прерываний
-static mut KEY_BUFFER: [u8; 16] = [0; 16];
+// Циклический буфер для нажатий клавиш (заполняется из прерывания)
+static mut KEY_BUFFER: [u8; 32] = [0; 32];
 static mut KEY_BUF_HEAD: usize = 0;
 static mut KEY_BUF_TAIL: usize = 0;
 
@@ -24,8 +22,8 @@ fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x0B => Some(if shift { b')' } else { b'0' }),
         0x0C => Some(if shift { b'_' } else { b'-' }),
         0x0D => Some(if shift { b'+' } else { b'=' }),
-        0x0E => Some(b'\x08'),
-        0x0F => Some(b'\t'),
+        0x0E => Some(b'\x08'),     // Backspace
+        0x0F => Some(b'\t'),       // Tab
         0x10 => Some(if shift { b'Q' } else { b'q' }),
         0x11 => Some(if shift { b'W' } else { b'w' }),
         0x12 => Some(if shift { b'E' } else { b'e' }),
@@ -38,7 +36,7 @@ fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x19 => Some(if shift { b'P' } else { b'p' }),
         0x1A => Some(if shift { b'{' } else { b'[' }),
         0x1B => Some(if shift { b'}' } else { b']' }),
-        0x1C => Some(b'\n'),
+        0x1C => Some(b'\n'),       // Enter
         0x1E => Some(if shift { b'A' } else { b'a' }),
         0x1F => Some(if shift { b'S' } else { b's' }),
         0x20 => Some(if shift { b'D' } else { b'd' }),
@@ -63,26 +61,31 @@ fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x35 => Some(if shift { b'?' } else { b'/' }),
         0x48 => Some(0x80), // Стрелка вверх
         0x50 => Some(0x81), // Стрелка вниз
-        0x39 => Some(b' '),
+        0x39 => Some(b' '), // Пробел
         _ => None,
     }
 }
 
+// Вызывается из обработчика прерывания клавиатуры (interrupts.rs)
+// Работает ТОЛЬКО с данными из порта 0x60, не трогает порты 0x64/0x60
 pub unsafe fn handle_scancode(scancode: u8) {
+    // Отпускание клавиши (старший бит = 1)
     if scancode & 0x80 != 0 {
         if scancode == 0xAA || scancode == 0xB6 {
             SHIFT_PRESSED = false;
         }
         return;
     }
-    
+
+    // Нажатие Shift (левый или правый)
     if scancode == 0x2A || scancode == 0x36 {
         SHIFT_PRESSED = true;
         return;
     }
-    
+
+    // Преобразуем сканкод в ASCII и кладём в циклический буфер
     if let Some(ascii) = scancode_to_ascii(scancode) {
-        let next = (KEY_BUF_TAIL + 1) % 16;
+        let next = (KEY_BUF_TAIL + 1) % 32;
         if next != KEY_BUF_HEAD {
             KEY_BUFFER[KEY_BUF_TAIL] = ascii;
             KEY_BUF_TAIL = next;
@@ -90,11 +93,12 @@ pub unsafe fn handle_scancode(scancode: u8) {
     }
 }
 
+// Пытается прочитать символ из буфера (неблокирующий вызов)
 fn try_read_key() -> Option<u8> {
     unsafe {
         if KEY_BUF_HEAD != KEY_BUF_TAIL {
             let c = KEY_BUFFER[KEY_BUF_HEAD];
-            KEY_BUF_HEAD = (KEY_BUF_HEAD + 1) % 16;
+            KEY_BUF_HEAD = (KEY_BUF_HEAD + 1) % 32;
             Some(c)
         } else {
             None
@@ -102,39 +106,58 @@ fn try_read_key() -> Option<u8> {
     }
 }
 
+// Настройка контроллера клавиатуры на генерацию IRQ1
+pub unsafe fn enable_interrupts() {
+    // Ждём, пока буфер клавиатуры освободится
+    while (inb(0x64) & 2) != 0 {}
+    // Команда чтения байта конфигурации
+    outb(0x64, 0x20);
+    // Ждём данные
+    while (inb(0x64) & 1) == 0 {}
+    let mut config = inb(0x60);
+    config |= 0x01;  // Устанавливаем бит 0 (Enable Interrupt)
+    // Записываем обратно
+    while (inb(0x64) & 2) != 0 {}
+    outb(0x64, 0x60);
+    while (inb(0x64) & 2) != 0 {}
+    outb(0x60, config);
+}
+
+// Очистка буфера клавиатуры (на случай pending scancodes)
+pub unsafe fn flush_buffer() {
+    while (inb(0x64) & 1) == 1 {
+        inb(0x60);
+    }
+}
+
+pub unsafe fn inb(port: u16) -> u8 {
+    let result: u8;
+    core::arch::asm!("in al, dx", out("al") result, in("dx") port);
+    result
+}
+
+unsafe fn outb(port: u16, val: u8) {
+    core::arch::asm!("out dx, al", in("dx") port, in("al") val);
+}
+
+// Блокирующее чтение — ждём прерывание через HLT
+// Прерывание от клавиатуры разбудит CPU и заполнит буфер
 pub fn read_key_blocking() -> u8 {
     loop {
-        // Проверяем буфер IDT (на случай если прерывания сработают)
+        // Проверяем буфер (заполняется прерываниями клавиатуры)
         if let Some(c) = try_read_key() {
             return c;
         }
-        // Polling — работает всегда
+        // Спим до следующего прерывания (любого, но клавиатура разбудит)
         unsafe {
-            let status: u8;
-            asm!("in al, 0x64", out("al") status);
-            if status & 1 != 0 && status & 0x20 == 0 {
-                let scancode: u8;
-                asm!("in al, 0x60", out("al") scancode);
-                if scancode & 0x80 == 0 {
-                    if scancode == 0x2A || scancode == 0x36 {
-                        SHIFT_PRESSED = true;
-                        continue;
-                    }
-                    if let Some(ascii) = scancode_to_ascii(scancode) {
-                        return ascii;
-                    }
-                } else {
-                    if scancode == 0xAA || scancode == 0xB6 {
-                        SHIFT_PRESSED = false;
-                    }
-                }
-            }
+            core::arch::asm!("sti; hlt; cli", options(nomem));
         }
     }
 }
 
-pub fn read_line() -> [u8; INPUT_MAX] {
-    let mut buf = [0u8; INPUT_MAX];
+// Читает строку с помощью прерываний клавиатуры
+pub fn read_line() -> [u8; 64] {
+    let mut buf = [0u8; 64];
     let mut pos = 0;
 
     loop {
@@ -151,7 +174,7 @@ pub fn read_line() -> [u8; INPUT_MAX] {
                     vga::backspace();
                 }
             }
-            c if pos < INPUT_MAX - 1 && c >= 0x20 => {
+            c if pos < 63 && c >= 0x20 => {
                 buf[pos] = c;
                 pos += 1;
                 vga::put_char(c, Color::LightGray);
@@ -159,32 +182,4 @@ pub fn read_line() -> [u8; INPUT_MAX] {
             _ => {}
         }
     }
-}
-
-pub unsafe fn enable_interrupts() {
-    while (inb(0x64) & 2) != 0 {}
-    outb(0x64, 0x20);
-    while (inb(0x64) & 1) == 0 {}
-    let mut config = inb(0x60);
-    config |= 0x01;
-    while (inb(0x64) & 2) != 0 {}
-    outb(0x64, 0x60);
-    while (inb(0x64) & 2) != 0 {}
-    outb(0x60, config);
-}
-
-pub unsafe fn flush_buffer() {
-    while (inb(0x64) & 1) == 1 {
-        inb(0x60);
-    }
-}
-
-unsafe fn inb(port: u16) -> u8 {
-    let result: u8;
-    asm!("in al, dx", out("al") result, in("dx") port);
-    result
-}
-
-unsafe fn outb(port: u16, val: u8) {
-    asm!("out dx, al", in("dx") port, in("al") val);
 }
