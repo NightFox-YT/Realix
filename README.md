@@ -18,7 +18,7 @@ Introducing new cryptography features in Realix.
 
 ## Cryptography Documentation:
 
-* [Documentation](https://oxxx1mif.github.io/crypto-docs/#home)
+* [Documentation](https://oxxx1mif.github.io/crypto-docs/)
 
 ## Links
 ### Realix
