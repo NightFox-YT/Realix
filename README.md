@@ -11,6 +11,7 @@ Realix is a **hybrid OS** designed for x86 architecture, written in NASM.
 It supports a built-in boot switcher that lets users choose between a 16-bit Real Mode kernel for legacy compatibility and a high-performance 32-bit Protected Mode kernel.
 
 - **Development start:** `June 19, 2026`
+- **Development ended (temporary):** `June 30, 2026`
 
 ## 🔗 Links & 🙌 Contributing
 - **TikTok:** [tiktok.com/@mainfox.tt](https://www.tiktok.com/@mainfox.tt)

@@ -88,7 +88,7 @@ error_handler:
 
 ; Подключение модулей
 %include 'kernel16/io/print.asm'
-%include 'kernel16/io/print_crtl.asm'
+%include 'kernel16/io/print_ctrl.asm'
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/shell/cmd_cls.asm'
 %include 'bios-api/disk/read.asm'

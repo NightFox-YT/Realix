@@ -44,7 +44,7 @@ main:
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/shell/cli.asm'
 %include 'kernel16/shell/commands.asm'
-%include 'drivers/network/rtl8139.asm'
+%include 'network/rtl8139.asm'
 %include 'bios-api/memory/high.asm'
 %include 'bios-api/memory/low.asm'
 
