@@ -3,5 +3,6 @@ resolver = "2"
 
 members = [
     "source/crypto",
-    "source/crypto/sha256"
+    "source/crypto/sha256",
+    "source/crypto/blake3"
 ]

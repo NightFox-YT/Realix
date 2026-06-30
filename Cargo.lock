@@ -3,9 +3,14 @@
 version = 4
 
 [[package]]
+name = "blake3"
+version = "0.1.0"
+
+[[package]]
 name = "crypto"
 version = "0.0.1"
 dependencies = [
+ "blake3",
  "sha256",
 ]
 
