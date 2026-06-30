@@ -3,7 +3,11 @@
 ; ================
 
 ; Основные константы
+<<<<<<<< HEAD:source/bios-api/drivers/vga.asm
 %include 'config.asm'
+========
+%include 'shared/config.asm'
+>>>>>>>> development:source/bios-api/video/vga.asm
 
 ; > Инициализация видеорежима 13h (320x200, 256 цветов)
 vga_video_mode:

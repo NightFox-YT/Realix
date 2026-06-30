@@ -1,4 +1,5 @@
 ; © Realix > Command Line Interface
+<<<<<<< HEAD
 ; (13.06.26) v0.06
 ; ø Вдохновлено @nyxmalware
 ; ================
@@ -6,6 +7,15 @@
 
 ; Основные константы
 %include 'config.asm'
+=======
+; ø Вдохновлено @nyxmalware
+; (13.06.26) v0.06
+; ================
+; ❗️ Зависимости: kernel16/io
+
+; Основные константы
+%include 'shared/config.asm'
+>>>>>>> development
 
 ; > Главный цикл CLI (Вызывается из ядра для обработки команд)
 run_cli:
@@ -130,11 +140,25 @@ input_buffer_overflow_error:
     mov byte [di], 0
 
     pop si
+<<<<<<< HEAD
     jmp cli_input.enter_pressed
 
 
 ; Сообщения и строки
 prompt_sign:               db 'Realix@User >> ', 0
+=======
+
+    ; Завершение текущего ввода
+    call print_new_line
+    pop di
+    pop bx
+    pop ax
+    ret
+
+
+; Сообщения и строки
+prompt_sign:               db 'Realix >> ', 0
+>>>>>>> development
 err_input_buffer_overflow: db '[!] The input buffer maximum is 64 symbols!', 0
 
 ; Переменные

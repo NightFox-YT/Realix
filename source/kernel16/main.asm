@@ -7,7 +7,7 @@ bits 16
 org 0x0
 
 ; Основные константы
-%include 'config.asm'
+%include 'shared/config.asm'
 
 ; > Установка ядра
 kernel_start:
@@ -27,6 +27,8 @@ kernel_start:
     call cmd_cls
 	mov si, cli_title
 	call print
+    mov si, cli_hint
+	call print
 
 main:
     call run_cli
@@ -38,15 +40,16 @@ main:
 
 ; Подключение модулей
 %include 'kernel16/io/print.asm'
-%include 'kernel16/io/print_nl.asm'
+%include 'kernel16/io/print_ctrl.asm'
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/shell/cli.asm'
 %include 'kernel16/shell/commands.asm'
-%include 'bios-api/memory/get_free.asm'
-%include 'bios-api/memory/get_lower.asm'
-%include 'bios-api/memory/get_map.asm'
+%include 'network/rtl8139.asm'
+%include 'bios-api/memory/high.asm'
+%include 'bios-api/memory/low.asm'
 
 ; Сообщения и строки
 msg_start_kernel: db '[+] Starting kernel.', ENTER, 0
-msg_enter_os:     db 'Welcome, press any key to continue.', 0
-cli_title:            db 'Realix v0.06 / (C) NightFox developer', ENTER, ENTER, 0
+msg_enter_os:     db 'Press any key to continue.', 0
+cli_title:        db 'Welcome, Realix (Real Mode with NASM kernel)...', ENTER, 0
+cli_hint:         db 'Type "help" for list of commands.', ENTER, ENTER, 0

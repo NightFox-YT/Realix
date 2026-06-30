@@ -1,9 +1,19 @@
 ; © Realix > Shell Commands
+<<<<<<< HEAD
 ; (13.06.26) v0.06
 ; ø Вдохновлено @nyxmalware
 ; ================
 ; ❗️ Зависимости: bios-api/memory (модуль)
 ; TODO: Возвращение carry_flag при ошибке
+=======
+; ø Вдохновлено @nyxmalware
+; (13.06.26) v0.06
+; ================
+; ❗️ Зависимости: bios-api/memory (модуль), bios-api/network
+; TODO:
+;  - Возвращение carry_flag при ошибке
+;  - В shutdown полагаться не только на APM
+>>>>>>> development
 
 ; Таблица команд (С названиями)
 align 2
@@ -15,6 +25,10 @@ cmd_table:
     dw .str_shutdown, cmd_shutdown
     dw .str_meminfo,  cmd_meminfo
     dw .str_echo,     cmd_echo
+<<<<<<< HEAD
+=======
+    dw .str_calc,     cmd_calc
+>>>>>>> development
     dw 0, 0
 
 .str_help:     db 'help', 0
@@ -24,6 +38,10 @@ cmd_table:
 .str_shutdown: db 'shutdown', 0
 .str_meminfo:  db 'meminfo', 0
 .str_echo:     db 'echo', 0
+<<<<<<< HEAD
+=======
+.str_calc:     db 'calc', 0
+>>>>>>> development
 
 
 ; > Исполнитель команд
@@ -143,6 +161,16 @@ cmd_meminfo:
     mov di, PCINFO_ADDR
     call show_map_entries_cnt
 
+<<<<<<< HEAD
+=======
+    call print_new_line
+    call print_new_line
+
+    ; Небольшая заметка
+    mov si, note_meminfo
+    call print
+
+>>>>>>> development
     pop si
     pop di
     ret
@@ -200,6 +228,7 @@ cmd_echo:
     push ax
     push si
 
+<<<<<<< HEAD
 .skip_spaces:
     lodsb
     cmp al, ' '
@@ -211,6 +240,16 @@ cmd_echo:
 
     ; Возвращаем si назад на первый символ аргументов, выводим
     dec si                 
+=======
+    ; Пропускаем пробелы
+    call skip_spaces
+
+    ; Если аргументов нет (сразу конец строки)
+    cmp byte [si], 0
+    jz .done
+
+    ; Вывод сообщения         
+>>>>>>> development
     call print
 
 .done:
@@ -219,11 +258,32 @@ cmd_echo:
 
     ret
 
+<<<<<<< HEAD
+=======
+; > Команда простого калькулятора
+%include "kernel16/shell/cmd_calc.asm"
+
+; > Пропуск пробелов до первого символа
+; Вывод:
+;  - si: указатель на первый символ строки
+skip_spaces:
+    ; Пропуск пробела c переходом к след. символу
+    lodsb
+    cmp al, ' '
+    je skip_spaces
+
+.done:
+    ; Возвращаем si назад на первый символ строки
+    dec si
+    ret
+
+>>>>>>> development
 err_unknown_cmd: db '[!] Unknown command, write help for list of commands.', 0
 err_shutdown:    db '[!] PC shutdown failed! (No APM)', 0
 
 ; Сообщения
 msg_help:
+<<<<<<< HEAD
     db 'Realix - Help:', ENTER
     db '  [Base]', ENTER
     db '> clear/cls - Clear screen', ENTER
@@ -234,5 +294,20 @@ msg_help:
     db '> reboot - Reboot PC', ENTER
     db '> shutdown - Power off PC', 0
 
+=======
+    db 'Commands:', ENTER
+    db '  [Base]', ENTER
+    db '> help      - Show this manual', ENTER
+    db '> clear/cls - Clear screen', ENTER
+    db '> echo [t]  - Print [text] to console', ENTER
+    db '> meminfo   - Display RAM configuration', ENTER
+    db '> calc [num1] [+ - * /] [num2] - Simple Calculator (Only positive nums)', ENTER
+    db '  [Power]', ENTER
+    db '> reboot   - Reboot PC', ENTER
+    db '> shutdown - Power off PC', 0
+
+note_meminfo: db 'Note: In Real mode you can access only up to 1 MB RAM.', 0
+
+>>>>>>> development
 ; Буфер ввода
 input_str: times 64 db 0

@@ -1,10 +1,13 @@
 ; © Realix > Disk Read
 ; (13.06.26) v0.06
 ; ================
-; Зависимости: error_handler (внешний обработчик)
+; ❗️ Зависимости: error_handler (внешний обработчик)
+
+; ❗ Требуется инициализация диска через `disk_init`
+%include "bios-api/disk/init.asm"
+
 
 ; > Чтение секторов с диска
-; (❗ Требуется инициализация диска через `disk_init`)
 ; Параметры:
 ;  - ax: LBA
 ;  - cl: кол-во секторов для чтения (до 128)
@@ -57,7 +60,6 @@ disk_read:
 
 
 ; > Перевод LBA адреса в CHS адрес
-; (❗ Требуется инициализация диска через `disk_init`)
 ; Параметры:
 ;  - ax: LBA
 ; Вывод:
@@ -116,7 +118,3 @@ read_error:
     jmp error_handler
 
 err_read_failed: db '[!] Read failed!', 0
-
-
-; Подключение init-модуля
-%include "bios-api/disk/init.asm"

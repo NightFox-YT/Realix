@@ -1,5 +1,5 @@
-# ℹ️ Realix `v0.06`
-![Status](https://img.shields.io/badge/status-legacy-yellow)
+# ℹ️ Realix `v0.07`
+![Status](https://img.shields.io/badge/status-latest-brightgreen)
 ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
@@ -9,36 +9,39 @@
 Realix is a **hybrid OS** designed for x86 architecture, written in NASM.
 It supports a built-in boot switcher that lets users choose between a 16-bit Real Mode kernel for legacy compatibility and a high-performance 32-bit Protected Mode kernel.
 
-- **OS size:** `≈3.8 KB`
-- **Initial release:** `June 14, 2026`
+- **OS size:** `≈9 KB`
+- **Initial release:** `June 30, 2026`
 
 ## ✨ Key Features
 - BIOS-based bootloader
-- VGA text mode (80×25)
-- VGA video mode (320×200, 256 colors)
-- Reads raw sectors from disk (INT 13h)
-- Read-only FAT12 filesystem support
-  - Loads second-stage bootloader
-  - Loads kernel files by filename
-- Detects available system memory (INT 12h, 15h)
-- TTY bell character support
-- 🆕 Interactive CPU mode selector (`switcher.asm`)
-- 🆕 Kernel16: Basic command-line interface
+- BIOS-API (for kernel16):
+   - VGA text mode (80×25) and video mode (320×200, 256 colors)
+   - Reads raw sectors from disk (INT 13h)
+   - Read-only FAT12 filesystem support (loads second-stage bootloader and files by filename)
+   - Detects available system memory (INT 12h, 15h)
+- Interactive CPU mode selector (`switcher.asm`)
+- Kernel16:
+   - Basic command-line interface
+   - 🆕 Network interface card (NIC) driver
+   - 🆕 Simple calculator (Only positive nums)
+- 🆕 Kernel32:
+   - 🆕 VGA text mode (80x25)
+   - 🆕 Simple shell
+   - 🆕 Advanced GDT
+   - 🆕 Simple IDT
 
-### ⏳ Upcoming Features (v0.07-v0.08)
-- Kernel32: Development of the 32-bit Protected Mode kernel space
-- Kernel32: Direct VGA video/text memory driver
-- Real Mode: Network interface card (NIC) driver
-- Kernel16: Simple calculator
+### ⏳ Upcoming Features (v0.08)
+- Kernel32: Advanced IDT (with interrupt's handlers)
+- Kernel32: IRQ vectors, PIC remap
 
 ### ❌ Current Limitations
 - No memory allocator
 - No standart executable support
 - No write operations FAT12 support
-- No networking stack
+- No advanced networking stack
 
 ## 📸 Preview
-![Realix Experience](screencast.gif)
+![Realix Experience](screencast.mp4)
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 compatible (i386+ recommended)
@@ -53,49 +56,65 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
 │  │  ├─ disk/
 │  │  │  ├─ init.asm
 │  │  │  └─ read.asm
-│  │  ├─ drivers/
-│  │  │  ├─ sounds.asm
-│  │  │  └─ vga.asm
 │  │  ├─ fat12/
 │  │  │  ├─ file_open.asm
 │  │  │  └─ init.asm
-│  │  └─ memory/
-│  │     ├─ get_free.asm
-│  │     ├─ get_lower.asm
-│  │     └─ get_map.asm
+│  │  ├─ memory/
+│  │  │  ├─ high.asm
+│  │  │  └─ low.asm
+│  │  └─ video/
+│  │     └─ vga.asm
 │  ├─ bootloader/
 │  │  ├─ bootix.asm
 │  │  ├─ initrix.asm
 │  │  └─ switcher.asm
-│  └─ kernel16/
-│     ├─ io/
-│     │  ├─ print_nl.asm
-│     │  ├─ print_reg.asm
-│     │  └─ print.asm
-│     ├─ shell/
-│     │  ├─ cli.asm
-│     │  ├─ cmd_cls.asm
-│     │  └─ commands.asm
-│     └─ kernel.asm
+│  ├─ kernel16/
+│  │  ├─ io/
+│  │  │  ├─ print_ctrl.asm
+│  │  │  ├─ print_reg.asm
+│  │  │  └─ print.asm
+│  │  ├─ shell/
+│  │  │  ├─ cli.asm
+│  │  │  ├─ cmd_calc.asm
+│  │  │  ├─ cmd_cls.asm
+│  │  │  └─ commands.asm
+│  │  └─ main.asm
+│  ├─ kernel32/
+│  │  ├─ src/
+│  │  │  ├─ drivers/
+│  │  │  │  ├─ keyboard.rs
+│  │  │  │  ├─ mod.rs
+│  │  │  │  └─ vga.rs
+│  │  │  ├─ gdt.rs
+│  │  │  ├─ idt.rs
+│  │  │  ├─ main.rs
+│  │  │  └─ shell.rs
+│  │  ├─ linker.ld
+│  │  └─ Makefile
+│  ├─ network/rtl8139.asm
+│  └─ shared/config.asm
 ├─ build/
 │     # Output directory for compiled binaries and .img (gitignored)
 ├─ Makefile
 ├─ LICENSE
 ├─ README.md
-└─ screen.png
+└─ screencast.mp4
 ```
 
 ## 🛠️ Quick Start & Build
 
 **Prerequisites**
-* Compiler: `nasm` (Assembly)
+* Compiler: `nasm` (Assembly), `rustup` / `cargo` (Rust toolchain)
 * Disk Tools: `mtools` (FAT12 image formatting), `coreutils` (dd/image creation)
 * (Optional) Emulator: `qemu-system-i386`
 
 ### Linux & macOS
 1. Install prerequisites
-  - Ubuntu/Debian example: `sudo apt update && sudo apt install nasm mtools qemu-system-i386`
+  - Ubuntu/Debian example: `sudo apt update && sudo apt install nasm mtools qemu-system-i386 build-essential curl`
   - macOS example (via Homebrew): `brew install nasm mtools qemu`
+  - Rust toolchain (All platforms):
+     - `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+     - `rustup target add i386-unknown-none`
 2. Build & Run via the `Makefile`
   - Only build OS image: `make`
   - Full cycle (build & run in QEMU): `make run`

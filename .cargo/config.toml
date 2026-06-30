@@ -1,0 +1,18 @@
+[unstable]
+# Собираем стандартные библиотеки из исходников под «x86» (i386-unknown-none)
+build-std = ["core", "compiler_builtins"]
+
+# Включаем оптимизированную реализацию базовых функций работы с памятью
+build-std-features = ["compiler-builtins-mem"]
+
+# Разрешаем Cargo использовать кастомную спецификацию архитектуры из JSON
+json-target-spec = true
+
+[build]
+target = ".cargo/i386.json"
+
+[target.i386]
+# Флаг "-T" указывает использовать наш linker для жесткой привязки секций кода
+rustflags = [
+    "-C", "link-arg=-Tsource/kernel32/linker.ld",
+]

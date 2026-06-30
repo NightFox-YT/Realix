@@ -1,5 +1,9 @@
 ; © Realix > Switcher CPU modes
+<<<<<<< HEAD
 ; (13.06.26) v0.06
+=======
+; (21.06.26) v0.07
+>>>>>>> development
 ; ================
 ; ❗️ Зависимости: bootloader/initrix.asm (+kernel16/io)
 
@@ -7,7 +11,11 @@
 bits 16
 
 ; Основные константы
+<<<<<<< HEAD
 %include 'config.asm'
+=======
+%include 'shared/config.asm'
+>>>>>>> development
 
 
 boot_switcher:
@@ -35,11 +43,19 @@ boot_switcher:
     call print
 
     ; Чтение файла ядра с диска
+<<<<<<< HEAD
     mov si, kernel_filename
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
     mov dl, [boot_drive_num]
     call file_open
+=======
+    mov si, kernel16_filename
+    mov cx, KERNEL_LOAD_SEGMENT
+    mov bx, KERNEL_LOAD_OFFSET
+    mov dl, [boot_drive_num]
+    call file_load
+>>>>>>> development
 
     ; Передача собранной структуры данных в ядро и настройка сегментов
     mov ax, KERNEL_LOAD_SEGMENT
@@ -56,6 +72,16 @@ boot_switcher:
     mov si, msg_loading_32
     call print
 
+<<<<<<< HEAD
+=======
+    ; Чтение файла 32-битного ядра с диска
+    mov si, kernel32_filename
+    mov cx, KERNEL_LOAD_SEGMENT
+    mov bx, KERNEL_LOAD_OFFSET
+    mov dl, [boot_drive_num]
+    call file_load
+
+>>>>>>> development
     ; Динамически вычисляем физический адрес GDT перед загрузкой
     xor eax, eax
     mov ax, ds
@@ -73,6 +99,10 @@ boot_switcher:
     ; Включаем A20 (С отключением прерываний)
     cli
     in al, 0x92   ; Читаем состояние системного порта 0x92
+<<<<<<< HEAD
+=======
+    and al, 0xFE  ; Сбрасываем 0-й бит (бит аппаратного сброса), чтобы случайно не перезагрузиться
+>>>>>>> development
     or al, 2      ; Устанавливаем во 2-й бит единицу (Fast A20 gate)
     out 0x92, al  ; Отправляем обратно в порт
     
@@ -93,6 +123,7 @@ pmode_target:
     pmode_target_offset: dd 0     ; Физический адрес pmode_entry (заполняется динамически)
     pmode_target_sel:    dw 0x08  ; Селектор кода в GDT (gdt_code)
 
+<<<<<<< HEAD
 ; Global Descriptor Table
 align 4
 gdt_start:
@@ -110,6 +141,39 @@ gdt_end:
     gdt_descriptor:
         dw gdt_end - gdt_start - 1
         dd gdt_start
+=======
+
+; Временный GDT для загрузчика
+align 4
+
+; 0: Null дескриптор
+gdt_start:
+    dd 0x0, 0x0
+
+; (Ring 0) 1: Дескриптор кода (Смещение 0x08)
+gdt_code:
+    dw 0xFFFF     ; Лимит (Нижние 16 бит)
+    dw 0x0000     ; Адрес начала (Нижние 16 бит)
+    db 0x00       ; Адрес начала (Средние 8 бит)
+    db 10011010b  ; Access Byte
+    db 11001111b  ; Flags (4 бита) + Лимит (Старшие 4 бита)
+    db 0x00       ; Адрес начала (Старшие 8 бит)
+
+; (Ring 0) Дескриптор данных (Смещение 0x10)
+gdt_data:
+    dw 0xFFFF     ; Лимит (Нижние 16 бит)
+    dw 0x0000     ; Адрес начала (Нижние 16 бит)
+    db 0x00       ; Адрес начала (Средние 8 бит)
+    db 10010010b  ; Access Byte
+    db 11001111b  ; Flags (4 бита) + Лимит (Старшие 4 бита)
+    db 0x00       ; Адрес начала (Старшие 8 бит)
+    
+gdt_end:
+    ; Структура-указатель для LGDT
+    gdt_descriptor:
+        dw gdt_end - gdt_start - 1  ; Лимит (Размер GDT)
+        dd gdt_start                ; Адрес начала DGT
+>>>>>>> development
 
 
 ; > Точка входа в 32-битный режим
@@ -127,6 +191,7 @@ pmode_entry:
     mov ebp, 0x90000
     mov esp, ebp
 
+<<<<<<< HEAD
     ; Вывод 'DONE' напрямую в видеопамять (0xB8000) для проверки
     mov byte [0xB8000], 'D'
     mov byte [0xB8001], 0x0A
@@ -136,6 +201,15 @@ pmode_entry:
     mov byte [0xB8005], 0x0A
     mov byte [0xB8006], 'E'
     mov byte [0xB8007], 0x0A
+=======
+    ; Передача управления Rust-ядру
+    mov eax, KERNEL32_PHYS_ADDR
+    jmp eax
+
+    ; Вывод '!' 
+    mov byte [0xB8000], '!'
+    mov byte [0xB8001], 0x04
+>>>>>>> development
 
     ; Остановка CPU (Ещё нет ядра Rust)
     cli
@@ -152,4 +226,12 @@ str_choose_mode:
     db '  [2] 32-bit Protected Mode (Rust)', ENTER, 0
 
 msg_loading_16: db '[+] Loading 16-bit kernel.', ENTER, 0
+<<<<<<< HEAD
 msg_loading_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
+=======
+msg_loading_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
+
+; Переменные
+kernel16_filename: db 'KERNEL16BIN'
+kernel32_filename: db 'KERNEL32BIN'
+>>>>>>> development
