@@ -7,7 +7,11 @@ bits 16
 org 0x7C00
 
 ; Основные константы
+<<<<<<< HEAD
 %include 'config.asm'
+=======
+%include 'shared/config.asm'
+>>>>>>> development
 
 ; Настройка FAT12 (48 байт)
 jmp short start
@@ -20,7 +24,7 @@ bpb_reserved_sectors:    dw 1           ; Кол-во зарезервирова
 bpb_fat_count:           db 2           ; Кол-во FAT таблиц
 bpb_dir_entries:         dw 0x0E0       ; Кол-во записей в корневом каталоге
 bpb_total_sectors:       dw 2880        ; Кол-во секторов (2880 * 512 = 1.44 мб)
-bpb_media_type:          db 0x0F0       ; Тип диска (F0 - 3.5" floppy disk)
+bpb_media_type:          db 0xF0        ; Тип диска (F0 - 3.5" floppy disk)
 bpb_sectors_per_fat:     dw 9           ; Секторов на FAT таблицу
 bpb_sectors_per_track:   dw 18          ; Секторов на дорожку
 bpb_heads:               dw 2           ; Кол-во голов
@@ -37,6 +41,9 @@ ebr_system_id:    db 'FAT12   '         ; Тип файловой системы
 
 
 start:
+    ; Отключаем прерывания во время настройки
+    cli
+    
     ; Настройка сегментных регистров (Напрямую настроить нельзя)
     xor ax, ax
     mov ds, ax
@@ -49,7 +56,12 @@ start:
     ; Обновление номера диска (BIOS устанавливает его в dl)
     mov [ebr_drive_number], dl
 
+<<<<<<< HEAD
     ; Сброс сегмента кода `cs` дальним переходом
+=======
+    ; Сброс сегмента кода `cs` дальним переходом с включением прерываний
+    sti
+>>>>>>> development
     jmp 0:main
 
 
@@ -155,12 +167,26 @@ main:
     call disk_read
 
     ; Увеличиваем адрес смещения initrix на кол-во прочитанных байт
+<<<<<<< HEAD
     ; ❗️ NOTE: Initrix должен быть <=64 КБ, т.к. мы не обновляем сегмент ES
+=======
+>>>>>>> development
     xor ah, ah
     mov al, [bpb_sectors_per_cluster]
     mul word [bpb_bytes_per_sector]
     add bx, ax
+    jnc .load_initrix_continue
 
+<<<<<<< HEAD
+=======
+    ; Сдвигаем es на след. параграф (+64 КБ)
+    mov ax, es
+    add ax, 0x1000
+    mov es, ax
+    xor bx, bx
+
+.load_initrix_continue:
+>>>>>>> development
     ; Вычисление смещения след. кластера в таблице FAT
     ; (ax - индекс записи, dx - Cluster % 2)
     pop ax     ; *Восстанавливаем номер кластера

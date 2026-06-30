@@ -1,9 +1,9 @@
-; © Realix > Memory Map
-; (02.06.26) v0.05
+; © Realix > High memory (Memory Map)
+; (30.06.26) v0.07
 ; ================
 
 ; Основные константы
-%include 'config.asm'
+%include 'shared/config.asm'
 
 ; > Получение карты памяти через прерывание int 0x15 (E820)
 ; Параметры:
@@ -60,6 +60,10 @@ get_memory_map:
     or ecx, [es:di + 12]  ; Проверяем старшие 32 бита на 0
     jz .skipentry         ; Если 64-битная длина равна 0, пропустить запись
     inc bp                ; Получена хорошая запись, переход к следующему месту хранения
+
+    ; Динамическая защита от перезаписи загрузчика по адресу 0x7C00
+    cmp di, 0x6FE8
+    jae .done
     add di, 24
 
 .skipentry:
@@ -113,6 +117,87 @@ show_map_entries_cnt:
     pop si
     ret
 
+
+; > Получение общей длины всех отрезкой памяти по её карте
+; Параметры:
+;  - es:di: Указатель на карту памяти (`get_memory_map`)
+; Вывод:
+;  - ax: Число свободной памяти (МБ)
+get_free_memory:
+    push ebx
+    push ecx
+    push edx
+    push si
+
+    xor ebx, ebx
+    xor edx, edx
+
+    ; Читаем количество записей (Если 0 - Выходим)
+    mov cl, [es:di + 3]
+    xor ch, ch
+    jcxz .empty
+
+    ; Адрес первой записи E820
+    mov si, di
+    add si, 5
+
+.loop:
+    ; Проходим по свободным регионам памяти
+    cmp dword [es:si + 16], 1
+    jne .skip_entry
+
+    ; Прибавляем 64-битную длину региона к edx:ebx
+    add ebx, [es:si + 8]       ; Смещение +8: Младшие 32 бита длины
+    adc edx, [es:si + 12]      ; Смещение +12: Старшие 32 бита длины + флаг переноса
+
+.skip_entry:
+    ; Переход к следующей записи
+    add si, 24
+    loop .loop
+
+.empty:
+    ; Переводим байты (edx:ebx) в Мегабайты (Деление на 2 ** 20)
+    shrd ebx, edx, 20  ; Сдвигаем ebx на 20 бит, заполняя верх ebx из edx
+    shr edx, 20        ; Сдвигаем edx на 20 бит
+
+    ; Результат в ebx (МБ | До 64 ГБ)
+    mov ax, bx
+
+    pop si
+    pop edx
+    pop ecx
+    pop ebx
+    ret
+
+
+; > Вывод кол-ва свободной памяти в текстовом режиме
+; ❗️ Зависимости: kernel16/print.asm, kernel16/print_reg.asm
+show_free_memory:
+    push si
+    push ax
+    push es
+
+    ; Считаем и выводим кол-во свободной памяти
+    xor ax, ax
+    mov es, ax
+    mov di, PCINFO_ADDR
+    call get_free_memory
+    
+    ; NOTE: ax содержит нужное число после `call get_free_memory`
+    mov si, str_free_ram
+    call print
+    call print_reg
+    mov si, str_mb
+    call print
+
+.done:
+    pop ax
+    pop si
+    pop es
+    ret
+
 ; Строки
 str_memory_map: db 'Memory Map: ', 0
 str_entries:    db ' entries', 0
+str_free_ram:   db 'Free RAM: ', 0
+str_mb:         db ' MB', 0

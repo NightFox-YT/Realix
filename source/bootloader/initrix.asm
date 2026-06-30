@@ -1,23 +1,35 @@
 ; © Realix > Initrix (Stage 2 Bootloader)
 ; (14.06.26) v0.06
 ; ================
-; ❗️ Бинарный файл должен быть размером <=64 КБ (Ограничение из Bootix)
 
 ; Настройка компиляции
 bits 16
 org 0x0
 
 ; Основные константы
+<<<<<<< HEAD
 %include 'config.asm'
+=======
+%include 'shared/config.asm'
+>>>>>>> development
 
 main:
     ; Сохраняем номер диска, переданного из bootix
     mov [boot_drive_num], dl
+<<<<<<< HEAD
 
     ; Инициализация драйверов диска и FAT12
     call disk_init
     call fat12_init
 
+=======
+
+    ; Инициализация драйверов
+    call disk_init
+    call fat12_init
+    call net_init
+    
+>>>>>>> development
     mov si, msg_init
     call print
 
@@ -89,6 +101,7 @@ error_handler:
 
 ; Подключение модулей
 %include 'kernel16/io/print.asm'
+<<<<<<< HEAD
 %include 'kernel16/io/print_nl.asm'
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/shell/cmd_cls.asm'
@@ -109,9 +122,35 @@ err_get_lower_memory: db '[!] Get lower memory failed (int 12h)!', 0
 
 str_title:
     db '     Realix v0.06', ENTER,
+=======
+%include 'kernel16/io/print_ctrl.asm'
+%include 'kernel16/io/print_reg.asm'
+%include 'kernel16/shell/cmd_cls.asm'
+%include 'bios-api/disk/read.asm'
+%include 'bios-api/fat12/file_load.asm'
+%include 'bios-api/memory/high.asm'
+%include 'bios-api/memory/low.asm'
+%include 'bios-api/video/vga.asm'
+%include 'network/rtl8139.asm'
+%include 'bootloader/switcher.asm'
+
+; Сообщения и строки
+msg_init: db '[+] Initializing...', ENTER, 0
+
+err_get_memory_map:         db '[!] Get memory map failed (int 15h)!', 0
+err_get_lower_memory:       db '[!] Get lower memory failed (int 12h)!', 0
+err_network_card_not_found: db '[!] Network card Realtek RTL8139 not found!', 0
+
+str_title:
+    db '     Realix v0.07', ENTER,
+>>>>>>> development
     db '(C) NightFox developer', ENTER, ENTER, 0
 
 ; Данные о ПК и Kernel
 boot_drive_num:  db 0
+<<<<<<< HEAD
 low_memory_kb:   dw 0
 kernel_filename: db 'KERNEL  BIN'
+=======
+low_memory_kb:   dw 0
+>>>>>>> development
