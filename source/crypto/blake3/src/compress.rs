@@ -10,12 +10,3 @@
 // Thanks to the authors:
 // https://github.com/BLAKE3-team/BLAKE3-specs/blob/master/blake3.pdf
 
-#![cfg_attr(not(any(test, feature = "std")), no_std)]
-
-mod compress;
-
-#[repr(C)]
-pub struct Blake3 {
-}
-
-impl Blake3 {}

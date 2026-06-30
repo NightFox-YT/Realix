@@ -13,8 +13,9 @@ Introducing new cryptography features in Realix.
 
 ## Functions and their recommended versions
 
-* SHA-256 Implemented version of the function in cryptography format `0.1`. It's not yet stable and is still in development. It's not included in any OS version yet.
 * Entropy: RDRAND и RDSEED. Implemented version of the function in cryptography format `0.1`. OS version `0.7`.
+* SHA-256 Implemented version of the function in cryptography format `0.1`. It's not yet stable and is still in development. It's not included in any OS version yet.
+* blake3 Implemented version of the function in cryptography format `0.1`. It's not yet stable and is still in development. It's not included in any OS version yet.
 
 ## Cryptography Documentation:
 
