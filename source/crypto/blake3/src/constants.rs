@@ -17,13 +17,13 @@ pub(crate) const IV: [u32; 8] = [
 ];
 
 /// Flags for the compression function.
-pub(crate) const CHUNK_START: u32          = 1 << 0;
-pub(crate) const CHUNK_END: u32            = 1 << 1;
-pub(crate) const PARENT: u32               = 1 << 2;
-pub(crate) const ROOT: u32                 = 1 << 3;
-pub(crate) const KEYED_HASH: u32           = 1 << 4;
-pub(crate) const DERIVE_KEY_CONTEXT: u32   = 1 << 5;
-pub(crate) const DERIVE_KEY_MATERIAL: u32  = 1 << 6;
+pub(crate) const CHUNK_START: u32 = 1 << 0;
+pub(crate) const CHUNK_END: u32 = 1 << 1;
+pub(crate) const PARENT: u32 = 1 << 2;
+pub(crate) const ROOT: u32 = 1 << 3;
+pub(crate) const KEYED_HASH: u32 = 1 << 4;
+pub(crate) const DERIVE_KEY_CONTEXT: u32 = 1 << 5;
+pub(crate) const DERIVE_KEY_MATERIAL: u32 = 1 << 6;
 
 /// Sizes in bytes.
 pub(crate) const OUT_LEN: usize = 32;
