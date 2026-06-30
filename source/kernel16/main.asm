@@ -40,14 +40,13 @@ main:
 
 ; Подключение модулей
 %include 'kernel16/io/print.asm'
-%include 'kernel16/io/print_nl.asm'
+%include 'kernel16/io/print_ctrl.asm'
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/shell/cli.asm'
 %include 'kernel16/shell/commands.asm'
-%include 'bios-api/network/rtl8139.asm'
-%include 'bios-api/memory/get_free.asm'
-%include 'bios-api/memory/get_lower.asm'
-%include 'bios-api/memory/get_map.asm'
+%include 'drivers/network/rtl8139.asm'
+%include 'bios-api/memory/high.asm'
+%include 'bios-api/memory/low.asm'
 
 ; Сообщения и строки
 msg_start_kernel: db '[+] Starting kernel.', ENTER, 0

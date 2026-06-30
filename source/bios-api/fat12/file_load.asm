@@ -4,6 +4,9 @@
 ; ❗️ Зависимости: bios-api/disk/read.asm, error_handler (внешний обработчик)
 ; TODO: Сделать динамический буфер под таблицу FAT и Root_dir
 
+; ❗ Требуется инициализация FAT12 через `fat12_init`
+%include "bios-api/fat12/init.asm"
+
 ; > Загрузка файла с диска в память
 ; Параметры:
 ;  - ds:si: имя файла (11 символов)
@@ -217,9 +220,6 @@ file_load:
 bad_cluster_error:
     mov si, err_bad_cluster_found
     jmp error_handler
-
-; Подключение FAT12: Init модуля
-%include "bios-api/fat12/init.asm"
 
 ; Параметры файла
 filename:     dw 0

@@ -9,8 +9,9 @@ use core::ptr::addr_of;
 const IDT_SIZE: usize = 256;
 const IDT_GATE_32BIT_INT: u8 = 0x8E;
 
-#[repr(C, packed)]      // Структура сохраняет заданный порядок полей без выравнивания
-#[derive(Clone, Copy)]  // (Включаем возможность неявного копирования структуры)
+// Дескриптор с заданным порядком полей без выравнивания
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
 pub struct InterruptDescriptor {
     base_low: u16,
     selector: u16,

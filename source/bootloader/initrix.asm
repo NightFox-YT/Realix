@@ -1,7 +1,6 @@
 ; © Realix > Initrix (Stage 2 Bootloader)
 ; (14.06.26) v0.06
 ; ================
-; ❗️ Бинарный файл должен быть размером <=64 КБ (Ограничение из Bootix)
 
 ; Настройка компиляции
 bits 16
@@ -89,21 +88,19 @@ error_handler:
 
 ; Подключение модулей
 %include 'kernel16/io/print.asm'
-%include 'kernel16/io/print_nl.asm'
+%include 'kernel16/io/print_crtl.asm'
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/shell/cmd_cls.asm'
 %include 'bios-api/disk/read.asm'
 %include 'bios-api/fat12/file_load.asm'
-%include 'bios-api/memory/get_free.asm'
-%include 'bios-api/memory/get_lower.asm'
-%include 'bios-api/memory/get_map.asm'
-%include 'bios-api/drivers/sounds.asm'
-%include 'bios-api/drivers/vga.asm'
-%include 'bios-api/network/rtl8139.asm'
+%include 'bios-api/memory/high.asm'
+%include 'bios-api/memory/low.asm'
+%include 'bios-api/video/vga.asm'
+%include 'network/rtl8139.asm'
 %include 'bootloader/switcher.asm'
 
 ; Сообщения и строки
-msg_init:             db '[+] Initializing...', ENTER, 0
+msg_init: db '[+] Initializing...', ENTER, 0
 
 err_get_memory_map:         db '[!] Get memory map failed (int 15h)!', 0
 err_get_lower_memory:       db '[!] Get lower memory failed (int 12h)!', 0

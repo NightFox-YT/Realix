@@ -7,6 +7,7 @@ use core::mem::size_of;
 use core::ptr::addr_of;
 
 // Константы GDT
+// pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 const GDT_SIZE: usize = 5;
 
 // Коснтанты флагов Access Byte

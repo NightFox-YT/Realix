@@ -7,7 +7,7 @@
 %ifndef FAT12_INIT
 %define FAT12_INIT
 
-; > Инициализация параметров FAT12 (Вызывается 1 раз при подключении)
+; > Инициализация параметров FAT12 (Вызывается 1 раз)
 fat12_init:
     push ax
     push bx
@@ -37,12 +37,6 @@ fat12_init:
     mov [heads], ax
 
 .calculations:
-    ; Валидация BPB перед вычислениями
-    cmp word [bytes_per_sector], 0
-    je bpb_error
-    cmp word [dir_entries], 0
-    je bpb_error
-
     ; Вычисление LBA корневого каталога
     ; > LBA = sectors_per_fat * fats + reserved
     mov ax, [sectors_per_fat]
@@ -77,16 +71,6 @@ fat12_init:
     pop bx
     pop ax
     ret
-
-
-; > Ошибки
-bpb_error:
-    mov si, err_bpb_invalid
-    jmp error_handler
-
-
-; Сообщения
-err_bpb_invalid: db '[!] Read BPB params failed!', 0
 
 ; Параметры FAT12
 root_dir_lba:    dw 0
