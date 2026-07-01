@@ -82,7 +82,7 @@ pub fn read_line() -> [u8; INPUT_MAX] {
         match key {
             b'\n' => {
                 buffer[pos] = 0;
-                vga::print_char(b'\n', Color::LightGray);
+                vga::new_line();
                 return buffer;
             }
             b'\x08' => {

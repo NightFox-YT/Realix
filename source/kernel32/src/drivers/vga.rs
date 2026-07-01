@@ -1,5 +1,5 @@
 // © Realix > VGA
-// (26.06.26) v0.07
+// (01.07.26) v0.08
 // ================
 
 // Подключение модулей
@@ -89,7 +89,7 @@ fn scroll_up(lines_count: usize) {
 
     // Обновляем позицию курсора на `n` строк вверх
     let _row: usize = CURSOR_ROW.load(Relaxed);
-    CURSOR_ROW.store(_row.saturating_sub(lines_count), Relaxed);
+    CURSOR_ROW.store(if _row > lines_count { _row - lines_count } else { 0 }, Relaxed);
     update_cursor();
 }
 
@@ -111,7 +111,7 @@ fn update_cursor() {
 }
 
 
-// > Вывод символа на экран (с принципами TTY)
+// > Вывод символа на экран (по принципу TTY)
 pub fn print_char(char_byte: u8, color: Color) {
     match char_byte {
         b'\n' => {
@@ -143,7 +143,7 @@ pub fn print_char(char_byte: u8, color: Color) {
     update_cursor();
 }
 
-
+// > Вывод строки на экран (по принципу TTY)
 pub fn print_str(string: &str, color: Color) {
     for byte in string.bytes() {
         print_char(byte, color);
@@ -169,4 +169,40 @@ pub fn print_backspace() {
     }
 
     update_cursor();
+}
+
+// > Перевод строки
+pub fn new_line() {
+    print_char(b'\n', Color::White);
+}
+
+// > Перевод u32 числа в hex-строку вида 0xFCABC
+pub fn u32_to_hex(value: u32, buffer: &mut [u8; 10]) -> &str {
+    // Добавляем в буффер шестнацатеричный префикс
+    buffer[0] = b'0';
+    buffer[1] = b'x';
+
+    for i in 0..8 {
+        // Сдвигаем цифру на младший полубайт (Одна цифра - 4 бита)
+        let nibble: u8 = ((value >> ((7 - i) * 4)) & 0xF) as u8;
+
+        buffer[2 + i] = match nibble {
+            0..=9 => b'0' + nibble,     // Цифры
+            _ => b'A' + (nibble - 10),  // Буквы
+        };
+    }
+
+    // Буфер из ASCII-символов превращаем в строку
+    core::str::from_utf8(buffer).unwrap()
+}
+
+// > Вывод строки дампа регистра
+pub fn print_reg_line(reg_label: &str, value: u32) {
+    let mut buffer: [u8; 10] = [0u8; 10];
+
+    print_str("> ", Color::White);
+    print_str(reg_label, Color::LightGray);
+    print_str(" = ", Color::LightGray);
+    print_str(u32_to_hex(value, &mut buffer), Color::White);
+    new_line();
 }

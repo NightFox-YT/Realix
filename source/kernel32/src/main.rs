@@ -6,20 +6,23 @@
 
 // Импорт модулей
 use core::panic::PanicInfo;
+
 mod drivers;
+mod x86;
 mod shell;
-mod gdt;
-mod idt;
 
 // > Настройка окружения ядра
 #[link_section = ".text.entry"]
 #[no_mangle]
 pub fn _start() -> ! {
-    gdt::init();
-    idt::init();
+    x86::gdt::init();
+    x86::idt::init();
 
     drivers::vga::clear_screen();
     drivers::vga::print_str("Welcome, Realix (Protected Mode with Rust kernel)...\n", drivers::vga::Color::Cyan);
+
+    unsafe { x86::isr::isr_divide_by_zero() };
+
     shell::run();
     halt_loop();
 }

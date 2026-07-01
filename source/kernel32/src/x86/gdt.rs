@@ -7,7 +7,7 @@ use core::mem::size_of;
 use core::ptr::addr_of;
 
 // Константы GDT
-// pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
+pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 const GDT_SIZE: usize = 5;
 
 // Коснтанты флагов Access Byte
@@ -31,8 +31,9 @@ pub mod gran {
     pub const LONG_MODE:  u8 = 1 << 5; // Дескриптор для 64-битного режима (0 для 32-бит)
 }
 
-#[repr(C, packed)]      // Структура сохраняет заданный порядок полей без выравнивания
-#[derive(Clone, Copy)]  // (Включаем возможность неявного копирования структуры)
+// Дексриптор с заданным порядком полей (без выравнивания)
+#[repr(C, packed)]
+#[derive(Clone, Copy)]
 pub struct GdtDescriptor {
     limit_low:   u16,  // Нижние 16 бит
     base_low:    u16,  // Нижние 16 бит
@@ -52,8 +53,8 @@ impl GdtDescriptor {
         }
     }
 
-    // > Создание плоского дескриптора (Плоская модель памяти)
-    // Limit представляется 20 битами (нет такого типа данных, поэтому взято u32...)
+    // > Создание дескриптора (Плоская модель памяти)
+    // Limit представляется 20 битами (нет такого типа данных, поэтому взято u32)
     pub const fn new(base: u32, limit: u32, access_byte: u8, flags: u8) -> Self {
         Self {
             limit_low: (limit & 0x0000FFFF) as u16,

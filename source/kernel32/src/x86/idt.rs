@@ -4,6 +4,9 @@
 
 // Подключение функций
 use core::ptr::addr_of;
+use core::ptr::addr_of_mut;
+use crate::x86::gdt;
+use crate::x86::isr;
 
 // Константы
 const IDT_SIZE: usize = 256;
@@ -43,7 +46,7 @@ impl InterruptDescriptor {
 }
 
 // Структура-указатель для инструкции LIDT
-#[repr(C, packed)]  // Структура сохраняет заданный порядок полей без выравнивания
+#[repr(C, packed)]
 pub struct IdtPointer {
     limit: u16,
     base: u32,
@@ -54,7 +57,7 @@ static mut IDT: [InterruptDescriptor; IDT_SIZE] = [InterruptDescriptor::missing(
 
 // > Функция инициализации IDT
 pub fn init() {
-    // IDT[0].set_handler(divide_by_zero_handler as u32, 0x08, 0x8E);
+    unsafe { set_exception_handlers(&mut *addr_of_mut!(IDT)); }
     
     // Формируем указатель на IDT
     let idt_pointer: IdtPointer = IdtPointer {
@@ -70,4 +73,37 @@ pub fn init() {
             options(readonly, nostack, preserves_flags),
         );
     }
+}
+
+// > Регистрирует обработчики исключений CPU (вектора 0-19)
+fn set_exception_handlers(idt_addr: &mut [InterruptDescriptor; IDT_SIZE]) {
+    // > Макрос для установки прерывания
+    macro_rules! set {
+        ($vec:expr, $handler:expr) => {
+            idt_addr[$vec].set_handler($handler as u32, gdt::KERNEL_CODE_SELECTOR, IDT_GATE_32BIT_INT);
+        };
+    }
+
+    // Установка обработчиков прерываний
+    set!(0, isr::isr_divide_by_zero as *const ());
+    set!(1, isr::isr_debug as *const ());
+    set!(2, isr::isr_non_maskable_interrupt as *const ());
+    set!(3, isr::isr_breakpoint as *const ());
+    set!(4, isr::isr_overflow as *const ());
+    set!(5, isr::isr_bound_range_exceeded as *const ());
+    set!(6, isr::isr_invalid_opcode as *const ());
+    set!(7, isr::isr_device_not_available as *const ());
+    set!(8, isr::isr_double_fault as *const ());
+    set!(9, isr::isr_coprocessor_segment_overrun as *const ());
+    set!(10, isr::isr_invalid_tss as *const ());
+    set!(11, isr::isr_segment_not_present as *const ());
+    set!(12, isr::isr_stack_segment_fault as *const ());
+    set!(13, isr::isr_general_protection_fault as *const ());
+    set!(14, isr::isr_page_fault as *const ());
+    // ... (вектор 15 зарезервирован под Intel, обработчик не генерируется)
+    set!(16, isr::isr_x86_floating_point_exception as *const ());
+    set!(17, isr::isr_alignment_check as *const ());
+    set!(18, isr::isr_machine_check as *const ());
+    set!(19, isr::isr_simd_floating_point_exception as *const ());
+    // ... (Остальные обработчики)
 }
