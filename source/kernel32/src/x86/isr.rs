@@ -87,26 +87,16 @@ pub fn isr_handler(regs: &Registers) {
 
 // Объявляем ассемблерные метки публичными (имена совпадают с метками в global_asm!)
 unsafe extern "C" {
-    pub fn isr_divide_by_zero();
-    pub fn isr_debug();
-    pub fn isr_non_maskable_interrupt();
-    pub fn isr_breakpoint();
-    pub fn isr_overflow();
-    pub fn isr_bound_range_exceeded();
-    pub fn isr_invalid_opcode();
-    pub fn isr_device_not_available();
-    pub fn isr_double_fault();
-    pub fn isr_coprocessor_segment_overrun();
-    pub fn isr_invalid_tss();
-    pub fn isr_segment_not_present();
-    pub fn isr_stack_segment_fault();
-    pub fn isr_general_protection_fault();
-    pub fn isr_page_fault();
-    // ... (вектор 15 зарезервирован под Intel)
-    pub fn isr_x86_floating_point_exception();
-    pub fn isr_alignment_check();
-    pub fn isr_machine_check();
-    pub fn isr_simd_floating_point_exception();
+    pub fn exc_divide_by_zero();          pub fn exc_debug();
+    pub fn exc_non_maskable_interrupt();  pub fn exc_breakpoint();
+    pub fn exc_overflow();                pub fn exc_bound_range_exceeded();
+    pub fn exc_invalid_opcode();          pub fn exc_device_not_available();
+    pub fn exc_double_fault();            pub fn exc_coprocessor_segment_overrun();
+    pub fn exc_invalid_tss();             pub fn exc_segment_not_present();
+    pub fn exc_stack_segment_fault();     pub fn exc_general_protection_fault();
+    pub fn exc_page_fault();              pub fn exc_x86_floating_point_exception();
+    pub fn exc_alignment_check();         pub fn exc_machine_check();
+    pub fn exc_simd_floating_point_exception();
 }
 
 // "Заглушка" на ассемблере (GAS синтаксис)
@@ -115,45 +105,45 @@ global_asm!(
 .code32
 
 # > Макрос для исключений без error code (Пушим вместо него 0)
-.macro ISR_NOERRCODE num, name
-.global isr_\name
-isr_\name:
+.macro EXC_NOERRCODE num, name
+.global exc_\name
+exc_\name:
     push 0
     push \num
-    jmp isr_common_stub
+    jmp exc_common_stub
 .endm
 
 # > Макрос для исключений с error code
-.macro ISR_ERRCODE num, name
-.global isr_\name
-isr_\name:
+.macro EXC_ERRCODE num, name
+.global exc_\name
+exc_\name:
     push \num
-    jmp isr_common_stub
+    jmp exc_common_stub
 .endm
 
 # Объявляем создание функций по вышенаписанному макросу
-ISR_NOERRCODE 0,  divide_by_zero
-ISR_NOERRCODE 1,  debug
-ISR_NOERRCODE 2,  non_maskable_interrupt
-ISR_NOERRCODE 3,  breakpoint
-ISR_NOERRCODE 4,  overflow
-ISR_NOERRCODE 5,  bound_range_exceeded
-ISR_NOERRCODE 6,  invalid_opcode
-ISR_NOERRCODE 7,  device_not_available
-ISR_ERRCODE   8,  double_fault
-ISR_NOERRCODE 9,  coprocessor_segment_overrun
-ISR_ERRCODE   10, invalid_tss
-ISR_ERRCODE   11, segment_not_present
-ISR_ERRCODE   12, stack_segment_fault
-ISR_ERRCODE   13, general_protection_fault
-ISR_ERRCODE   14, page_fault
-ISR_NOERRCODE 16, x86_floating_point_exception
-ISR_ERRCODE   17, alignment_check
-ISR_NOERRCODE 18, machine_check
-ISR_NOERRCODE 19, simd_floating_point_exception
+EXC_NOERRCODE 0,  divide_by_zero
+EXC_NOERRCODE 1,  debug
+EXC_NOERRCODE 2,  non_maskable_interrupt
+EXC_NOERRCODE 3,  breakpoint
+EXC_NOERRCODE 4,  overflow
+EXC_NOERRCODE 5,  bound_range_exceeded
+EXC_NOERRCODE 6,  invalid_opcode
+EXC_NOERRCODE 7,  device_not_available
+EXC_ERRCODE   8,  double_fault
+EXC_NOERRCODE 9,  coprocessor_segment_overrun
+EXC_ERRCODE   10, invalid_tss
+EXC_ERRCODE   11, segment_not_present
+EXC_ERRCODE   12, stack_segment_fault
+EXC_ERRCODE   13, general_protection_fault
+EXC_ERRCODE   14, page_fault
+EXC_NOERRCODE 16, x86_floating_point_exception
+EXC_ERRCODE   17, alignment_check
+EXC_NOERRCODE 18, machine_check
+EXC_NOERRCODE 19, simd_floating_point_exception
 
-# > Общая точка входа для всех обработчиков
-isr_common_stub:
+# > Общая точка входа для всех исключений
+exc_common_stub:
     # Сохранение eax, ecx, edx, ebx, esp, ebp, esi, edi
     pusha
 

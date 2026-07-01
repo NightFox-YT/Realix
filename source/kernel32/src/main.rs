@@ -21,8 +21,6 @@ pub fn _start() -> ! {
     drivers::vga::clear_screen();
     drivers::vga::print_str("Welcome, Realix (Protected Mode with Rust kernel)...\n", drivers::vga::Color::Cyan);
 
-    unsafe { x86::isr::isr_divide_by_zero() };
-
     shell::run();
     halt_loop();
 }
