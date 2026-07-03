@@ -1,15 +1,22 @@
 // © Realix > Keyboard
-// (26.06.26) v0.07
+// (03.07.26) v0.08
 // ================
 
-// Подключение модулей
+// Подключение функций
 use core::arch::asm;
+use core::sync::atomic::{AtomicUsize, Ordering::{Acquire, Relaxed, Release}};
 use crate::drivers::vga::{self, Color};
 
 // Контанты
 const INPUT_MAX: usize = 64;
+const QUEUE_SIZE: usize = 32;
 
-// > Перевод scancode в ASCII
+// Кольцевой буфер
+static mut QUEUE: [u8; QUEUE_SIZE] = [0; QUEUE_SIZE];
+static HEAD: AtomicUsize = AtomicUsize::new(0);
+static TAIL: AtomicUsize = AtomicUsize::new(0);
+
+/// Перевод scancode в ASCII
 fn scancode_to_ascii(scancode: u8) -> Option<u8> {
     match scancode {
         // Буквы
@@ -43,42 +50,56 @@ fn scancode_to_ascii(scancode: u8) -> Option<u8> {
     }
 }
 
-// > Чтение клавиши
-pub unsafe fn read_key() -> u8 {
+/// Вызывается из irq_handler (`isr.rs``)
+pub fn on_scancode(scancode: u8) {
+    let head: usize = HEAD.load(Relaxed);
+    let next: usize = (head + 1) % QUEUE_SIZE;
+
+    // Проверка на переполнение
+    if next != TAIL.load(Acquire) {
+        unsafe { QUEUE[head] = scancode; }
+        HEAD.store(next, Release);
+    }
+}
+
+/// Вызывается из обычного кода
+fn queue_pop() -> Option<u8> {
+    let tail = TAIL.load(Relaxed);
+
+    // Проверка на пустоту
+    if tail == HEAD.load(Acquire) {
+        return None;
+    }
+    let value = unsafe { QUEUE[tail] };
+    TAIL.store((tail + 1) % QUEUE_SIZE, Release);
+    Some(value)
+}
+
+
+/// Чтение клавиши
+pub fn read_key() -> u8 {
     loop {
-        // Опрашиваем порт состояния 0x64
-        let status: u8;
-        asm!("in al, 0x64", out("al") status);
-
-        // Проверка наличия данных
-        if status & 1 != 0 {
-            // Игнорируем данные мыши (<0x20, до 5 бита)
-            if status & 0x20 != 0 {
-                let _trash: u8;
-                asm!("in al, 0x60", out("al") _trash);
-                continue;
-            }
-
-            let scancode: u8;
-            asm!("in al, 0x60", out("al") scancode);
-            
-            // Игнорируем отпускание клавиш (<0x80, до 7 бита)
+        if let Some(scancode) = queue_pop() {
+            // Игнорируем отпускание клавиш (бит 7 = 1)
             if scancode & 0x80 == 0 {
                 if let Some(ascii) = scancode_to_ascii(scancode) {
                     return ascii;
                 }
             }
+        } else {
+            // Очередь пуста
+            unsafe { asm!("sti; hlt"); }
         }
     }
 }
 
-// > Чтение строки
+/// Чтение строки
 pub fn read_line() -> [u8; INPUT_MAX] {
     let mut buffer: [u8; INPUT_MAX] = [0u8; INPUT_MAX];
     let mut pos: usize = 0;
 
     loop {
-        let key = unsafe { read_key() };
+        let key: u8 = read_key();
         match key {
             b'\n' => {
                 buffer[pos] = 0;

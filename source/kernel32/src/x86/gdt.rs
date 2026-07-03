@@ -1,10 +1,9 @@
 // © Realix > GDT
-// (25.06.26) v0.07
+// (01.07.26) v0.08
 // ================
 
 // Подключение функций
 use core::mem::size_of;
-use core::ptr::addr_of;
 
 // Константы GDT
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
@@ -14,91 +13,85 @@ const GDT_SIZE: usize = 6;
 // Коснтанты флагов Access Byte
 #[allow(dead_code)]
 pub mod access {
-    pub const PRESENT:          u8 = 1 << 7; // Состояние использования дескриптора
-    pub const RING0:            u8 = 0 << 5; // Кольцо 0 (Ядро)
-    pub const RING3:            u8 = 3 << 5; // Кольцо 3 (ПО)
-    pub const SYSTEM:           u8 = 1 << 4; // Обычный сегмент (не системный)
-    pub const EXECUTABLE:       u8 = 1 << 3; // Исполняемый (code)
-    pub const DIRECTION:        u8 = 1 << 2; // Направление (Обратное для стека)
-    pub const READ_WRITE_ABLE:  u8 = 1 << 1; // |-|
-    pub const ACCESSED:         u8 = 1 << 0; // Состояние использования процессором
-    pub const TSS_AVAILABLE_32: u8 = 0x09;   // Тип дескриптора для TSS
+    pub const PRESENT:           u8 = 1 << 7; // Флаг использования дескриптора
+    pub const RING0:             u8 = 0 << 5; // Кольцо 0 (Ядро)
+    pub const RING3:             u8 = 3 << 5; // Кольцо 3 (ПО)
+    pub const SYSTEM:            u8 = 1 << 4; // Обычный сегмент (не системный)
+    pub const EXECUTABLE:        u8 = 1 << 3; // Исполняемый (code)
+    pub const RESERVE_DIRECTION: u8 = 1 << 2; // Направление (Обратное для стека)
+    pub const READ_WRITE_ABLE:   u8 = 1 << 1; // |-|
+    pub const ACCESSED:          u8 = 1 << 0; // Флаг использования процессором
+    pub const TSS_AVAILABLE_32:  u8 = 0b1001; // Тип дескриптора для TSS
 }
 
 // Константы флагов Granularity
 #[allow(dead_code)]
-pub mod gran {
-    pub const GRAN_4K:    u8 = 1 << 7; // Максимальный лимит в 4KB
+pub mod granularity {
+    pub const GRAN_4K:    u8 = 1 << 7; // Увеличенный лимит (*4KB)
     pub const BIT32_MODE: u8 = 1 << 6; // Дескриптор для 32-битного защищённого режима
     pub const LONG_MODE:  u8 = 1 << 5; // Дескриптор для 64-битного режима (0 для 32-бит)
 }
 
-// Дексриптор с заданным порядком полей (без выравнивания)
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 pub struct GdtDescriptor {
-    limit_low:   u16,  // Нижние 16 бит
-    base_low:    u16,  // Нижние 16 бит
-    base_mid:    u8,   // Средние 8 бит
-    access_byte: u8,   // |-|
-    gran:        u8,   // Флаги (4 бита) + Лимит (Старшие 4 бита)
-    base_high:   u8,   // Старшие 8 бат
+    limit_low:   u16,
+    base_low:    u16,
+    base_mid:    u8,
+    access_byte: u8,
+    granularity: u8,  // Флаги (4 бита) + Лимит (Старшие 4 бита)
+    base_high:   u8, 
 }
 
 impl GdtDescriptor {
-    // Обязательный Null дексриптор (Создаётся во время компиляции)
+    /// Обязательный Null дексриптор
     pub const fn null() -> Self {
         Self {
             limit_low: 0, base_low: 0,
             base_mid: 0, access_byte: 0,
-            gran: 0, base_high: 0,
+            granularity: 0, base_high: 0,
         }
     }
 
-    // > Создание дескриптора (Плоская модель памяти)
-    // Limit представляется 20 битами (нет такого типа данных, поэтому взято u32)
+    /// Создание дескриптора по плоской модели памяти
+    /// (Limit представляется 20 битами, т.к. нет такого типа данных, взято u32)
     pub const fn new(base: u32, limit: u32, access_byte: u8, flags: u8) -> Self {
         Self {
             limit_low: (limit & 0x0000FFFF) as u16,
             base_low:  (base  & 0x0000FFFF) as u16,
 
-            // Сдвигаем вправо, берём только верхние 8 бит из нижних 16 бит
+            // Сдвигаем вправо до 16 верхних бит, берём только нижние 8 бит
             base_mid:  ((base >> 16) & 0xFF) as u8,
             access_byte,
 
-            // Берём флаги (верхние 4 бита) и лимит (верхние 4 бита из 20)
-            gran: (flags & 0xF0) | (((limit >> 16) & 0x0F) as u8),
+            // Берём флаги (верхние 4 бита) + Лимит (верхние 4 бита из 20)
+            granularity: (flags & 0xF0) | (((limit >> 16) & 0x0F) as u8),
             base_high: ((base >> 24) & 0xFF) as u8,
         }
     }
 }
 
 // Структура-указатель для инструкции LGDT
-// (Сохраняет заданный порядок полей без выравнивания)
 #[repr(C, packed)]
 struct GdtPointer {
-    limit: u16,   // Размер GDT (байт)
-    base:  u32,   // Линейный адрес GDT
+    limit: u16,  // Размер GDT (байт)
+    base:  u32,  // Линейный адрес GDT
 }
 
-// TSS структура с заданными полями
 #[repr(C, packed)]
 pub struct TaskStateSegment {
     prev_tss: u32,
+
     // Стек и селектор стека Ring0, Ring1, Ring2
     // (Используется при прерывании из User Code)
     esp0: u32, ss0: u32,
     esp1: u32, ss1: u32,
     esp2: u32, ss2: u32,
-    cr3: u32,
-    eip: u32,
-    eflags: u32,
-    eax: u32, ecx: u32,
-    edx: u32, ebx: u32,
-    esp: u32, ebp: u32,
-    esi: u32, edi: u32,
-    es: u32, cs: u32,
-    ss: u32, ds: u32,
+
+    cr3: u32, eip: u32, eflags: u32,
+    eax: u32, ecx: u32, edx: u32, ebx: u32,
+    esp: u32, ebp: u32, esi: u32, edi: u32,
+    es: u32,  cs: u32,  ss: u32,  ds: u32,
     fs: u32, gs: u32,
     ldt: u32,
     trap: u16,
@@ -106,6 +99,7 @@ pub struct TaskStateSegment {
 }
 
 impl TaskStateSegment {
+    /// Создание пустого TSS
     pub const fn new() -> Self {
         TaskStateSegment {
             prev_tss: 0, esp0: 0, ss0: 0, esp1: 0, ss1: 0,
@@ -117,18 +111,18 @@ impl TaskStateSegment {
         }
     }
 
-    // > Обновление стека ядра (вызывать при переключении процессов)
+    /// Обновление стека ядра (Вызывать при переключении процессов)
     pub fn set_kernel_stack(&mut self, stack_top: u32) {
         self.esp0 = stack_top;
     }
 }
 
-// > "Перезагрузка" GDT
+/// "Перезагрузка" GDT
 #[no_mangle]
-unsafe fn gdt_flush(ptr: *const GdtPointer) {
+unsafe fn gdt_flush(gdt_pointer: *const GdtPointer) {
     core::arch::asm!(
         // Загружаем указатель на GDT
-        "lgdt [{ptr}]",
+        "lgdt [{pointer}]",
 
         // Перезаписываем сегментные регистры данных на селектор Kernel Data
         "mov {ax:x}, 0x10",
@@ -144,7 +138,7 @@ unsafe fn gdt_flush(ptr: *const GdtPointer) {
         "push {tmp}",
         "retf",
         "2:",
-        ptr = in(reg) ptr,
+        pointer = in(reg) gdt_pointer,
         ax  = out(reg) _,
         tmp = out(reg) _,
         options(nostack, preserves_flags),
@@ -152,33 +146,30 @@ unsafe fn gdt_flush(ptr: *const GdtPointer) {
 }
 
 // > "Перезагрузка" TSS
-pub fn tss_flush(selector: u16) {
-    unsafe {
-        core::arch::asm!(
-            "ltr {sel:x}",
-            sel = in(reg) selector,
-            options(nostack, preserves_flags),
-        );
-    }
+unsafe fn tss_flush(tss_selector: u16) {
+    core::arch::asm!(
+        "ltr {sel:x}",
+        sel = in(reg) tss_selector,
+        options(nostack, preserves_flags),
+    );
 }
 
 // > Инициализация GDT
 pub fn init() {
     use access::*;
-    use gran::*;
+    use granularity::*;
 
     unsafe {
+        // Настройка TSS с "заглушкой" до нормального аллокатора
         TSS.ss0 = KERNEL_DATA_SELECTOR as u32;
-
-        // "Заглушка" до нормального аллокатора
-        TSS.set_kernel_stack(0x00090000);
+        TSS.set_kernel_stack(0x90000);
 
         // Null Descriptor (обязателен по спецификации x86)
         GDT[0] = GdtDescriptor::null();
 
         // (Ring 0) Kernel Code
         GDT[1] = GdtDescriptor::new(
-            0x00000000,
+            0x0,
             0x000FFFFF,
             PRESENT | RING0 | SYSTEM | EXECUTABLE | READ_WRITE_ABLE,
             GRAN_4K | BIT32_MODE,
@@ -186,7 +177,7 @@ pub fn init() {
 
         // (Ring 0) Kernel Data
         GDT[2] = GdtDescriptor::new(
-            0x00000000,
+            0x0,
             0x000FFFFF,
             PRESENT | RING0 | SYSTEM | READ_WRITE_ABLE,
             GRAN_4K | BIT32_MODE,
@@ -194,7 +185,7 @@ pub fn init() {
 
         // (Ring3) User Code
         GDT[3] = GdtDescriptor::new(
-            0x00000000,
+            0x0,
             0x000FFFFF,
             PRESENT | RING3 | SYSTEM | EXECUTABLE | READ_WRITE_ABLE,
             GRAN_4K | BIT32_MODE,
@@ -202,7 +193,7 @@ pub fn init() {
 
         // (Ring3) User Data
         GDT[4] = GdtDescriptor::new(
-            0x00000000,
+            0x0,
             0x000FFFFF,
             PRESENT | RING3 | SYSTEM | READ_WRITE_ABLE,
             GRAN_4K | BIT32_MODE,
@@ -210,7 +201,7 @@ pub fn init() {
 
         // (TSS)
         GDT[5] = GdtDescriptor::new(
-            addr_of!(TSS) as u32,
+            &raw const TSS as u32,
             (size_of::<TaskStateSegment>() - 1) as u32,
             PRESENT | RING0 | TSS_AVAILABLE_32,
             0,
@@ -218,7 +209,7 @@ pub fn init() {
 
         // Заполняем указатель GDT
         GDT_POINTER.limit = (size_of::<[GdtDescriptor; GDT_SIZE]>() - 1) as u16;
-        GDT_POINTER.base = addr_of!(GDT) as u32;
+        GDT_POINTER.base = &raw const GDT as u32;
 
         // Загружаем GDT и TSS
         gdt_flush(&raw const GDT_POINTER);

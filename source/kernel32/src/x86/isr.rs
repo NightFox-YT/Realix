@@ -1,23 +1,25 @@
 // © Realix > ISR (Int service routine)
-// (01.07.26) v0.08
+// (03.07.26) v0.08
 // ================
 
 // Подключение функций
 use core::arch::global_asm;
-use crate::drivers::vga;
+use crate::drivers::vga::{self, Color};
+use crate::drivers::{keyboard, pit};
+use crate::x86::pic;
 
-// Структура, в которой хранится информация с "заглушки" на ассемблере
-// (Обратный порядок push в ассемблерной заглушке)
+// Структура, хранящая информацию с "заглушки" на ассемблере
+// (Обратный порядок push)
 #[repr(C)]
 pub struct Registers {
-    pub ds: u32,
+    pub ds:  u32,
     pub edi: u32,
     pub esi: u32,
     pub ebp: u32,
-    pub esp: u32, // *Не используется (Указатель до push ds)
+    pub esp: u32,  // *Не используется (Указатель во время pusha)
+    pub ebx: u32,
     pub edx: u32,
     pub ecx: u32,
-    pub ebx: u32,
     pub eax: u32,
     pub int_num: u32,
     pub err_code: u32,
@@ -50,22 +52,22 @@ const EXCEPTION_NAMES: [&str; 20] = [
     "SIMD Floating-Point Exception",
 ];
 
-// Общий обработчик для векторов прерываний 0-19
+/// Общий обработчик для векторов прерываний 0-19
 #[no_mangle]
-pub fn isr_handler(regs: &Registers) {
+pub fn exc_handler(regs: &Registers) {
     let name: &str = if (regs.int_num as usize) < EXCEPTION_NAMES.len() {
         EXCEPTION_NAMES[regs.int_num as usize]
     } else {
         "Unknown"
     };
 
-    vga::print_str("[KERNEL PANIC] Realix got exception: ", vga::Color::Red);
-    vga::print_str(name, vga::Color::Red);
+    vga::print_line("[KERNEL PANIC] Realix got exception: ", Color::Red);
+    vga::print_line(name, Color::Red);
 
     vga::new_line();
     vga::new_line();
 
-    vga::print_str("! Registers:\n", vga::Color::Red);
+    vga::print_line("! Registers:\n", Color::Red);
     vga::print_reg_line("EAX", regs.eax);
     vga::print_reg_line("EBX", regs.ebx);
     vga::print_reg_line("ECX", regs.ecx);
@@ -81,8 +83,19 @@ pub fn isr_handler(regs: &Registers) {
     vga::print_reg_line("ERR_CODE", regs.err_code);
     
     vga::new_line();
-    vga::print_str("! System halted. Please reboot the machine.", vga::Color::Red);
+    vga::print_line("! System halted. Please reboot the machine.", Color::Red);
     panic!();
+}
+
+#[no_mangle]
+pub fn irq_handler(regs: &Registers) {
+    match regs.int_num {
+        0 => { pit::tick(); }
+        1 => { keyboard::on_scancode(crate::inb(0x60)); }
+        _ => {}
+    }
+
+    pic::send_eoi(regs.int_num as u8);
 }
 
 // Объявляем ассемблерные метки публичными (имена совпадают с метками в global_asm!)
@@ -97,6 +110,15 @@ unsafe extern "C" {
     pub fn exc_page_fault();              pub fn exc_x86_floating_point_exception();
     pub fn exc_alignment_check();         pub fn exc_machine_check();
     pub fn exc_simd_floating_point_exception();
+
+    pub fn irq_stub_0();                  pub fn irq_stub_1();
+    pub fn irq_stub_2();                  pub fn irq_stub_3();
+    pub fn irq_stub_4();                  pub fn irq_stub_5();
+    pub fn irq_stub_6();                  pub fn irq_stub_7();
+    pub fn irq_stub_8();                  pub fn irq_stub_9();
+    pub fn irq_stub_10();                 pub fn irq_stub_11();
+    pub fn irq_stub_12();                 pub fn irq_stub_13();
+    pub fn irq_stub_14();                 pub fn irq_stub_15();
 }
 
 // "Заглушка" на ассемблере (GAS синтаксис)
@@ -121,6 +143,15 @@ exc_\name:
     jmp exc_common_stub
 .endm
 
+# > Макрос для IRQ-прерываний (Пушим вместо error_code 0)
+.macro IRQ_STUB num
+.global irq_stub_\num
+irq_stub_\num:
+    push 0
+    push \num
+    jmp irq_common_stub
+.endm
+
 # Объявляем создание функций по вышенаписанному макросу
 EXC_NOERRCODE 0,  divide_by_zero
 EXC_NOERRCODE 1,  debug
@@ -142,6 +173,23 @@ EXC_ERRCODE   17, alignment_check
 EXC_NOERRCODE 18, machine_check
 EXC_NOERRCODE 19, simd_floating_point_exception
 
+IRQ_STUB 0
+IRQ_STUB 1
+IRQ_STUB 2
+IRQ_STUB 3
+IRQ_STUB 4
+IRQ_STUB 5
+IRQ_STUB 6
+IRQ_STUB 7
+IRQ_STUB 8
+IRQ_STUB 9
+IRQ_STUB 10
+IRQ_STUB 11
+IRQ_STUB 12
+IRQ_STUB 13
+IRQ_STUB 14
+IRQ_STUB 15
+
 # > Общая точка входа для всех исключений
 exc_common_stub:
     # Сохранение eax, ecx, edx, ebx, esp, ebp, esi, edi
@@ -161,7 +209,7 @@ exc_common_stub:
 
     # Передача указателя на Registers первым аргументом
     push esp
-    call isr_handler
+    call exc_handler
     add esp, 4
 
     # Восстанавливаем старый сегмент данных
@@ -176,6 +224,42 @@ exc_common_stub:
 
     # Удаление err_code и int_num из стека
     add esp, 8
-    iret
+    iretd
+
+# > Общая точка входа для IRQ-прерываний (Аналог exc_common_stub)
+irq_common_stub:
+    # Сохранение eax, ecx, edx, ebx, esp, ebp, esi, edi
+    pusha
+
+    # Сохранение текущего сегмента данных (ds)
+    xor eax, eax
+    mov ax, ds
+    push eax
+
+    # Передача номера Kernel data selector
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    # Передача указателя на Registers первым аргументом
+    push esp
+    call irq_handler
+    add esp, 4
+
+    # Восстанавливаем старый сегмент данных
+    pop eax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    # Восстановление eax, ecx, edx, ebx, esp, ebp, esi, edi
+    popa
+
+    # Удаление err_code и int_num из стека
+    add esp, 8
+    iretd
     "#
 );

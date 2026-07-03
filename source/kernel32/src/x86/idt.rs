@@ -1,42 +1,37 @@
 // © Realix > IDT
-// (25.06.26) v0.07
+// (03.07.26) v0.08
 // ================
 
 // Подключение функций
-use core::ptr::addr_of;
 use core::ptr::addr_of_mut;
 use core::mem::size_of;
-use crate::x86::gdt;
-use crate::x86::isr;
+use crate::x86::{gdt, isr, pic};
 
 // Константы
 const IDT_SIZE: usize = 256;
-const IDT_GATE_32BIT_INT: u8 = 0x8E;
+const IDT_GATE_32BIT: u8 = 0x8E;
 
-// Дескриптор с заданным порядком полей без выравнивания
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 pub struct InterruptDescriptor {
-    base_low: u16,
-    selector: u16,
-    reserved: u8,
-    flags: u8,
+    base_low:  u16,
+    selector:  u16,
+    reserved:  u8,
+    flags:     u8,
     base_high: u16,
 }
 
 impl InterruptDescriptor {
-    // > Обработчик прерывания отсутствует
+    /// Обработчик прерывания отсутствует
     pub const fn missing() -> Self {
         InterruptDescriptor {
-            base_low: 0,
-            selector: 0,
-            reserved: 0,
-            flags: 0,
+            base_low: 0, selector: 0,
+            reserved: 0, flags: 0,
             base_high: 0,
         }
     }
 
-    // > Установка обработчика для дескриптора прерывания
+    /// Установка обработчика для дескриптора прерывания
     pub fn set_handler(&mut self, handler_addr: u32, selector: u16, flags: u8) {
         self.base_low = (handler_addr & 0xFFFF) as u16;
         self.selector = selector;
@@ -56,36 +51,39 @@ pub struct IdtPointer {
 // Занимаем место в памяти для IDT
 static mut IDT: [InterruptDescriptor; IDT_SIZE] = [InterruptDescriptor::missing(); IDT_SIZE];
 
-// > Функция инициализации IDT
+/// Функция инициализации IDT
 pub fn init() {
-    unsafe { set_exception_handlers(&mut *addr_of_mut!(IDT)); }
+    unsafe { set_handlers(&mut *addr_of_mut!(IDT)); }
+    pic::remap();
     
     // Формируем указатель на IDT
     let idt_pointer: IdtPointer = IdtPointer {
         limit: (size_of::<[InterruptDescriptor; 256]>() - 1) as u16,
-        base: addr_of!(IDT) as u32,
+        base: &raw const IDT as u32,
     };
 
     // Загружаем таблицу в процессор
     unsafe {
         core::arch::asm!(
             "lidt [{}]", 
-            in(reg) &idt_pointer, 
+            in(reg) &raw const idt_pointer, 
             options(readonly, nostack, preserves_flags),
         );
     }
 }
 
-// > Регистрирует обработчики исключений CPU (вектора 0-19)
-fn set_exception_handlers(idt_addr: &mut [InterruptDescriptor; IDT_SIZE]) {
-    // > Макрос для установки прерывания
+/// Регистрирует обработчиков прерываний CPU
+fn set_handlers(idt_addr: &mut [InterruptDescriptor; IDT_SIZE]) {
+    // Макрос для установки прерывания
     macro_rules! set {
         ($vec:expr, $handler:expr) => {
-            idt_addr[$vec].set_handler($handler as u32, gdt::KERNEL_CODE_SELECTOR, IDT_GATE_32BIT_INT);
+            idt_addr[$vec].set_handler(
+                $handler as u32, gdt::KERNEL_CODE_SELECTOR, IDT_GATE_32BIT
+            );
         };
     }
 
-    // Установка обработчиков прерываний
+    // Установка обработчиков исключений
     set!(0, isr::exc_divide_by_zero as *const ());
     set!(1, isr::exc_debug as *const ());
     set!(2, isr::exc_non_maskable_interrupt as *const ());
@@ -106,5 +104,31 @@ fn set_exception_handlers(idt_addr: &mut [InterruptDescriptor; IDT_SIZE]) {
     set!(17, isr::exc_alignment_check as *const ());
     set!(18, isr::exc_machine_check as *const ());
     set!(19, isr::exc_simd_floating_point_exception as *const ());
+
+    // Установка обработчиков IRQ (Не все пока обрабатываются)
+    set!(32, isr::irq_stub_0 as *const ());  // PIT (Programmable Interval Timer)
+    set!(33, isr::irq_stub_1 as *const ());
+    set!(34, isr::irq_stub_2 as *const ());
+    set!(35, isr::irq_stub_3 as *const ());
+    set!(36, isr::irq_stub_4 as *const ());
+    set!(37, isr::irq_stub_5 as *const ());
+    set!(38, isr::irq_stub_6 as *const ());
+    set!(39, isr::irq_stub_7 as *const ());
+    set!(40, isr::irq_stub_8 as *const ());
+    set!(41, isr::irq_stub_9 as *const ());
+    set!(42, isr::irq_stub_10 as *const ());
+    set!(43, isr::irq_stub_11 as *const ());
+    set!(44, isr::irq_stub_12 as *const ());
+    set!(45, isr::irq_stub_13 as *const ());
+    set!(46, isr::irq_stub_14 as *const ());
+    set!(47, isr::irq_stub_15 as *const ());
     // ... (Остальные обработчики)
+}
+
+pub fn interrupts_enable() {
+    unsafe { core::arch::asm!("sti", options(nostack, preserves_flags)); }
+}
+
+pub fn interrupts_disable() {
+    unsafe { core::arch::asm!("cli", options(nostack, preserves_flags)); }
 }
