@@ -1,5 +1,6 @@
 // © Realix > Shell
 // (03.07.26) v0.08
+// ø Вдохновлено @liquifield
 // ================
 
 // Импорт функций
@@ -7,6 +8,7 @@ use core::arch::asm;
 use crate::drivers::vga::{self, Color};
 use crate::drivers::{pit, keyboard};
 use crate::utils;
+use crate::commands::matrix;
 
 // Константы
 const PROMPT: &str = "Realix >> ";
@@ -37,6 +39,8 @@ fn execute(input: &str) {
             vga::print_line("> clear    - Clear screen\n", Color::LightGray);
             vga::print_line("> echo [t] - Print text to console\n", Color::LightGray);
             vga::print_line("> uptime   - Show uptime (seconds)\n", Color::LightGray);
+            vga::print_line("  [Fun]\n", Color::Cyan);
+            vga::print_line("> matrix   - Show matrix rain\n", Color::LightGray);
             vga::print_line("  [Power]\n", Color::Cyan);
             vga::print_line("> reboot   - Reboot PC\n", Color::LightGray);
             vga::print_line("> shutdown - Power off PC\n", Color::LightGray);
@@ -91,6 +95,10 @@ fn execute(input: &str) {
                 utils::u32_to_dec_str(pit::get_uptime(), &mut str_buffer),
                 Color::LightGray);
             vga::new_line();
+        }
+        "matrix" => {
+            vga::print_line("Entering Matrix... (Press any key to exit)\n", Color::Green);
+            matrix::run();
         }
         "" => {}
         _ => {

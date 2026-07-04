@@ -1,4 +1,5 @@
 ; © Realix > Calculator Command
+; ø Вдохновлено @nyxmalware
 ; (23.06.26) v0.07
 ; ================
 ; ❗️ Зависимости: kernel16/io/print (Модуль), kernel16/shell/commands.asm

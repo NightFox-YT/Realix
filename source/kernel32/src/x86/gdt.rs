@@ -110,11 +110,6 @@ impl TaskStateSegment {
             iomap_base: size_of::<TaskStateSegment>() as u16,
         }
     }
-
-    /// Обновление стека ядра (Вызывать при переключении процессов)
-    pub fn set_kernel_stack(&mut self, stack_top: u32) {
-        self.esp0 = stack_top;
-    }
 }
 
 /// "Перезагрузка" GDT
@@ -162,7 +157,7 @@ pub fn init() {
     unsafe {
         // Настройка TSS с "заглушкой" до нормального аллокатора
         TSS.ss0 = KERNEL_DATA_SELECTOR as u32;
-        TSS.set_kernel_stack(0x90000);
+        TSS.esp0 = 0x90000;
 
         // Null Descriptor (обязателен по спецификации x86)
         GDT[0] = GdtDescriptor::null();

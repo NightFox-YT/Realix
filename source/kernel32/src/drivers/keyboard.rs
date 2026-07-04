@@ -17,7 +17,7 @@ static HEAD: AtomicUsize = AtomicUsize::new(0);
 static TAIL: AtomicUsize = AtomicUsize::new(0);
 
 /// Перевод scancode в ASCII
-fn scancode_to_ascii(scancode: u8) -> Option<u8> {
+pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
     match scancode {
         // Буквы
         0x10 => Some(b'q'), 0x11 => Some(b'w'), 0x12 => Some(b'e'),
@@ -63,7 +63,7 @@ pub fn on_scancode(scancode: u8) {
 }
 
 /// Вызывается из обычного кода
-fn queue_pop() -> Option<u8> {
+pub fn queue_pop() -> Option<u8> {
     let tail = TAIL.load(Relaxed);
 
     // Проверка на пустоту

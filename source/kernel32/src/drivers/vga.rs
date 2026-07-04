@@ -1,5 +1,6 @@
 // © Realix > VGA
 // (01.07.26) v0.08
+// ø Вдохновлено @liquifield
 // ================
 
 // Подключение функций
@@ -144,6 +145,20 @@ pub fn print_char(char_byte: u8, color: Color) {
     }
 
     update_cursor();
+}
+
+/// Вывод символа в определённой позиции
+pub fn write_char_at(row: usize, col: usize, char_byte: u8, color: Color) {
+    // За границу экрана мы не пишем
+    if row >= VGA_HEIGHT || col >= VGA_WIDTH {
+        return;
+    }
+
+    let offset: usize = (row * VGA_WIDTH + col) * 2;
+    unsafe {
+        VGA_BUFFER.add(offset).write_volatile(char_byte);
+        VGA_BUFFER.add(offset + 1).write_volatile(color as u8);
+    }
 }
 
 /// Вывод строки на экран (по принципам TTY)

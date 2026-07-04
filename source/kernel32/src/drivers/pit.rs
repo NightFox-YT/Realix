@@ -3,7 +3,7 @@
 // ================
 
 // Подключение функций
-use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering::Relaxed};
 use crate::outb;
 
 // Порты PIT и базовая частота генератора PIT (Гц)
@@ -18,13 +18,13 @@ const PIT_COMMAND_BYTE: u8 = 0b00110100;
 
 // Счётчик тиков с момента загрузки и установленная частота
 static TICKS: AtomicUsize = AtomicUsize::new(0);
-static FREQUENCY: AtomicUsize = AtomicUsize::new(0);
+static FREQUENCY: AtomicU32 = AtomicU32::new(0);
 
 /// Инициализация PIT на заданную частоту (Гц)
 pub fn init(frequency: u32) {
     // Во сколько раз замедлить базовую частоту генератора
     let divisor: u32 = BASE_FREQUENCY / frequency;
-    FREQUENCY.store(frequency as usize, Relaxed);
+    FREQUENCY.store(frequency, Relaxed);
 
     // Отправляем команду выбора режима
     outb(PIT_COMMAND, PIT_COMMAND_BYTE);
@@ -47,12 +47,12 @@ pub fn get_ticks() -> u32 {
 
 /// Возвращает uptime (сек.)
 pub fn get_uptime() -> u32 {
-    (TICKS.load(Relaxed) / FREQUENCY.load(Relaxed)) as u32
+    TICKS.load(Relaxed) as u32 / FREQUENCY.load(Relaxed)
 }
 
 /// Ждать `ms` миллисекунд
 pub fn sleep(ms: u32) {
-    let target: u32 = get_ticks() + (ms * (FREQUENCY.load(Relaxed) / 1000) as u32);
+    let target: u32 = get_ticks() + ((ms * FREQUENCY.load(Relaxed)) / 1000);
 
     // Ожидаем, когда кол-во тиков достигнет нужное значение
     while get_ticks() < target {

@@ -51,5 +51,5 @@ main:
 ; Сообщения и строки
 msg_start_kernel: db '[+] Starting kernel.', ENTER, 0
 msg_enter_os:     db 'Press any key to continue.', 0
-cli_title:        db 'Welcome, Realix (Real Mode with NASM kernel)...', ENTER, 0
+cli_title:        db 'Welcome to Realix (Real Mode with NASM kernel)...', ENTER, 0
 cli_hint:         db 'Type "help" for list of commands.', ENTER, ENTER, 0

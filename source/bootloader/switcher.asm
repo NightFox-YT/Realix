@@ -150,6 +150,7 @@ pmode_entry:
     mov esp, ebp
 
     ; Передача управления Rust-ядру
+    mov ebx, PCINFO_ADDR
     mov eax, KERNEL32_PHYS_ADDR
     jmp eax
 
