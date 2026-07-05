@@ -48,7 +48,7 @@ pub struct IdtPointer {
     base: u32,
 }
 
-// Занимаем место в памяти для IDT
+// Занимаем место в памяти для IDT (! Инициализировать 1 раз)
 static mut IDT: [InterruptDescriptor; IDT_SIZE] = [InterruptDescriptor::missing(); IDT_SIZE];
 
 /// Функция инициализации IDT
@@ -58,7 +58,7 @@ pub fn init() {
     
     // Формируем указатель на IDT
     let idt_pointer: IdtPointer = IdtPointer {
-        limit: (size_of::<[InterruptDescriptor; 256]>() - 1) as u16,
+        limit: (size_of::<[InterruptDescriptor; IDT_SIZE]>() - 1) as u16,
         base: &raw const IDT as u32,
     };
 
@@ -106,22 +106,22 @@ fn set_handlers(idt_addr: &mut [InterruptDescriptor; IDT_SIZE]) {
     set!(19, isr::exc_simd_floating_point_exception as *const ());
 
     // Установка обработчиков IRQ (Не все пока обрабатываются)
-    set!(32, isr::irq_stub_0 as *const ());  // PIT (Programmable Interval Timer)
-    set!(33, isr::irq_stub_1 as *const ());
-    set!(34, isr::irq_stub_2 as *const ());
-    set!(35, isr::irq_stub_3 as *const ());
-    set!(36, isr::irq_stub_4 as *const ());
-    set!(37, isr::irq_stub_5 as *const ());
-    set!(38, isr::irq_stub_6 as *const ());
-    set!(39, isr::irq_stub_7 as *const ());
-    set!(40, isr::irq_stub_8 as *const ());
-    set!(41, isr::irq_stub_9 as *const ());
-    set!(42, isr::irq_stub_10 as *const ());
-    set!(43, isr::irq_stub_11 as *const ());
-    set!(44, isr::irq_stub_12 as *const ());
-    set!(45, isr::irq_stub_13 as *const ());
-    set!(46, isr::irq_stub_14 as *const ());
-    set!(47, isr::irq_stub_15 as *const ());
+    set!(32, isr::irq_stub_32 as *const ());  // PIT (Programmable Interval Timer)
+    set!(33, isr::irq_stub_33 as *const ());
+    set!(34, isr::irq_stub_34 as *const ());
+    set!(35, isr::irq_stub_35 as *const ());
+    set!(36, isr::irq_stub_36 as *const ());
+    set!(37, isr::irq_stub_37 as *const ());
+    set!(38, isr::irq_stub_38 as *const ());
+    set!(39, isr::irq_stub_39 as *const ());
+    set!(40, isr::irq_stub_40 as *const ());
+    set!(41, isr::irq_stub_41 as *const ());
+    set!(42, isr::irq_stub_42 as *const ());
+    set!(43, isr::irq_stub_43 as *const ());
+    set!(44, isr::irq_stub_44 as *const ());
+    set!(45, isr::irq_stub_45 as *const ());
+    set!(46, isr::irq_stub_46 as *const ());
+    set!(47, isr::irq_stub_47 as *const ());
     // ... (Остальные обработчики)
 }
 

@@ -8,6 +8,7 @@ use core::mem::size_of;
 // Константы GDT
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
+pub const TSS_SELECTOR: u16 = 0x28;
 const GDT_SIZE: usize = 6;
 
 // Коснтанты флагов Access Byte
@@ -120,7 +121,7 @@ unsafe fn gdt_flush(gdt_pointer: *const GdtPointer) {
         "lgdt [{pointer}]",
 
         // Перезаписываем сегментные регистры данных на селектор Kernel Data
-        "mov {ax:x}, 0x10",
+        "mov {ax:x}, {data_sel}",
         "mov ds, {ax:x}",
         "mov es, {ax:x}",
         "mov fs, {ax:x}",
@@ -128,7 +129,7 @@ unsafe fn gdt_flush(gdt_pointer: *const GdtPointer) {
         "mov ss, {ax:x}",
 
         // Сброс сегментного регистра кода через дальний возврат + стек
-        "push 0x08",
+        "push {code_sel}",
         "lea {tmp}, [2f]",
         "push {tmp}",
         "retf",
@@ -136,7 +137,9 @@ unsafe fn gdt_flush(gdt_pointer: *const GdtPointer) {
         pointer = in(reg) gdt_pointer,
         ax  = out(reg) _,
         tmp = out(reg) _,
-        options(nostack, preserves_flags),
+        data_sel = const KERNEL_DATA_SELECTOR,
+        code_sel = const KERNEL_CODE_SELECTOR,
+        options(preserves_flags),
     );
 }
 
@@ -208,12 +211,11 @@ pub fn init() {
 
         // Загружаем GDT и TSS
         gdt_flush(&raw const GDT_POINTER);
-        tss_flush(0x28);
+        tss_flush(TSS_SELECTOR);
     }
 }
 
 // Занимаем место в памяти для GDT и TSS
-#[used]
 static mut GDT: [GdtDescriptor; GDT_SIZE] = [GdtDescriptor::null(); GDT_SIZE];
 static mut GDT_POINTER: GdtPointer = GdtPointer { limit: 0, base: 0 };
 static mut TSS: TaskStateSegment = TaskStateSegment::new();

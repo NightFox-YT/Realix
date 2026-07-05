@@ -33,6 +33,7 @@ struct PCINFO {
 #[no_mangle]
 #[unsafe(naked)]
 pub extern "C" fn _start() -> ! {
+    // ! Полагаемся на настроенный стек из загрузчика
     naked_asm!("push ebx", "call kmain");
 }
 
@@ -50,7 +51,8 @@ extern "C" fn kmain(_pcinfo_addr: *mut PCINFO) -> ! {
     vga::clear_screen();
     draw_logo(4, 2);
     for _ in 0..11 { vga::new_line(); }
-    vga::print_line("  Press any key to continue...", vga::Color::LightGray);
+
+    vga::print_line("   Press any key to continue...", vga::Color::LightGray);
     
     keyboard::read_key();
     
@@ -122,24 +124,20 @@ fn panic(_info: &PanicInfo) -> ! {
 
 /// Функция записи байта в порт (Встраивается в бинарник)
 #[inline(always)]
-pub fn outb(port: u16, value: u8) {
-    unsafe {
-        asm!(
-            "out dx, al", in("dx") port,
-            in("al") value, options(nostack, nomem, preserves_flags)
-        );
-    }
+pub unsafe fn outb(port: u16, value: u8) {
+    asm!(
+        "out dx, al", in("dx") port,
+        in("al") value, options(nostack, nomem, preserves_flags)
+    );
 }
 
 /// Функция чтения байт из порта (Встраивается в бинарник)
 #[inline(always)]
-pub fn inb(port: u16) -> u8 {
+pub unsafe fn inb(port: u16) -> u8 {
     let value: u8;
-    unsafe {
-        asm!(
-            "in al, dx", out("al") value,
-            in("dx") port, options(nostack, nomem, preserves_flags)
-        );
-    }
+    asm!(
+        "in al, dx", out("al") value,
+        in("dx") port, options(nostack, nomem, preserves_flags)
+    );
     value
 }

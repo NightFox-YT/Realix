@@ -9,15 +9,15 @@ use crate::drivers::pit;
 use crate::drivers::vga::{self, VGA_HEIGHT, VGA_WIDTH};
 
 pub fn run() {
-    vga::clear_screen();
-    let mut drops_heights: [usize; 80] = [0; 80];
+    let mut drops_heights: [usize; VGA_WIDTH] = [0; 80];
     
     // Инициализация (Капли на разной высоте)
-    for col in 0..80 {
+    for col in 0..VGA_WIDTH {
         drops_heights[col] = (col * 7 + 3) % vga::VGA_HEIGHT;
     }
 
     pit::sleep(600);
+    vga::clear_screen();
     
     loop {
         // Отрисовка одного кадра

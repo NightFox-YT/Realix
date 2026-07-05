@@ -53,7 +53,7 @@ file_load:
     ja .read_root_dir
     
     mov si, err_buffer_overlap
-    je error_handler
+    jmp error_handler
 
 ; Чтение корневого каталога
 .read_root_dir:

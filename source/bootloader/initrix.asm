@@ -17,6 +17,7 @@ main:
     call disk_init
     call fat12_init
     call net_init
+    ;jc network_card_error  ; Уберите комментарий, если в ВМ есть это карта
     
     mov si, msg_init
     call print
@@ -64,6 +65,9 @@ main:
     hlt
     jmp $
 
+network_card_error:
+    mov si, err_network_card_not_found
+    jmp error_handler
 
 lower_memory_error:
     mov si, err_get_lower_memory

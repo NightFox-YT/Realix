@@ -154,15 +154,10 @@ pmode_entry:
     mov eax, KERNEL32_PHYS_ADDR
     jmp eax
 
-    ; Вывод '!' 
-    mov byte [0xB8000], '!'
-    mov byte [0xB8001], 0x04
-
-    ; Остановка CPU (Ещё нет ядра Rust)
+    ; Остановка CPU (Если ядро Rust вернулось)
     cli
     hlt
     jmp $
-
 
 ; Сообщения и строки (16 бит для строковых данных)
 bits 16

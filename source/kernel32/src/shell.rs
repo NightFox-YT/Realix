@@ -31,7 +31,7 @@ pub fn run() {
 
 /// Функция выполнения команды
 fn execute(input: &str) {
-    match input {
+    match input.trim() {
         "help" => {
             vga::print_line("Commands:\n", Color::Cyan);
             vga::print_line("  [Base]\n", Color::Cyan);

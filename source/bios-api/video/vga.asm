@@ -67,6 +67,7 @@ vga_set_pixel:
     jae .done           ; Если Y >= 200, выходим
 
     ; Вычисление адреса пикселя: di = Y * 320 + X
+    push dx
     mov cx, VGA_WIDTH
     mul cx
     add ax, bx
@@ -75,6 +76,7 @@ vga_set_pixel:
     ; Запись в видеопамять
     mov cx, VGA_SEGMENT
     mov es, cx
+    pop dx
     mov [es:di], dl
 
 .done:

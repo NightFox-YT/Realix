@@ -27,6 +27,12 @@ pub fn u32_to_dec_str(value: u32, str_buffer: &mut [u8; 10]) -> &str {
     let mut value_copy: u32 = value;
     let mut i: usize = str_buffer.len();
 
+    // Особый случай
+    if value == 0 {
+        i -= 1;
+        str_buffer[i] = b'0';
+    }
+
     // Заполняем буфер в обратном порядке
     while value_copy > 0 {
         i -= 1;

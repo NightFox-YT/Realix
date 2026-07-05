@@ -16,6 +16,6 @@ pub struct E820Entry {
 #[repr(C, packed)]
 #[derive(Copy, Clone)]
 pub struct E820Map {
-    pub entry_count: u32,
+    pub entry_count: u16,
     pub map: [E820Entry; 64],
 }

@@ -10,6 +10,7 @@ use crate::drivers::vga::{self, Color};
 // Контанты
 const INPUT_MAX: usize = 64;
 const QUEUE_SIZE: usize = 32;
+pub const KEYBOARD_DATA_PORT: u16 = 0x60;
 
 // Кольцевой буфер
 static mut QUEUE: [u8; QUEUE_SIZE] = [0; QUEUE_SIZE];
