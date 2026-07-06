@@ -12,6 +12,10 @@
 %define BACKSPACE_KEY 0x08
 %define BEEP_CHAR     0x07
 
+; Скан-коды расширенных клавиш (int 0x16, al=0)
+%define KEY_UP_SCAN   0x48
+%define KEY_DOWN_SCAN 0x50
+
 ; Системные адреса памяти
 PCINFO_ADDR          equ 0x4500
 INITRIX_LOAD_SEGMENT equ 0x07E0
@@ -27,5 +31,8 @@ VGA_SEGMENT equ 0xA000
 
 ; Настройки CLI
 INPUT_BUFFER_LEN equ 64
+
+; Размер история команд (должен быть степенью двойки)
+HISTORY_SIZE      equ 8
 
 %endif

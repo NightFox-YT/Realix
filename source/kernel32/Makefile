@@ -7,15 +7,13 @@ TARGET_BIN = ../../build/kernel32.bin
 CARGO_OUTPUT = ../../target/i386/release/kernel32
 OBJCOPY = rust-objcopy
 
-.PHONY: all clean
+.PHONY: all clean kernel32
 
 # Запуск по умолчанию
 all: kernel32
 
 # Сборка 32-битного ядра (Rust)
-kernel32: $(TARGET_BIN)
-
-$(TARGET_BIN):
+kernel32:
 	cargo +nightly build --release --manifest-path ../../Cargo.toml -Z json-target-spec
 	$(OBJCOPY) -O binary $(CARGO_OUTPUT) $(TARGET_BIN)
 

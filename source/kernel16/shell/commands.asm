@@ -154,8 +154,8 @@ cmd_meminfo:
     mov si, note_meminfo
     call print
 
-    pop si
     pop di
+    pop si
     ret
 
 cmd_shutdown:
@@ -255,7 +255,7 @@ msg_help:
     db '> clear/cls - Clear screen', ENTER
     db '> echo [t]  - Print [text] to console', ENTER
     db '> meminfo   - Display RAM configuration', ENTER
-    db '> calc [num1] [+ - * /] [num2] - Simple Calculator (Only positive nums)', ENTER
+    db '> calc [num1] [+ - * /] [num2] - Simple Calculator (only positive nums)', ENTER
     db '  [Power]', ENTER
     db '> reboot   - Reboot PC', ENTER
     db '> shutdown - Power off PC', 0
