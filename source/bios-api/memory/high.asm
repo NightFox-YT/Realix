@@ -120,7 +120,7 @@ show_map_entries_cnt:
 
 ; > Получение общей длины всех отрезкой памяти по её карте
 ; Параметры:
-;  - es:di: Указатель на карту памяти (`get_memory_map`)
+;  - es:di: Указатель на `PC_INFO`
 ; Вывод:
 ;  - ax: Число свободной памяти (МБ)
 get_free_memory:
@@ -173,9 +173,9 @@ get_free_memory:
 ; > Вывод кол-ва свободной памяти в текстовом режиме
 ; ❗️ Зависимости: kernel16/print.asm, kernel16/print_reg.asm
 show_free_memory:
+    push es
     push si
     push ax
-    push es
 
     ; Считаем и выводим кол-во свободной памяти
     xor ax, ax

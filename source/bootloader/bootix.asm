@@ -7,11 +7,7 @@ bits 16
 org 0x7C00
 
 ; Основные константы
-<<<<<<< HEAD
-%include 'config.asm'
-=======
 %include 'shared/config.asm'
->>>>>>> development
 
 ; Настройка FAT12 (48 байт)
 jmp short start
@@ -56,12 +52,8 @@ start:
     ; Обновление номера диска (BIOS устанавливает его в dl)
     mov [ebr_drive_number], dl
 
-<<<<<<< HEAD
-    ; Сброс сегмента кода `cs` дальним переходом
-=======
     ; Сброс сегмента кода `cs` дальним переходом с включением прерываний
     sti
->>>>>>> development
     jmp 0:main
 
 
@@ -167,18 +159,12 @@ main:
     call disk_read
 
     ; Увеличиваем адрес смещения initrix на кол-во прочитанных байт
-<<<<<<< HEAD
-    ; ❗️ NOTE: Initrix должен быть <=64 КБ, т.к. мы не обновляем сегмент ES
-=======
->>>>>>> development
     xor ah, ah
     mov al, [bpb_sectors_per_cluster]
     mul word [bpb_bytes_per_sector]
     add bx, ax
     jnc .load_initrix_continue
 
-<<<<<<< HEAD
-=======
     ; Сдвигаем es на след. параграф (+64 КБ)
     mov ax, es
     add ax, 0x1000
@@ -186,7 +172,6 @@ main:
     xor bx, bx
 
 .load_initrix_continue:
->>>>>>> development
     ; Вычисление смещения след. кластера в таблице FAT
     ; (ax - индекс записи, dx - Cluster % 2)
     pop ax     ; *Восстанавливаем номер кластера

@@ -1,24 +1,26 @@
 // © Realix > Shell
-// (26.06.26) v0.07
+// (03.07.26) v0.08
+// ø Вдохновлено @liquifield
 // ================
 
-// Подключение модулей
-use core::str;
+// Импорт функций
 use core::arch::asm;
 use crate::drivers::vga::{self, Color};
-use crate::drivers::keyboard;
+use crate::drivers::{pit, keyboard};
+use crate::utils;
+use crate::commands::matrix;
 
 // Константы
 const PROMPT: &str = "Realix >> ";
 
-// > Основной цикл CLI
+/// Основной цикл CLI
 pub fn run() {
-    vga::print_str("Type 'help' for list of commands.\n\n", Color::LightGray);
+    vga::print_line("Type 'help' for list of commands.\n\n", Color::LightGray);
 
     loop {
-        vga::print_str(PROMPT, Color::Green);
-        let input_array= keyboard::read_line();
-        let input_str: &str = str::from_utf8(&input_array).unwrap_or("");
+        vga::print_line(PROMPT, Color::Green);
+        let input_array = keyboard::read_line();
+        let input_str: &str = core::str::from_utf8(&input_array).unwrap_or("");
 
         // Обрезаем по нуль-терминатору
         let end_idx: usize = input_str.find('\0').unwrap_or(input_str.len());
@@ -27,22 +29,25 @@ pub fn run() {
 }
 
 
-// > Функция выполнения команды
+/// Функция выполнения команды
 fn execute(input: &str) {
-    match input {
+    match input.trim() {
         "help" => {
-            vga::print_str("Commands:\n", Color::Cyan);
-            vga::print_str("  [Base]\n", Color::Cyan);
-            vga::print_str("> help     - Show this manual\n", Color::LightGray);
-            vga::print_str("> clear    - Clear screen\n", Color::LightGray);
-            vga::print_str("> echo [t] - Print text to console\n", Color::LightGray);
-            vga::print_str("  [Power]\n", Color::Cyan);
-            vga::print_str("> reboot   - Reboot PC\n", Color::LightGray);
-            vga::print_str("> shutdown - Power off PC\n", Color::LightGray);
+            vga::print_line("Commands:\n", Color::Cyan);
+            vga::print_line("  [Base]\n", Color::Cyan);
+            vga::print_line("> help     - Show this manual\n", Color::LightGray);
+            vga::print_line("> clear    - Clear screen\n", Color::LightGray);
+            vga::print_line("> echo [t] - Print text to console\n", Color::LightGray);
+            vga::print_line("> uptime   - Show uptime (seconds)\n", Color::LightGray);
+            vga::print_line("  [Fun]\n", Color::Cyan);
+            vga::print_line("> matrix   - Show matrix rain\n", Color::LightGray);
+            vga::print_line("  [Power]\n", Color::Cyan);
+            vga::print_line("> reboot   - Reboot PC\n", Color::LightGray);
+            vga::print_line("> shutdown - Power off PC\n", Color::LightGray);
         }
         "clear" => { vga::clear_screen(); }
         "reboot" => {
-            vga::print_str("Rebooting...\n", Color::Red);
+            vga::print_line("Rebooting...\n", Color::Red);
             unsafe {
                 let mut timeout: u32 = 0;
 
@@ -64,27 +69,40 @@ fn execute(input: &str) {
                     timeout += 1;
                 }
                 
-                vga::print_str("PS/2 reboot failed...", Color::Red);
-                loop { asm!("hlt"); }
+                vga::print_line("PS/2 reboot failed...", Color::Red);
+                crate::halt_loop();
             }
         }
         "shutdown" => {
-            vga::print_str("Shutting down...\n", Color::Red);
+            vga::print_line("Shutting down...\n", Color::Red);
             unsafe {
                 asm!("out dx, ax", in("dx") 0x604u16, in("ax") 0x2000u16);
                 
-                vga::print_str("i440FX shutdown failed...", Color::Red);
-                loop { asm!("hlt"); }
+                vga::print_line("i440FX shutdown failed...", Color::Red);
+                crate::halt_loop();
             }
 
         }
         _ if input.starts_with("echo ") => {
-            vga::print_str(&input[5..], Color::LightGray);
-            vga::print_char(b'\n', Color::LightGray);
+            vga::print_line(&input[5..], Color::LightGray);
+            vga::new_line();
+        }
+        "uptime" => {
+            let mut str_buffer: [u8; 10] = [0u8; 10];
+
+            vga::print_line("Uptime (seconds): ", Color::LightGray);
+            vga::print_line(
+                utils::u32_to_dec_str(pit::get_uptime(), &mut str_buffer),
+                Color::LightGray);
+            vga::new_line();
+        }
+        "matrix" => {
+            vga::print_line("Entering Matrix... (Press any key to exit)\n", Color::Green);
+            matrix::run();
         }
         "" => {}
         _ => {
-            vga::print_str("[!] Unknown command. Type 'help' for list of commands.\n", Color::Red);
+            vga::print_line("[!] Unknown command. Type 'help' for list of commands.\n", Color::Red);
         }
     }
 }

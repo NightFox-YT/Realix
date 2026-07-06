@@ -1,18 +1,11 @@
-<<<<<<<< HEAD:source/bios-api/fat12/file_open.asm
-; © Realix > FAT12 File Open
-========
 ; © Realix > FAT12 File Load
->>>>>>>> development:source/bios-api/fat12/file_load.asm
 ; (13.06.26) v0.06
 ; ================
 ; ❗️ Зависимости: bios-api/disk/read.asm, error_handler (внешний обработчик)
 ; TODO: Сделать динамический буфер под таблицу FAT и Root_dir
-<<<<<<<< HEAD:source/bios-api/fat12/file_open.asm
-========
 
 ; ❗ Требуется инициализация FAT12 через `fat12_init`
 %include "bios-api/fat12/init.asm"
->>>>>>>> development:source/bios-api/fat12/file_load.asm
 
 ; > Загрузка файла с диска в память
 ; Параметры:
@@ -52,9 +45,6 @@ file_load:
     adc dx, 0
 
     ; Проверка, что адрес записи (до 0xFFFF) не затирает буфер.
-<<<<<<<< HEAD:source/bios-api/fat12/file_open.asm
-    cmp dx, 0x0
-========
     cmp dx, 0
     jne .read_root_dir
     cmp ax, 0x0500
@@ -62,9 +52,8 @@ file_load:
     cmp ax, 0x7C00
     ja .read_root_dir
     
->>>>>>>> development:source/bios-api/fat12/file_load.asm
     mov si, err_buffer_overlap
-    je error_handler
+    jmp error_handler
 
 ; Чтение корневого каталога
 .read_root_dir:
@@ -227,15 +216,10 @@ file_load:
     
     ret
 
-<<<<<<<< HEAD:source/bios-api/fat12/file_open.asm
-; Подключение FAT12: Init модуля
-%include "bios-api/fat12/init.asm"
-========
 ; > Ошибки
 bad_cluster_error:
     mov si, err_bad_cluster_found
     jmp error_handler
->>>>>>>> development:source/bios-api/fat12/file_load.asm
 
 ; Параметры файла
 filename:     dw 0
