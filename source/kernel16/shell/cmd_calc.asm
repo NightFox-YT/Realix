@@ -1,5 +1,5 @@
 ; © Realix > Calculator Command
-; ø Вдохновлено @nyxmalware
+; ø Copyright by @liquifield + @Atimenka
 ; (23.06.26) v0.07
 ; ================
 ; ❗️ Зависимости: kernel16/io/print (Модуль), kernel16/shell/commands.asm
@@ -44,6 +44,11 @@ cmd_calc:
     jc .error_syntax
     mov [.num2], ax
 
+    ; После второго числа не должно быть мусора
+    call skip_spaces
+    cmp byte [si], 0
+    jne .error_syntax
+
     ; Вычисление в зависимости от оператора
     mov ax, [.num1]
     mov bx, [.num2]
@@ -59,20 +64,35 @@ cmd_calc:
 
     jmp .error_operator
 
-; > Выполнение действий с проверкой переполнения (jo)
+; > Выполнение действий с проверкой безнакового переполнения
 .do_add:
     add ax, bx
-    jo .error_overflow
+    jc .error_overflow 
     jmp .show_result
 
 .do_sub:
+    ; Проверяем какое число получится в результате
+    cmp ax, bx
+    jb .sub_negative
     sub ax, bx
-    jo .error_overflow
     jmp .show_result
+
+.sub_negative:
+    ; Печатаем "Result: -" и модуль разности чисел
+    mov si, msg_result
+    call print
+    mov si, str_minus
+    call print
+
+    ; Вычитание по модулю со сменой чисел в регистрах
+    xchg ax, bx
+    sub ax, bx
+    call print_reg
+    jmp .done
 
 .do_mul:
     mul bx
-    jo .error_overflow
+    jc .error_overflow
     jmp .show_result
 
 .do_div:
@@ -138,13 +158,13 @@ parse_number:
     push cx
     push dx
 
-    ; Сброс параметров
+    ; Сброс параметров (bx - счётчик)
     xor ax, ax
+    xor bx, bx
     mov cx, 10
 
 .loop:
-    ; Загрузка цифры
-    xor dx, dx
+    ; Загрузка символа
     mov dl, [si]
 
     ; Проверка, что ASCII символ является цифрой
@@ -153,19 +173,26 @@ parse_number:
     cmp dl, '9'
     ja .check_done
 
-    sub dl, '0'      ; dl теперь цифра
-    push dx          ; *Cохраняем dx (dl - цифра, dh - 0)
-    mul cx           ; AX *= 10 (Переходим к след. разряду числа)
-    pop dx           ; *Восстанавливаем dx (dl - цифра, dh - 0)
-    add ax, dx       ; AX += цифра
-    jo .error
+    ; AX *= 10 (Переходим к след. разряду числа)
+    push dx          ; *Сохраняем символ (dl)
+    mul cx           ; DX:AX = AX * 10
+    pop dx           ; *Восстанавливаем символ (dl)
+    jc .error        ; Произведение не влезло в 16 битное число
+
+    ; AX += цифра
+    sub dl, '0'
+    xor dh, dh   ; dx - цифра
+    add ax, dx
+    jc .error    ; Сумма не влезла в 16-битное число
 
     ; Переход к след. символу (цифре)
+    inc bx
     inc si
     jmp .loop
 
 .check_done:
-    test ax, ax
+    ; Проверка на наличие цифр после парсинга
+    test bx, bx
     jz .error
 
     clc
@@ -181,6 +208,7 @@ parse_number:
     ret
 
 msg_result:     db 'Result: ', 0
+str_minus:      db '-', 0
 err_syntax:     db '[!] Usage: calc <num1> <+ - * /> <num2>', 0
 err_operator:   db '[!] Unknown operator, use + - * /', 0
 err_div_zero:   db '[!] Division by zero!', 0
