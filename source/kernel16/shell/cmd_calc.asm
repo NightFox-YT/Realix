@@ -2,7 +2,8 @@
 ; ø Copyright by @liquifield + @Atimenka
 ; (23.06.26) v0.07
 ; ================
-; ❗️ Зависимости: kernel16/io/print (Модуль), kernel16/shell/commands.asm
+; ❗️ Зависимости: kernel16/io/print,
+;                 kernel16/shell: commands & parse
 
 
 ; > Команда простого калькулятора
@@ -21,7 +22,7 @@ cmd_calc:
     je .error_syntax
 
     ; Парсинг первого числа
-    call parse_number
+    call parse_uint16
     jc .error_syntax
     mov [.num1], ax
 
@@ -40,7 +41,7 @@ cmd_calc:
     je .error_syntax
 
     ; Парсинг второго числа
-    call parse_number
+    call parse_uint16
     jc .error_syntax
     mov [.num2], ax
 
@@ -87,7 +88,7 @@ cmd_calc:
     ; Вычитание по модулю со сменой чисел в регистрах
     xchg ax, bx
     sub ax, bx
-    call print_reg
+    call print_dec16
     jmp .done
 
 .do_mul:
@@ -110,7 +111,7 @@ cmd_calc:
     call print
 
     ; Выводим результат (сохранён в ax)
-    call print_reg
+    call print_dec16
     jmp .done
 
 .error_div_zero:
@@ -145,67 +146,6 @@ cmd_calc:
 .num1:      dw 0
 .num2:      dw 0
 .operator:  db 0
-
-
-; > Парсинг десятичного числа
-; Параметры:
-;  - si: строка
-; Выход:
-;  - ax: число
-;  - CF: 0 (успех) / 1 (ошибка)
-parse_number:
-    push bx
-    push cx
-    push dx
-
-    ; Сброс параметров (bx - счётчик)
-    xor ax, ax
-    xor bx, bx
-    mov cx, 10
-
-.loop:
-    ; Загрузка символа
-    mov dl, [si]
-
-    ; Проверка, что ASCII символ является цифрой
-    cmp dl, '0'
-    jb .check_done
-    cmp dl, '9'
-    ja .check_done
-
-    ; AX *= 10 (Переходим к след. разряду числа)
-    push dx          ; *Сохраняем символ (dl)
-    mul cx           ; DX:AX = AX * 10
-    pop dx           ; *Восстанавливаем символ (dl)
-    jc .error        ; Произведение не влезло в 16 битное число
-
-    ; AX += цифра
-    sub dl, '0'
-    xor dh, dh   ; dx - цифра
-    add ax, dx
-    jc .error    ; Сумма не влезла в 16-битное число
-
-    ; Переход к след. символу (цифре)
-    inc bx
-    inc si
-    jmp .loop
-
-.check_done:
-    ; Проверка на наличие цифр после парсинга
-    test bx, bx
-    jz .error
-
-    clc
-    jmp .exit
-
-.error:
-    stc
-
-.exit:
-    pop dx
-    pop cx
-    pop bx
-    ret
 
 msg_result:     db 'Result: ', 0
 str_minus:      db '-', 0

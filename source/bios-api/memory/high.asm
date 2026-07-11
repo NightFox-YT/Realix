@@ -107,7 +107,7 @@ show_map_entries_cnt:
     mov si, str_memory_map
     call print
     mov ax, word [es:PCINFO_ADDR + 3]
-    call print_reg
+    call print_dec16
     mov si, str_entries
     call print
 
@@ -186,7 +186,7 @@ show_free_memory:
     ; NOTE: ax содержит нужное число после `call get_free_memory`
     mov si, str_free_ram
     call print
-    call print_reg
+    call print_dec16
     mov si, str_mb
     call print
 

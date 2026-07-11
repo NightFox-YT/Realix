@@ -1,11 +1,12 @@
-; © Realix > Print register AX (dec)
-; (28.03.26) v0.04
+; © Realix > Print number (dec / hex/ bcd)
+; (11.07.26) v0.09
 ; ================
+; ❗️ Зависимости: kernel16/io/print.asm
 
 ; > Вывод значения ax в десятичном виде на экран (Текстовый режим)
 ; Параметры:
 ;  - ax: значение регистра
-print_reg:
+print_dec16:
     push bx
     push cx
     push dx
@@ -34,4 +35,70 @@ print_reg:
     pop dx
     pop cx
     pop bx
+    ret
+
+; > Вывод значения ax в шестнадцатеричном виде на экран (Текстовый режим)
+; Параметры:
+;  - ax: значение регистра
+print_hex16:
+    push ax
+    push bx
+    push cx
+
+    mov bx, ax  ; Создание копии числа в bx
+    mov cx, 4   ; Счётчик для 4 цифр
+
+.next_digit:
+    rol bx, 4   ; Старший ниббл → младшие 4 бита
+
+    ; Берём цифру из bx (младшие 4 бита из младшего байта bx)
+    mov al, bl
+    and al, 0x0F
+
+    ; Выбор обработчика символа
+    cmp al, 9
+    jbe .digit        ; Обработка цифры (0-9)
+    add al, 'A' - 10  ; Обработка буквы (A-F)
+    jmp .print
+.digit:
+    ; Перевод цифры в ASCII символ
+    add al, '0'
+
+.print:
+    ; Печатаем символ и уходим в цикл
+    call print_char
+    loop .next_digit
+
+.done:
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; > Вывод BCD значения al на экран (Текстовый режим)
+; Параметры:
+;  - al: значение регистра
+print_bcd2:
+    push ax
+    push bx
+
+    ; Сохранение байта числа al в bl
+    mov bl, al
+
+    ; Старший ниббл → младшие 4 бита со "страховкой"
+    shr al, 4
+    and al, 0x0F
+
+    add al, '0'      ; Цифра → ASCII
+    call print_char  ; Печать первой цифры
+    
+    mov al, bl       ; Берём сохранённый байт заново
+
+    ; Младший ниббл → младшие 4 бита
+    and al, 0x0F
+    add al, '0'      ; Цифра → ASCII
+    call print_char  ; Печать второй цифры
+
+    pop bx
+    pop ax
     ret
