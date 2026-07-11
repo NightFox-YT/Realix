@@ -2,6 +2,9 @@
 ; (30.06.26) v0.07
 ; ================
 
+; Основные константы
+%include 'shared/config.asm'
+
 ; > Вывод символов "\n\r" на экран (Текстовый режим)
 print_new_line:
     push ax
@@ -31,7 +34,7 @@ print_beep_char:
     xor bx, bx
 
     ; Вывод символа "BEL"
-    mov al, 0x07
+    mov al, BEEP_CHAR
     int 0x10
 
     pop bx

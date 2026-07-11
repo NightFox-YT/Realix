@@ -111,7 +111,7 @@ err_get_lower_memory:       db '[!] Get lower memory failed (int 12h)!', 0
 err_network_card_not_found: db '[!] Network card Realtek RTL8139 not found!', 0
 
 str_title:
-    db '     Realix v0.07', ENTER,
+    db '     Realix ', OS_VERSION, ENTER,
     db '(C) NightFox developer', ENTER, ENTER, 0
 
 ; Данные о ПК и Kernel
