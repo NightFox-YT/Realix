@@ -72,6 +72,6 @@ pub fn sleep(ms: u32) {
     // Ожидаем, когда кол-во тиков достигнет нужное значение
     while (get_ticks() as u64) < target {
         // Останавливаем процессор между прерываниями (тиками)
-        unsafe { core::arch::asm!("hlt"); }
+        unsafe { core::arch::asm!("sti; hlt"); }
     }
 }

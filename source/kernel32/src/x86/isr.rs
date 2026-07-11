@@ -87,7 +87,6 @@ pub fn exc_handler(regs: &Registers) {
     
     vga::new_line();
     vga::print_line("! System halted. Please reboot the machine.", Color::Red);
-    interrupts_enable();
     panic!();
 }
 
@@ -96,11 +95,17 @@ pub fn irq_handler(regs: &Registers) {
     interrupts_disable();
 
     // Защита от вызова функции с неправильным аргументом
-    if regs.int_num < 32 || regs.int_num > 38 {
+    if regs.int_num < 32 || regs.int_num > 47 {
         vga::print_line("[!] IRQ num in handler is incorrect!", Color::Red);
         panic!();
     }
     let irq_vector: u8 = (regs.int_num - 32) as u8;
+
+    // Обработка ложного прерывания (IRQ7/IRQ15)
+    if pic::is_spurious(irq_vector) {
+        interrupts_enable();
+        return;
+    }
 
     match irq_vector {
         0 => { pit::tick(); }

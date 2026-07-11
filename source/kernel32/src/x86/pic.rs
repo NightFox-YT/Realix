@@ -66,6 +66,30 @@ pub fn unmask_irq(irq: u8) {
     }
 }
 
+/// Чтение регистра ISR (Какие IRQ обслуживаются)
+fn read_isr(cmd_port: u16) -> u8 {
+    unsafe {
+        // OCW3: Запрос на чтение ISR
+        outb(cmd_port, 0x0B);
+        inb(cmd_port)
+    }
+}
+
+/// Проверка ложного прерывания на IRQ7/IRQ15
+pub fn is_spurious(irq: u8) -> bool {
+    match irq {
+        7 => read_isr(PIC1_CMD) & 0x80 == 0,
+        15 => {
+            if read_isr(PIC2_CMD) & 0x80 == 0 {
+                // Master считает slave-прерывание реальным, отправляем EOI
+                unsafe { outb(PIC1_CMD, 0x20); }
+                true
+            } else { false }
+        }
+        _ => false,
+    }
+}
+
 /// Отправка сигнала об успешной обработке прерывания
 /// Параметры:
 ///  - irq: номер IRQ прерывания, а не вектора прерывания
