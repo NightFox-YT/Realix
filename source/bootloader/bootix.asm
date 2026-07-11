@@ -1,248 +1,463 @@
 ; © Realix > Bootix
-; (14.06.26) v0.06
-; ================
+; FAT12 Stage 1 Bootloader
+; ========================
 
-; Настройка компиляции
 bits 16
 org 0x7C00
 
-; Основные константы
-%include 'shared/config.asm'
 
-; Настройка FAT12 (48 байт)
+; ============================================================
+; FAT12 BIOS PARAMETER BLOCK
+; ============================================================
+
 jmp short start
 nop
 
-bpb_oem:                 db 'MSWIN4.1'  ; OEM (8 байт)
-bpb_bytes_per_sector:    dw 512         ; Байт на сектор
-bpb_sectors_per_cluster: db 1           ; Секторов на кластер
-bpb_reserved_sectors:    dw 1           ; Кол-во зарезервированных секторов
-bpb_fat_count:           db 2           ; Кол-во FAT таблиц
-bpb_dir_entries:         dw 0x0E0       ; Кол-во записей в корневом каталоге
-bpb_total_sectors:       dw 2880        ; Кол-во секторов (2880 * 512 = 1.44 мб)
-bpb_media_type:          db 0xF0        ; Тип диска (F0 - 3.5" floppy disk)
-bpb_sectors_per_fat:     dw 9           ; Секторов на FAT таблицу
-bpb_sectors_per_track:   dw 18          ; Секторов на дорожку
-bpb_heads:               dw 2           ; Кол-во голов
-bpb_hidden_sectors:      dd 0           ; Кол-во скрытых секторов
-bpb_large_sectors:       dd 0           ; Кол-во секторов свыше 65535
+bpb_oem:
+    db 'REALIX  '                 ; 8 байт
 
-; Дополнительные параметры (extended boot record)
-ebr_drive_number: db 0                  ; Номер диска (0x00 floppy / 0x80 hdd)
-                  db 0                  ; Зарезервировано
-ebr_signature:    db 29h                ; Подпись (28h или 29h)
-ebr_volume_id:    db 52h, 45h, 41h, 4Ch ; Серийный номер (Произвольный)
-ebr_volume_label: db 'Realix     '      ; Название тома (11 байт)
-ebr_system_id:    db 'FAT12   '         ; Тип файловой системы (8 байт)
+bpb_bytes_per_sector:
+    dw 512
 
+bpb_sectors_per_cluster:
+    db 1
+
+bpb_reserved_sectors:
+    dw 1
+
+bpb_fat_count:
+    db 2
+
+bpb_dir_entries:
+    dw 224
+
+bpb_total_sectors:
+    dw 2880
+
+bpb_media_type:
+    db 0xF0
+
+bpb_sectors_per_fat:
+    dw 9
+
+bpb_sectors_per_track:
+    dw 18
+
+bpb_heads:
+    dw 2
+
+bpb_hidden_sectors:
+    dd 0
+
+bpb_large_sectors:
+    dd 0
+
+
+; ============================================================
+; EXTENDED BOOT RECORD
+; ============================================================
+
+ebr_drive_number:
+    db 0
+
+ebr_reserved:
+    db 0
+
+ebr_signature:
+    db 0x29
+
+ebr_volume_id:
+    dd 0x584C4552
+
+ebr_volume_label:
+    db 'REALIX     '              ; 11 байт
+
+ebr_system_id:
+    db 'FAT12   '                 ; 8 байт
+
+
+; ============================================================
+; КОНСТАНТЫ FLOPPY FAT12
+; ============================================================
+
+ROOT_DIR_LBA       equ 19
+ROOT_DIR_SECTORS   equ 14
+DATA_LBA           equ 33
+
+ROOT_BUFFER        equ 0x0500
+FAT_BUFFER         equ 0x0500
+
+INITRIX_SEGMENT    equ 0x07E0
+INITRIX_OFFSET     equ 0x0000
+
+
+; ============================================================
+; ТОЧКА ВХОДА
+; ============================================================
 
 start:
-    ; Отключаем прерывания во время настройки
     cli
-    
-    ; Настройка сегментных регистров (Напрямую настроить нельзя)
+    cld
+
     xor ax, ax
     mov ds, ax
     mov es, ax
-
-    ; Настройка стека
     mov ss, ax
     mov sp, 0x7C00
 
-    ; Обновление номера диска (BIOS устанавливает его в dl)
+    ; BIOS передаёт номер загрузочного диска в DL.
     mov [ebr_drive_number], dl
 
-    ; Сброс сегмента кода `cs` дальним переходом с включением прерываний
     sti
-    jmp 0:main
 
-
-main:
-    ; Инициализация драйвера диска
-    call disk_init
-    mov [bpb_sectors_per_track], cx
-    mov [bpb_heads], dh
-
-    ; Вычисление LBA корневого каталога
-    ; > LBA = fats * sectors_per_fat + reserved
-    xor ah, ah
-    mov al, [bpb_fat_count]
-    mul word [bpb_sectors_per_fat]
-    add ax, [bpb_reserved_sectors]
-
-    ; *Сохраняем LBA корневого каталога
-    push ax
-    mov cx, ax
-
-    ; Вычисление размера корневого каталога
-    ; > root_dir_size = (number_of_entries * 32) / bytes_per_sector
-    mov ax, [bpb_dir_entries]
-    shl ax, 5                  ; *32 (number_of_entries * 32)
-    xor dx, dx
-    div word [bpb_bytes_per_sector]
-
-    ; Округление размера корневого каталога до целого вверх
-    or dx, dx    
-    jz .read_root_dir
-    inc ax
-
-.read_root_dir:
-    ; Обновление переменной data_lba (root_dir_lba + root_dir_size)
-    add cx, ax
-    mov [data_lba], cx
-
-    ; Чтение корневого каталога
-    mov cl, al                  ; Кол-во секторов - размер каталога
-    pop ax                      ; *Восстанавливаем сохранённый LBA каталога
-    mov dl, [ebr_drive_number]  ; Номер диска
-    mov bx, 0x0500              ; Адрес записи
+    ; Читаем корневой каталог FAT12 в 0000:0500.
+    mov ax, ROOT_DIR_LBA
+    mov cl, ROOT_DIR_SECTORS
+    mov bx, ROOT_BUFFER
     call disk_read
+    jc boot_error
 
-    ; Подготовка к поиску файла
-    xor bx, bx      ; Кол-во пройденных записей корневого каталога
-    mov di, 0x0500  ; Адрес текущей записи корневого каталога
+    ; Ищем INITRIX.BIN в корневом каталоге.
+    mov di, ROOT_BUFFER
+    mov bp, [bpb_dir_entries]
 
-.search_initrix:
-    ; Подготовка к сравнению названий (до 11 символов)
-    mov si, file_initrix_bin
-    mov cx, 11
+search_entry:
+    test bp, bp
+    jz boot_error
 
-    ; Сравнение по символу названия файлов, сохраняя адрес записи
-    ; > si:di++ до cx == 0
+    ; 00h означает конец используемых записей каталога.
+    cmp byte [es:di], 0x00
+    je boot_error
+
+    ; E5h означает удалённую запись.
+    cmp byte [es:di], 0xE5
+    je next_entry
+
+    ; Пропускаем Long File Name entries.
+    mov al, [es:di + 11]
+    and al, 0x0F
+    cmp al, 0x0F
+    je next_entry
+
     push di
+
+    mov si, initrix_filename
+    mov cx, 11
     repe cmpsb
+
     pop di
-    je .found_initrix
+    je initrix_found
 
-    ; Переход к следующей записи
-    add di, 32                ; Увеличиваем адрес на размер записи (32 байта)
-    inc bx                    ; Увеличиваем индекс записи
-    cmp bx, [bpb_dir_entries]
-    jl .search_initrix        ; Если не вышли за предел, продолжаем поиск
+next_entry:
+    add di, 32
+    dec bp
+    jmp search_entry
 
-    ; Выход за предел, => файла второго этапа загрузчика нет
-    mov si, err_initrix_not_found
-    jmp error_handler
 
-.found_initrix:
-    ; Обновление номера кластера (di - адрес записи корневого каталога)
-    mov ax, [di + 26]  ; Поле первого кластера (Смещение 26 байтов)
-    push ax            ; *Сохраняем номер кластера
+; ============================================================
+; INITRIX НАЙДЕН
+; ============================================================
 
-    ; Чтение FAT таблицы
-    mov ax, [bpb_reserved_sectors]  ; LBA
-    mov cl, [bpb_sectors_per_fat]   ; Кол-во секторов - размер FAT
-    mov dl, [ebr_drive_number]      ; Номер диска
-    mov bx, 0x0500                  ; Адрес записи
+initrix_found:
+    ; Первый кластер файла находится по смещению 26.
+    mov ax, [es:di + 26]
+    mov [current_cluster], ax
+
+    cmp ax, 2
+    jb boot_error
+
+    ; Читаем первую таблицу FAT в 0000:0500.
+    xor ax, ax
+    mov es, ax
+
+    mov ax, 1
+    mov cl, 9
+    mov bx, FAT_BUFFER
     call disk_read
+    jc boot_error
 
-    ; Установка сегмента и смещения для чтения initrix
-    mov bx, INITRIX_LOAD_SEGMENT
-    mov es, bx
-    mov bx, INITRIX_LOAD_OFFSET
+    ; Настраиваем адрес загрузки Initrix.
+    mov ax, INITRIX_SEGMENT
+    mov es, ax
+    mov bx, INITRIX_OFFSET
 
-.load_initrix_loop:
-    ; *Восстанавливаем и сохраняем номер кластера
-    pop ax
-    push ax
 
-    ; Вычисление LBA кластера
-    ; > LBA = (initrix_cluster - 2) * sectors_per_cluster + data_lba
+; ============================================================
+; ЧТЕНИЕ FAT12-ЦЕПОЧКИ
+; ============================================================
+
+load_cluster:
+    mov ax, [current_cluster]
+
+    ; Допустимые data-кластеры начинаются с 2.
+    cmp ax, 2
+    jb boot_error
+
+    ; LBA = DATA_LBA + cluster - 2.
     sub ax, 2
-    xor ch, ch
-    mov cl, [bpb_sectors_per_cluster]
-    mul cx
-    add ax, [data_lba]
+    add ax, DATA_LBA
 
-    ; Чтение следующего кластера (cl уже содержит нужное кол-во секторов)
-    mov dl, [ebr_drive_number]
+    mov cl, 1
     call disk_read
+    jc boot_error
 
-    ; Увеличиваем адрес смещения initrix на кол-во прочитанных байт
-    xor ah, ah
-    mov al, [bpb_sectors_per_cluster]
-    mul word [bpb_bytes_per_sector]
-    add bx, ax
-    jnc .load_initrix_continue
+    ; Один кластер равен одному сектору — 512 байт.
+    add bx, 512
+    jnc destination_ready
 
-    ; Сдвигаем es на след. параграф (+64 КБ)
+    ; При переполнении BX передвигаем ES на 64 КиБ.
     mov ax, es
     add ax, 0x1000
     mov es, ax
-    xor bx, bx
 
-.load_initrix_continue:
-    ; Вычисление смещения след. кластера в таблице FAT
-    ; (ax - индекс записи, dx - Cluster % 2)
-    pop ax     ; *Восстанавливаем номер кластера
-    mov cx, 3
-    mul cx
-    mov cx, 2
-    div cx
+destination_ready:
+    ; Смещение FAT12-записи:
+    ; offset = cluster + cluster / 2.
+    mov ax, [current_cluster]
+    mov dx, ax
 
-    ; Считывание записи из таблицы FAT
-    mov si, 0x0500
+    mov si, ax
+    shr si, 1
     add si, ax
+    add si, FAT_BUFFER
+
+    ; FAT находится в DS=0 по адресу 0x0500.
     mov ax, [ds:si]
 
-    ; Проверка чётности кластера
-    or dx, dx
-    jz .even_cluster
+    ; Для нечётного кластера используются старшие 12 бит.
+    test dx, 1
+    jz even_cluster
 
-.odd_cluster:
-    ; Нечётный кластер - оставляем старшие 12 бит
     shr ax, 4
-    jmp .next_cluster_after
+    jmp cluster_ready
 
-.even_cluster:
-    ; Чётный кластер - оставляем младшие 12 бит
+even_cluster:
     and ax, 0x0FFF
 
-.next_cluster_after: 
-    ; Проверка на конец файла
+cluster_ready:
+    ; 0xFF8–0xFFF — конец FAT12-цепочки.
     cmp ax, 0x0FF8
-    jae .read_initrix_finish
+    jae launch_initrix
 
-    ; *Сохраняем номер кластера для след. итерации, продолжая чтение
-    push ax
-    jmp .load_initrix_loop
+    ; 0xFF7 — bad cluster.
+    cmp ax, 0x0FF7
+    je boot_error
 
-.read_initrix_finish: 
-    ; Настройка сегментных регистров под initrix
-    mov ax, INITRIX_LOAD_SEGMENT
-    mov ds, ax
-    mov es, ax
+    ; 0xFF0–0xFF6 — зарезервированные значения.
+    cmp ax, 0x0FF0
+    jae boot_error
+
+    ; 0 и 1 недопустимы для файловой цепочки.
+    cmp ax, 2
+    jb boot_error
+
+    mov [current_cluster], ax
+    jmp load_cluster
+
+
+; ============================================================
+; ЗАПУСК INITRIX
+; ============================================================
+
+launch_initrix:
+    ; Считываем номер диска до переключения DS.
     mov dl, [ebr_drive_number]
 
-    ; Переход к initrix
-    jmp INITRIX_LOAD_SEGMENT:INITRIX_LOAD_OFFSET
+    mov ax, INITRIX_SEGMENT
+    mov ds, ax
+    mov es, ax
+
+    cld
+
+    jmp INITRIX_SEGMENT:INITRIX_OFFSET
 
 
-; > Обработчик ошибок
-; Параметры:
-;  - si: сообщение об ошибке
-error_handler:
-    call print
+; ============================================================
+; BIOS DISK READ
+; ============================================================
 
-    ; Ожидание нажатия
-    mov ah, 0
+; Вход:
+;   AX    — LBA;
+;   CL    — количество секторов;
+;   ES:BX — адрес назначения.
+;
+; Номер диска берётся из ebr_drive_number.
+;
+; Выход:
+;   CF=0 — успех;
+;   CF=1 — ошибка.
+;
+; Примечание:
+;   Bootix использует функцию только для запросов, которые не пересекают
+;   границу дорожки:
+;     root: LBA 19, 14 секторов;
+;     FAT:  LBA 1,  9 секторов;
+;     файл: по одному сектору.
+disk_read:
+    pusha
+    push es
+
+    mov [read_lba], ax
+    mov [read_count], cl
+    mov [read_segment], es
+    mov [read_offset], bx
+
+    mov di, 3
+
+disk_read_retry:
+    mov ax, [read_lba]
+    call lba_to_chs
+
+    mov ax, [read_segment]
+    mov es, ax
+    mov bx, [read_offset]
+
+    mov dl, [ebr_drive_number]
+
+    mov ah, 0x02
+    mov al, [read_count]
+
+    stc
+    int 0x13
+    jnc disk_read_success
+
+    ; Сброс дискового контроллера.
+    mov dl, [ebr_drive_number]
+    xor ax, ax
+
+    stc
+    int 0x13
+
+    dec di
+    jnz disk_read_retry
+
+disk_read_failure:
+    pop es
+    popa
+
+    stc
+    ret
+
+disk_read_success:
+    pop es
+    popa
+
+    clc
+    ret
+
+
+; ============================================================
+; LBA → CHS
+; ============================================================
+
+; Вход:
+;   AX — LBA.
+;
+; Выход:
+;   CH — младшие 8 бит цилиндра;
+;   CL — сектор и старшие биты цилиндра;
+;   DH — номер головки;
+;   DL — номер загрузочного диска.
+lba_to_chs:
+    xor dx, dx
+    div word [bpb_sectors_per_track]
+
+    ; DX = номер сектора внутри дорожки, начиная с 0.
+    inc dx
+    mov cx, dx
+
+    ; AX = LBA / sectors_per_track.
+    xor dx, dx
+    div word [bpb_heads]
+
+    ; AX = цилиндр, DX = головка.
+    mov dh, dl
+    mov ch, al
+
+    ; Старшие два бита цилиндра помещаются в CL[6:7].
+    shl ah, 6
+    or cl, ah
+
+    mov dl, [ebr_drive_number]
+    ret
+
+
+; ============================================================
+; ОШИБКА ЗАГРУЗКИ
+; ============================================================
+
+boot_error:
+    xor ax, ax
+    mov ds, ax
+
+    mov si, error_message
+    call print_string
+
+    ; Ожидаем клавишу и перезагружаемся.
+    xor ah, ah
     int 0x16
 
-    ; Аппаратный сброс процессора через вектор BIOS
-    jmp 0xFFFF:0
+    jmp 0xFFFF:0x0000
 
-; Подключение модулей
-%define PRINT_MINIMAL
-%include 'kernel16/io/print.asm'
-%include 'bios-api/disk/read.asm'
 
-; Сообщения
-err_initrix_not_found: db '[!] No Initrix!', 0
+; ============================================================
+; ВЫВОД СТРОКИ
+; ============================================================
 
-; Переменные (Для чтения initrix)
-file_initrix_bin: db 'INITRIX BIN'
-data_lba:         dw 0
+; Вход:
+;   DS:SI — нуль-терминированная строка.
+print_string:
+    push ax
+    push bx
 
-; Сигнатура AA55 (BIOS)
-times 510-($-$$) db 0
+    mov ah, 0x0E
+    xor bx, bx
+
+print_string_next:
+    lodsb
+    test al, al
+    jz print_string_done
+
+    int 0x10
+    jmp print_string_next
+
+print_string_done:
+    pop bx
+    pop ax
+    ret
+
+
+; ============================================================
+; ДАННЫЕ
+; ============================================================
+
+initrix_filename:
+    db 'INITRIX BIN'
+
+error_message:
+    db 0x0D, 0x0A
+    db '[!] Cannot load INITRIX.BIN'
+    db 0
+
+current_cluster:
+    dw 0
+
+read_lba:
+    dw 0
+
+read_segment:
+    dw 0
+
+read_offset:
+    dw 0
+
+read_count:
+    db 0
+
+
+; ============================================================
+; BIOS BOOT SIGNATURE
+; ============================================================
+
+times 510 - ($ - $$) db 0
 dw 0xAA55

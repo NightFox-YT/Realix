@@ -1,143 +1,181 @@
-; © Realix > Switcher CPU modes
-; (21.06.26) v0.07
-; ================
-; ❗️ Зависимости: bootloader/initrix.asm (+kernel16/io)
+; © Realix > CPU Mode Switcher
+; Исправленная версия
+; ===================
 
-; Настройка компиляции
+%ifndef BOOT_SWITCHER_ASM
+%define BOOT_SWITCHER_ASM
+
 bits 16
 
-; Основные константы
 %include 'shared/config.asm'
 
 
+; ============================================================
+; ВЫБОР РЕЖИМА
+; ============================================================
+
 boot_switcher:
+    cld
+
     mov si, str_choose_mode
     call print
 
 .wait_key:
-    ; Ожидание нажатия
-    mov ah, 0x00
+    xor ah, ah
     int 0x16
 
-    ; Варианты выбора
     cmp al, '1'
     je .load_kernel16
-    cmp al, '2'
-    je .load_32bit
 
-    ; Нажали что-то другое - возвращаемся в цикл
+    cmp al, '2'
+    je .load_kernel32
+
     jmp .wait_key
 
-; > Ветка Real Mode (16 bit)
+
+; ============================================================
+; KERNEL16
+; ============================================================
+
 .load_kernel16:
     call print_new_line
+
     mov si, msg_loading_16
     call print
 
-    ; Чтение файла ядра с диска
     mov si, kernel16_filename
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
     mov dl, [boot_drive_num]
     call file_load
+    jc .file_error
 
-    ; Передача собранной структуры данных в ядро и настройка сегментов
     mov ax, KERNEL_LOAD_SEGMENT
     mov ds, ax
     mov es, ax
+
+    ; Kernel16 самостоятельно читает PCINFO по фиксированному адресу.
     mov di, PCINFO_ADDR
 
+    cld
     jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
 
 
-; > Ветка Protected Mode (32-bit)
-.load_32bit:
+; ============================================================
+; KERNEL32
+; ============================================================
+
+.load_kernel32:
     call print_new_line
+
     mov si, msg_loading_32
     call print
 
-    ; Чтение файла 32-битного ядра с диска
     mov si, kernel32_filename
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
     mov dl, [boot_drive_num]
     call file_load
+    jc .file_error
 
-    ; Динамически вычисляем физический адрес GDT перед загрузкой
+    ; Физический адрес временной GDT.
     xor eax, eax
     mov ax, ds
-    shl eax, 4                     ; Преобразуем `ds` в линейный адрес (сегмент * 16)
-    add eax, gdt_start             ; Прибавляем смещение таблицы GDT
-    mov [gdt_descriptor + 2], eax  ; Записываем получившийся адрес в дескриптор таблицы
+    shl eax, 4
+    add eax, gdt_start
+    mov [gdt_descriptor + 2], eax
 
-    ; Динамически вычисляем физический адрес pmode_entry
+    ; Физический адрес точки входа Protected Mode.
     xor eax, eax
     mov ax, ds
-    shl eax, 4                      ; Преобразуем `ds` в линейный адрес (сегмент * 16)
-    add eax, pmode_entry            ; Прибавляем смещение метки `pmode_entry`
-    mov [pmode_target_offset], eax  ; Записываем адрес в структуру памяти для дальнего перехода
+    shl eax, 4
+    add eax, pmode_entry
+    mov [pmode_target_offset], eax
 
-    ; Включаем A20 (С отключением прерываний)
     cli
-    in al, 0x92   ; Читаем состояние системного порта 0x92
-    and al, 0xFE  ; Сбрасываем 0-й бит (бит аппаратного сброса), чтобы случайно не перезагрузиться
-    or al, 2      ; Устанавливаем во 2-й бит единицу (Fast A20 gate)
-    out 0x92, al  ; Отправляем обратно в порт
-    
-    ; Загружаем GDT
+    cld
+
+    ; Fast A20 gate.
+    in al, 0x92
+    and al, 0xFE
+    or al, 0x02
+    out 0x92, al
+
     lgdt [gdt_descriptor]
 
-    ; Включаем Protected Mode
     mov eax, cr0
-    or eax, 0x00000001
+    or eax, 1
     mov cr0, eax
 
-    ; Выполняем 32-битный дальний прыжок через структуру в памяти.
     jmp dword far [pmode_target]
 
 
-; > Структура-указатель для совершения дальнего перехода в 32-битный сегмент кода
-pmode_target:
-    pmode_target_offset: dd 0     ; Физический адрес pmode_entry (заполняется динамически)
-    pmode_target_sel:    dw 0x08  ; Селектор кода в GDT (gdt_code)
+; ============================================================
+; ОШИБКА ЗАГРУЗКИ
+; ============================================================
+
+.file_error:
+    ; AL содержит код FAT12_ERROR_*.
+    mov si, msg_kernel_load_error
+    jmp error_handler
 
 
-; Временный GDT для загрузчика
+; ============================================================
+; FAR POINTER PROTECTED MODE
+; ============================================================
+
 align 4
 
-; 0: Null дескриптор
+pmode_target:
+pmode_target_offset:
+    dd 0
+
+pmode_target_selector:
+    dw 0x08
+
+
+; ============================================================
+; ВРЕМЕННАЯ GDT
+; ============================================================
+
+align 8
+
 gdt_start:
-    dd 0x0, 0x0
+    ; Null descriptor.
+    dq 0
 
-; (Ring 0) 1: Дескриптор кода (Смещение 0x08)
 gdt_code:
-    dw 0xFFFF     ; Лимит (Нижние 16 бит)
-    dw 0x0000     ; Адрес начала (Нижние 16 бит)
-    db 0x00       ; Адрес начала (Средние 8 бит)
-    db 10011010b  ; Access Byte
-    db 11001111b  ; Flags (4 бита) + Лимит (Старшие 4 бита)
-    db 0x00       ; Адрес начала (Старшие 8 бит)
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 10011010b
+    db 11001111b
+    db 0x00
 
-; (Ring 0) Дескриптор данных (Смещение 0x10)
 gdt_data:
-    dw 0xFFFF     ; Лимит (Нижние 16 бит)
-    dw 0x0000     ; Адрес начала (Нижние 16 бит)
-    db 0x00       ; Адрес начала (Средние 8 бит)
-    db 10010010b  ; Access Byte
-    db 11001111b  ; Flags (4 бита) + Лимит (Старшие 4 бита)
-    db 0x00       ; Адрес начала (Старшие 8 бит)
-    
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 10010010b
+    db 11001111b
+    db 0x00
+
 gdt_end:
-    ; Структура-указатель для LGDT
-    gdt_descriptor:
-        dw gdt_end - gdt_start - 1  ; Лимит (Размер GDT)
-        dd gdt_start                ; Адрес начала DGT
+
+gdt_descriptor:
+    dw gdt_end - gdt_start - 1
+    dd 0
 
 
-; > Точка входа в 32-битный режим
+; ============================================================
+; PROTECTED MODE ENTRY
+; ============================================================
+
 bits 32
+
 pmode_entry:
-    ; Настройка 32-битных сегментов данных
+    cld
+
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -145,31 +183,45 @@ pmode_entry:
     mov gs, ax
     mov ss, ax
 
-    ; Настройка стека
-    mov ebp, 0x90000
-    mov esp, ebp
+    mov esp, 0x90000
+    mov ebp, esp
 
-    ; Передача управления Rust-ядру
+    ; EBX — адрес PCINFO для точки входа Rust.
     mov ebx, PCINFO_ADDR
+
     mov eax, KERNEL32_PHYS_ADDR
     jmp eax
 
-    ; Остановка CPU (Если ядро Rust вернулось)
+.halt:
     cli
     hlt
-    jmp $
+    jmp .halt
 
-; Сообщения и строки (16 бит для строковых данных)
+
+; ============================================================
+; ДАННЫЕ REAL MODE
+; ============================================================
+
 bits 16
 
-str_choose_mode: 
+str_choose_mode:
     db '[+] Select OS Mode:', ENTER
     db '  [1] 16-bit Real Mode', ENTER
     db '  [2] 32-bit Protected Mode (Rust)', ENTER, 0
 
-msg_loading_16: db '[+] Loading 16-bit kernel.', ENTER, 0
-msg_loading_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
+msg_loading_16:
+    db '[+] Loading 16-bit kernel.', ENTER, 0
 
-; Переменные
-kernel16_filename: db 'KERNEL16BIN'
-kernel32_filename: db 'KERNEL32BIN'
+msg_loading_32:
+    db '[+] Loading 32-bit kernel.', ENTER, 0
+
+msg_kernel_load_error:
+    db '[!] Failed to load kernel file.', 0
+
+kernel16_filename:
+    db 'KERNEL16BIN'
+
+kernel32_filename:
+    db 'KERNEL32BIN'
+
+%endif

@@ -2,26 +2,55 @@ ENTRY(_start)
 
 SECTIONS
 {
+    /* Физический адрес загрузки Kernel32. */
     . = 0x10000;
 
-    .text : ALIGN(4)
+    .text : ALIGN(16)
     {
-        /* Расставляем код с точкой входа в начале */
-        *(.text.entry)
-        *(.text .text.*)
+        /* Точка входа всегда должна находиться первой. */
+        KEEP(*(.text.entry))
+
+        *(.text)
+        *(.text.*)
     }
 
-    .rodata : { *(.rodata .rodata.*) }
+    .rodata : ALIGN(16)
+    {
+        *(.rodata)
+        *(.rodata.*)
+    }
 
-    .data : { *(.data .data.*) }
+    .data : ALIGN(16)
+    {
+        *(.data)
+        *(.data.*)
+    }
 
-    .bss : { *(.bss .bss.*) }
+    /*
+     * Секция BSS отсутствует в плоском binary-файле, поэтому ядро
+     * самостоятельно обнуляет диапазон __bss_start..__bss_end.
+     */
+    .bss (NOLOAD) : ALIGN(16)
+    {
+        __bss_start = .;
 
-    /* Эти секции объектных файлов мы выкидываем из бинарника */
+        *(.bss)
+        *(.bss.*)
+        *(COMMON)
+
+        __bss_end = .;
+    }
+
+    __kernel_end = .;
+
     /DISCARD/ :
     {
         *(.comment)
         *(.eh_frame)
-        *(.note .note.*)
+        *(.eh_frame_hdr)
+        *(.note)
+        *(.note.*)
+        *(.debug)
+        *(.debug.*)
     }
 }

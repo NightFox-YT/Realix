@@ -1,25 +1,28 @@
 # © Realix > Makefile: Kernel16
-# (21.06.26) v0.07
-# ================
+# Исправленная версия
+# ===================
 
-# Конфигурация
 BUILD_DIR ?= $(abspath ../../build)
-SRC_DIR ?= $(abspath ../../source)
-ASM = nasm
-ASMFLAGS = -f bin -i $(SRC_DIR)
+SRC_DIR   ?= $(abspath ../../source)
 
-.PHONY: kernel16
+ASM      := nasm
+ASMFLAGS := -f bin -i $(SRC_DIR)/
 
-# Запуск по умолчанию
+TARGET := $(BUILD_DIR)/kernel16.bin
+
+.PHONY: all kernel16 clean
+
 all: kernel16
 
-# Сборка ядра (bin)
-kernel16: $(BUILD_DIR)/kernel16.bin
+kernel16: $(TARGET)
 
-$(BUILD_DIR)/kernel16.bin:
-	$(ASM) $(ASMFLAGS) $(SRC_DIR)/kernel16/main.asm -o $(BUILD_DIR)/kernel16.bin
+$(BUILD_DIR):
+	mkdir -p $@
 
+$(TARGET): | $(BUILD_DIR)
+	$(ASM) $(ASMFLAGS) \
+	    $(SRC_DIR)/kernel16/main.asm \
+	    -o $(TARGET)
 
-# Очистка
 clean:
-	rm -f $(BUILD_DIR)/kerne16.bin
+	rm -f $(TARGET)

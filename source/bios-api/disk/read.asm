@@ -1,120 +1,220 @@
-; © Realix > Disk Read
-; (13.06.26) v0.06
-; ================
-; ❗️ Зависимости: error_handler (внешний обработчик)
+; © Realix > BIOS Disk Read
+; Исправленная версия
+; ===================
 
-; ❗ Требуется инициализация диска через `disk_init`
-%include "bios-api/disk/init.asm"
+%ifndef BIOS_DISK_READ_ASM
+%define BIOS_DISK_READ_ASM
+
+%include 'bios-api/disk/init.asm'
 
 
-; > Чтение секторов с диска
-; Параметры:
-;  - ax: LBA
-;  - cl: кол-во секторов для чтения (до 128)
-;  - dl: номер диска
-;  - es:bx: адрес памяти для записи данных
+; ============================================================
+; ЧТЕНИЕ СЕКТОРОВ
+; ============================================================
+
+; Вход:
+;   AX    — начальный LBA;
+;   CX    — количество секторов;
+;   DL    — номер BIOS-диска;
+;   ES:BX — адрес назначения.
+;
+; Выход:
+;   CF=0 — успешно;
+;   CF=1 — ошибка.
+;
+; Регистры вызывающего кода и ES сохраняются.
 disk_read:
-    push cx
-    push dx
-    push di
-    push ax
+    pusha
+    push es
 
-    push cx          ; *Сохраняем кол-во секторов (cl)
-    call .lba_to_chs
-    pop ax           ; *Восстанавливаем кол-во секторов (cl > al)
+    mov [disk_read_lba], ax
+    mov [disk_read_count], cx
+    mov [disk_read_drive], dl
+    mov [disk_read_segment], es
+    mov [disk_read_offset], bx
 
-    mov ah, 2h       ; Функция BIOS: Чтение секторов
-    mov di, 3        ; Кол-во попыток чтения
+    ; Нулевой запрос считается успешным.
+    cmp cx, 0
+    je .success
+
+    ; Геометрия должна быть предварительно инициализирована.
+    cmp word [disk_spt], 0
+    je .failure
+
+    cmp word [disk_heads], 0
+    je .failure
+
+.next_sector:
+    cmp word [disk_read_count], 0
+    je .success
+
+    mov di, 3
 
 .retry:
-    pusha     ; Сохранение регистров (BIOS может их испортить)
-    stc       ; Установка Carry Flag (Некоторые BIOS не устанавливают)
+    mov ax, [disk_read_lba]
+    call disk_lba_to_chs
+    jc .failure
+
+    mov ax, [disk_read_segment]
+    mov es, ax
+    mov bx, [disk_read_offset]
+
+    mov dl, [disk_read_drive]
+    mov ah, 0x02
+    mov al, 1
+
+    ; Некоторые BIOS некорректно оставляют CF неизменным.
+    stc
     int 0x13
-    jnc .done
+    jnc .sector_read
 
-    ; Ошибка, => Сбрасываем контроллер диска
-    popa
-    call disk_reset
+    ; Сбрасываем контроллер после ошибки.
+    mov dl, [disk_read_drive]
+    xor ax, ax
+    stc
+    int 0x13
 
-    ; Переход к след. попытке
     dec di
     jnz .retry
 
-.fail:
-    pop ax
-    pop di
-    pop dx
-    pop cx
+    jmp .failure
 
-    ; Все попытки исчерпаны
-    jmp read_error
+.sector_read:
+    inc word [disk_read_lba]
+    dec word [disk_read_count]
 
-.done:
+    ; Переход к следующему сектору назначения.
+    add word [disk_read_offset], 512
+    jnc .next_sector
+
+    ; Переполнение смещения означает переход через 64-КиБ границу.
+    add word [disk_read_segment], 0x1000
+    jmp .next_sector
+
+.success:
+    pop es
     popa
+    clc
+    ret
 
-    pop ax
-    pop di
-    pop dx
-    pop cx
+.failure:
+    pop es
+    popa
+    stc
     ret
 
 
-; > Перевод LBA адреса в CHS адрес
-; Параметры:
-;  - ax: LBA
-; Вывод:
-;  - cx [bits 0-5]: сектор
-;  - cx [bits 6-15]: цилиндр
-;  - dh: номер головы
-.lba_to_chs:
+; ============================================================
+; LBA → CHS
+; ============================================================
+
+; Вход:
+;   AX — LBA.
+;
+; Выход:
+;   CH — младшие восемь бит цилиндра;
+;   CL[0:5] — номер сектора;
+;   CL[6:7] — старшие два бита цилиндра;
+;   DH — номер головки;
+;   CF=0 — успех;
+;   CF=1 — неверная геометрия или цилиндр > 1023.
+disk_lba_to_chs:
     push ax
+    push bx
     push dx
 
-    ; Вычисление номера сектора (LBA / SectorsPerTrack) + 1
-    xor dx, dx
-    div word [disk_spt]  ; ax = LBA / SPT, dx = LBA % SPT
-    inc dx               ; Сектора в CHS нумеруются с 1
-    mov cx, dx           ; Сохраняем номер сектора (cx)
+    cmp word [disk_spt], 0
+    je .failure
 
-    ; Вычисление номеров:
-    ; - ax (Цилиндр) = (LBA / SPT) / Heads
-    ; - dx (Голова)  = (LBA / SPT) % Heads
+    cmp word [disk_heads], 0
+    je .failure
+
+    ; AX = LBA / sectors_per_track.
+    ; DX = LBA % sectors_per_track.
+    xor dx, dx
+    div word [disk_spt]
+
+    ; Сектора CHS нумеруются от единицы.
+    inc dx
+    mov cl, dl
+
+    ; AX = cylinder.
+    ; DX = head.
     xor dx, dx
     div word [disk_heads]
-    mov dh, dl             ; Сохраняем номер головы (dh)
 
-    ; Упаковка цилиндра и сектора в cx для int 0x13
-    mov ch, al  ; Сохраняем [bits 8-15] цилиндра в ch
-    shl ah, 6   ; Сдвигаем старшие 2 бита цилиндра
-    or cl, ah   ; Перемещаем верхние 2 бита [bits 6-7] в cl
+    ; BIOS CHS поддерживает цилиндры 0–1023.
+    cmp ax, 1023
+    ja .failure
 
-    pop ax      ; *Восстанавливаем ax ← оригинальный dx
-    mov dl, al  ; Возвращаем номер диска на место в dl
-    pop ax      ; *Восстанавливаем оригинальный ax (LBA)
+    mov dh, dl
+    mov ch, al
 
+    ; Старшие два бита номера цилиндра.
+    mov bl, ah
+    and bl, 0x03
+    shl bl, 6
+    or cl, bl
+
+    mov [disk_chs_head], dh
+
+    pop dx
+    mov dh, [disk_chs_head]
+    pop bx
+    pop ax
+
+    clc
     ret
 
+.failure:
+    pop dx
+    pop bx
+    pop ax
 
-; > Сброс контроллера диска
-; Параметры:
-;  - dl: номер диска
-disk_reset:
-    ; Установка Carry Flag (Некоторые BIOS не устанавливают)
-    pusha
     stc
-
-    ; Сброс контроллера диска
-    xor ax, ax
-    int 0x13
-    jc read_error
-
-    popa
     ret
 
 
-; > Ошибки
-read_error:
-    mov si, err_read_failed
-    jmp error_handler
+; ============================================================
+; СБРОС ДИСКОВОГО КОНТРОЛЛЕРА
+; ============================================================
 
-err_read_failed: db '[!] Read failed!', 0
+; Вход:
+;   DL — номер BIOS-диска.
+;
+; Выход:
+;   CF — результат BIOS.
+disk_reset:
+    push ax
+
+    xor ax, ax
+    stc
+    int 0x13
+
+    pop ax
+    ret
+
+
+; ============================================================
+; ВРЕМЕННОЕ СОСТОЯНИЕ
+; ============================================================
+
+disk_read_lba:
+    dw 0
+
+disk_read_count:
+    dw 0
+
+disk_read_segment:
+    dw 0
+
+disk_read_offset:
+    dw 0
+
+disk_read_drive:
+    db 0
+
+disk_chs_head:
+    db 0
+
+%endif

@@ -1,186 +1,266 @@
 ; © Realix > RTL8139 Network Driver
-; ø Copyright by @createrman-system
-; (21.06.26) v0.07
-; ================
+; Исправленная NASM-совместимая версия
+; ===================================
 
-; Порты конфигурации PCI
+%ifndef RTL8139_ASM
+%define RTL8139_ASM
+
+
+; ============================================================
+; PCI
+; ============================================================
+
 PCI_CONFIG_ADDRESS  equ 0x0CF8
 PCI_CONFIG_DATA     equ 0x0CFC
 
-; Регистры RTL8139 (смещения от `net_io_base`)
-REG_MAC      equ 0x00  ; MAC-адрес (6 байт)
-REG_MAR      equ 0x08  ; Multicast регистры (8 байт)
-REG_TSD0     equ 0x10  ; Дескриптор статуса передачи ( 0)
-REG_TSAD0    equ 0x20  ; Дескриптор начального адреса передачи (0)
-REG_RBSTART  equ 0x30  ; Начальный адрес буфера приёма данных
-REG_CR       equ 0x37  ; Регистр команд
-REG_CAPR     equ 0x38  ; Текущий адрес чтения пакета
-REG_IMR      equ 0x3C  ; Регистр маски прерываний
-REG_ISR      equ 0x3E  ; Регистр статуса прерываний
-REG_TCR      equ 0x40  ; Регистр конфигурации передачи
-REG_RCR      equ 0x44  ; Регистр конфигурации приёма
-REG_CONFIG1  equ 0x52  ; Регистр конфигурации 1
+PCI_ENABLE_BIT      equ 0x80000000
+PCI_RTL8139_ID      equ 0x813910EC
 
-; Команды и биты RTL8139
-CR_RST   equ 0x10      ; Сброс
-CR_RE    equ 0x08      ; Включение приёмника
-CR_TE    equ 0x04      ; Включение передатчика
-CR_BUFE  equ 0x01      ; Буфер пуст
+PCI_COMMAND_OFFSET  equ 0x04
+PCI_BAR0_OFFSET     equ 0x10
 
-; > Инициализирует сетевую карту RTL8139 на шине PCI
-; Вывод:
-;  - Carry Flag (CF): Установлен, если карта не найдена.
+PCI_COMMAND_IO      equ 0x0001
+PCI_COMMAND_MASTER  equ 0x0004
+
+
+; ============================================================
+; РЕГИСТРЫ RTL8139
+; ============================================================
+
+REG_MAC      equ 0x00
+REG_MAR      equ 0x08
+REG_TSD0     equ 0x10
+REG_TSAD0    equ 0x20
+REG_RBSTART  equ 0x30
+REG_CR       equ 0x37
+REG_CAPR     equ 0x38
+REG_IMR      equ 0x3C
+REG_ISR      equ 0x3E
+REG_TCR      equ 0x40
+REG_RCR      equ 0x44
+REG_CONFIG1  equ 0x52
+
+
+; ============================================================
+; БИТЫ RTL8139
+; ============================================================
+
+CR_RST   equ 0x10
+CR_RE    equ 0x08
+CR_TE    equ 0x04
+CR_BUFE  equ 0x01
+
+
+; ============================================================
+; НАСТРОЙКИ
+; ============================================================
+
+RTL8139_RESET_TIMEOUT equ 0x0000FFFF
+
+
+; ============================================================
+; ИНИЦИАЛИЗАЦИЯ RTL8139
+; ============================================================
+
+; Ищет RTL8139 на PCI bus 0 и выполняет программный сброс.
+;
+; Выход:
+;   CF=0 — RTL8139 найдена и успешно сброшена;
+;   CF=1 — карта не найдена, BAR некорректен или сброс завис.
+;
+; При успехе:
+;   [cs:net_io_base] содержит базовый адрес I/O-портов карты.
+;
+; Регистры вызывающего кода сохраняются.
 net_init:
     pushad
 
-    ; Поиск RTL8139 на PCI (Vendor: 0x10EC, Устройство: 0x8139)
-    ; Старт с Bus 0, Dev 0, Func 0
-    mov eax, 0x80000000
-.pci_loop:
-    push eax
+    mov word [cs:net_io_base], 0
+    mov dword [cs:net_pci_address], 0
 
-    ; Чтение VendorID (low) и DeviceID (high)
+    ; Начальный PCI configuration address:
+    ; bus      = 0
+    ; device   = 0
+    ; function = 0
+    ; register = 0
+    mov ebx, PCI_ENABLE_BIT
+
+.pci_scan:
+    ; Читаем Vendor ID и Device ID.
+    mov eax, ebx
+
     mov dx, PCI_CONFIG_ADDRESS
     out dx, eax
-    mov dx, PCI_CONFIG_DATA
-    in eax, dx
-    
-    ; Сравниваем полученное название устройства с сетевой картой
-    cmp eax, 0x813910EC
-    je .found
-    
-    ; Переход к след. устройству, с условием проверки только первых 32
-    pop eax
-    add eax, 0x800
-    cmp eax, 0x80010000
-    jne .pci_loop
-    
-    ; Карта не найдена
-    jmp .fail
 
-.found:
-    pop eax
-
-    ; Получаем базовый адрес порта I/O из BAR0 (Смещение PCI 0x10)
-    or eax, 0x10
-    mov dx, PCI_CONFIG_ADDRESS
-    out dx, eax
     mov dx, PCI_CONFIG_DATA
     in eax, dx
 
-    ; Очистка бита 0 (IO) и бита 1 (reserved) и запись в переменную
-    and ax, 0xFFFC
+    ; EAX:
+    ; младшие 16 бит — Vendor ID;
+    ; старшие 16 бит — Device ID.
+    cmp eax, PCI_RTL8139_ID
+    je .device_found
+
+    ; Переходим к следующему PCI device.
+    ; Поле device расположено в битах 11–15.
+    add ebx, 0x00000800
+
+    ; Сканируем устройства 0–31 только на bus 0.
+    cmp ebx, 0x80010000
+    jb .pci_scan
+
+    jmp .failure
+
+
+; ============================================================
+; УСТРОЙСТВО НАЙДЕНО
+; ============================================================
+
+.device_found:
+    mov [cs:net_pci_address], ebx
+
+
+; ============================================================
+; ВКЛЮЧЕНИЕ PCI I/O SPACE И BUS MASTER
+; ============================================================
+
+    ; Выбираем PCI Command/Status register по offset 0x04.
+    mov eax, ebx
+    or eax, PCI_COMMAND_OFFSET
+
+    mov dx, PCI_CONFIG_ADDRESS
+    out dx, eax
+
+    ; Читаем Command/Status DWORD.
+    mov dx, PCI_CONFIG_DATA
+    in eax, dx
+
+    ; Включаем:
+    ; bit 0 — I/O Space;
+    ; bit 2 — Bus Master.
+    or ax, PCI_COMMAND_IO | PCI_COMMAND_MASTER
+
+    ; Сохраняем изменённое значение.
+    mov ecx, eax
+
+    ; Повторно выбираем Command/Status register.
+    mov eax, ebx
+    or eax, PCI_COMMAND_OFFSET
+
+    mov dx, PCI_CONFIG_ADDRESS
+    out dx, eax
+
+    ; Записываем обновлённый Command/Status DWORD.
+    mov eax, ecx
+    mov dx, PCI_CONFIG_DATA
+    out dx, eax
+
+
+; ============================================================
+; ЧТЕНИЕ BAR0
+; ============================================================
+
+    ; Выбираем BAR0 по offset 0x10.
+    mov eax, ebx
+    or eax, PCI_BAR0_OFFSET
+
+    mov dx, PCI_CONFIG_ADDRESS
+    out dx, eax
+
+    mov dx, PCI_CONFIG_DATA
+    in eax, dx
+
+    ; Для текущего драйвера BAR0 должен быть I/O BAR.
+    ; У I/O BAR младший бит установлен.
+    test eax, 1
+    jz .failure
+
+    ; Очищаем служебные биты BAR.
+    and eax, 0xFFFFFFFC
+
+    ; Этот драйвер использует 16-битное пространство I/O-портов.
+    test eax, 0xFFFF0000
+    jnz .failure
+
+    ; Нулевой адрес недопустим.
+    test ax, ax
+    jz .failure
+
+    ; Сохраняем базовый I/O-адрес RTL8139.
     mov [cs:net_io_base], ax
 
-    ; Включение питания (Разблокировка регистров конфигурации)
+
+; ============================================================
+; ВКЛЮЧЕНИЕ ПИТАНИЯ
+; ============================================================
+
+    ; CONFIG1 = 0 выводит RTL8139 из режима энергосбережения.
     mov dx, ax
     add dx, REG_CONFIG1
-    mov al, 0x00
+
+    xor al, al
     out dx, al
 
-    ; Программный сброс сетевой карты (Software Reset)
+
+; ============================================================
+; ПРОГРАММНЫЙ СБРОС
+; ============================================================
+
     mov dx, [cs:net_io_base]
     add dx, REG_CR
+
     mov al, CR_RST
     out dx, al
+
+    ; Ждём, пока карта очистит бит CR_RST.
+    ; Тайм-аут предотвращает бесконечное зависание.
+    mov ecx, RTL8139_RESET_TIMEOUT
 
 .wait_reset:
     in al, dx
     test al, CR_RST
+    jz .reset_complete
+
+    dec ecx
     jnz .wait_reset
 
-    ; Настройка буфера приема (RX Buffer)
-    mov eax, 0x00070000         
-    mov dx, [cs:net_io_base]
-    add dx, REG_RBSTART
-    out dx, eax
-    mov word [cs:net_rx_ptr], 0
+    jmp .failure
 
-    ; Включение передатчика (TE) и приемника (RE)
-    mov dx, [cs:net_io_base]
-    add dx, REG_CR
-    mov al, CR_RE | CR_TE
-    out dx, al
 
-    ; Конфигурация приема (Принимать Broadcast-пакеты + физический MAC)
-    mov dx, [cs:net_io_base]
-    add dx, REG_RCR
-    mov eax, 0x0000000A       ; AB (Accept Broadcast) + AM (Multicast)
-    out dx, eax
+; ============================================================
+; УСПЕХ
+; ============================================================
 
-    ; Сброс CF (Успех)
+.reset_complete:
     popad
     clc
     ret
 
-.fail:
-    ; Установка CF (Ошибка)
+
+; ============================================================
+; ОШИБКА
+; ============================================================
+
+.failure:
+    mov word [cs:net_io_base], 0
+    mov dword [cs:net_pci_address], 0
+
     popad
     stc
     ret
 
 
-; > Отправка Ethernet-пакета
-; Параметры:
-;   - ds:si: Указатель на данные пакета
-;   - cx:    Размер пакета в байтах
-net_send:
-    pushad
-    
-    ; Определение текущего TX дескриптора (у RTL8139 их всего 4 по 4 байта)
-    movzx bx, byte [cs:net_tx_cur]
-    shl bx, 2
-    
-    ; Установка физического адреса памяти с eax (TSAD)
-    mov ax, ds
-    movzx eax, ax
-    shl eax, 4
-    movzx esi, si
-    add eax, esi
-    
-    mov dx, [cs:net_io_base]
-    add dx, REG_TSAD0
-    add dx, bx
-    out dx, eax
+; ============================================================
+; СОСТОЯНИЕ ДРАЙВЕРА
+; ============================================================
 
-    ; Установка длины пакета и старт передачи (TSD)
-    mov dx, [cs:net_io_base]
-    add dx, REG_TSD0
-    add dx, bx
-    movzx eax, cx
-    and eax, 0x1FFF   ; Размер пакета (биты 0-12)
-    out dx, eax       ; Запись в TSD активирует отправку пакета картой
+align 4
 
-    ; Инкремент дескриптора для следующей отправки (циклично от 0 до 3)
-    inc byte [cs:net_tx_cur]
-    and byte [cs:net_tx_cur], 3
+net_pci_address:
+    dd 0
 
-    popad
-    ret
+net_io_base:
+    dw 0
 
 
-; > Читает локальный MAC-адрес сетевой карты
-; Параметры:
-;  - es:di: Указатель на буфер (6 байт) для сохранения MAC-адреса
-net_get_mac:
-    pushad
-
-    ; Подготовка данных для чтения из микросхемы
-    mov dx, [cs:net_io_base]
-    add dx, REG_MAC
-    mov cx, 6
-.loop:
-    ; Чтение по байту из dx и запись в es:di
-    in al, dx
-    stosb
-    inc dx
-    loop .loop
-.done:
-    popad
-    ret
-
-
-; Переменные
-net_io_base:  dw 0
-net_tx_cur:   db 0  ; Текущий дескриптор передачи (0-3)
-net_rx_ptr:   dw 0  ; Текущее смещение в буфере приёма
+%endif
