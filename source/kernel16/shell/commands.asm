@@ -161,7 +161,7 @@ cmd_meminfo:
     call print_new_line
 
     mov di, PCINFO_ADDR
-    call show_free_memory
+    call show_usable_memory
     call print_new_line
 
     mov di, PCINFO_ADDR
@@ -641,16 +641,16 @@ msg_help:
     db '> beep      - Beep via BIOS speaker', ENTER
     db '> meminfo   - Display RAM configuration', ENTER
     db '  [Text]', ENTER
-    db '> len <t>     - Length of <text>', ENTER
-    db '> upper <t>   - <text> to upper case', ENTER
-    db '> lower <t>   - <text> to lower case', ENTER
-    db '> reverse <t> - Reverse <text>', ENTER
+    db '> len <t>           - Length of <text>', ENTER
+    db '> upper <t>         - <text> to upper case', ENTER
+    db '> lower <t>         - <text> to lower case', ENTER
+    db '> reverse <t>       - Reverse <text>', ENTER
+    db '> repeat <1-20> <t> - Repeat <text> N times', ENTER
     db '  [Numbers]', ENTER
     db '> calc <num1> <+ - * /> <num2> - Simple calculator (positive only)', ENTER
-    db '> hex <num>         - Show <num> in hexadecimal', ENTER
-    db '> ascii <0-255>     - Print char by ASCII code', ENTER
-    db '> repeat <1-20> <t> - Repeat <text> N times', ENTER
-    db '> fib <0-24>        - Nth Fibonacci number', ENTER
+    db '> hex <num>     - Show <num> in hexadecimal', ENTER
+    db '> ascii <0-255> - Print char by ASCII code', ENTER
+    db '> fib <0-24>    - Nth Fibonacci number', ENTER
     db '  [Power]', ENTER
     db '> reboot   - Reboot PC', ENTER
     db '> shutdown - Power off PC', 0
@@ -670,7 +670,7 @@ msg_repeat_usage: db 'Usage: repeat <1-20> <text>', 0
 msg_fib:          db 'Fib: ', 0
 msg_fib_usage:    db 'Usage: fib <0-24>', 0
 
-note_meminfo: db 'Note: In Real mode you can access only up to 1 MB RAM.', 0
+note_meminfo: db 'Note: In Real mode you can access only low RAM.', 0
 
 ; Буфер ввода
 input_str: times 64 db 0

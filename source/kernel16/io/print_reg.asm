@@ -51,26 +51,63 @@ print_hex16:
 .next_digit:
     rol bx, 4   ; Старший ниббл → младшие 4 бита
 
-    ; Берём цифру из bx (младшие 4 бита из младшего байта bx)
+    ; Берём цифру из bx (младшие 4 бита из младшего байта bx) и печатаем
     mov al, bl
-    and al, 0x0F
+    call print_hex_digit
+    loop .next_digit
 
-    ; Выбор обработчика символа
+.done:
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; > Вывод одной шестнадцатеричной цифры
+; Параметры:
+;  - al: значение (учитываются только младшие 4 бита)
+print_hex_digit:
+    push ax
+
+    and al, 0x0F
     cmp al, 9
     jbe .digit        ; Обработка цифры (0-9)
     add al, 'A' - 10  ; Обработка буквы (A-F)
     jmp .print
+
 .digit:
     ; Перевод цифры в ASCII символ
     add al, '0'
 
 .print:
-    ; Печатаем символ и уходим в цикл
     call print_char
-    loop .next_digit
 
 .done:
-    pop cx
+    pop ax
+    ret
+
+; > Вывод значения al в шестнадцатеричном виде (2 цифры) + пробел
+; (Полезно для дампов памяти: печатает байт и разделитель одним вызовом)
+; Параметры:
+;  - al: значение байта
+print_byte:
+    push ax
+    push bx
+
+    ; Сохраняем байт целиком (al будем портить под каждую цифру)
+    mov bl, al
+
+    ; Старший ниббл
+    mov al, bl
+    shr al, 4
+    call print_hex_digit
+
+    ; Младший ниббл
+    mov al, bl
+    call print_hex_digit
+
+    mov al, ' '
+    call print_char
+
     pop bx
     pop ax
     ret

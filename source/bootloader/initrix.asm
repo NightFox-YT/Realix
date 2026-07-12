@@ -50,7 +50,7 @@ main:
     call show_lower_memory
     call print_new_line
 
-    call show_free_memory
+    call show_usable_memory
     call print_new_line
 
     call show_map_entries_cnt

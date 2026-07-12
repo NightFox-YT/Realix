@@ -1,5 +1,5 @@
 ; © Realix > High memory (Memory Map)
-; (30.06.26) v0.07
+; (12.07.26) v0.09
 ; ================
 
 ; Основные константы
@@ -17,74 +17,67 @@ get_memory_map:
     push ecx
     push edx
 
-    ; Установка начальных параметров, счётчика записей, "SMAP"
+    ; Установка начальных параметров, счётчика записей
     xor ebx, ebx
     xor bp, bp
-    mov edx, 0x0534D4150
 
-    ; Получение 1-й записи
+.next:
+    ; Не позволяем BIOS записать больше, чем вмещает `E820Map` в kernel32
+    cmp bp, E820_MAX_ENTRIES
+    jae .success
+
     mov eax, 0xe820
+    mov edx, 0x0534D4150       ; "SMAP"
+    mov ecx, E820_ENTRY_SIZE   ; Запрашиваем 24 байта
     mov [es:di + 20], dword 1  ; Делаем запись валидной для ACPI 3.X (Она сможет перезаписаться)
-    mov ecx, 24                ; Запрашиваем 24 байта
+
     int 0x15
-    jc .fail                   ; Установленный CF при первом вызове - "функция не поддерживается"
-    mov edx, 0x0534D4150       ; Некоторые BIOS, могут затирать этот регистр
-    cmp eax, edx               ; В случае успеха eax должен быть сброшен в "SMAP"
+    jc .carry_result      ; Установленный CF - "функция не поддерживается" или "конец списка"
+
+    cmp eax, 0x0534D4150  ; В случае успеха eax должен быть сброшен в "SMAP"
     jne .fail
 
-    ; Ebx = 0 означает, что список состоит всего из 1 записи (бесполезно)
-    test ebx, ebx
-    je .fail
+    ; Есть ли расширенные атрибуты ACPI 3.X? (BIOS может вернуть 20 или 24 байта)
+    cmp ecx, 20
+    jb .skipentry
 
-    jmp .jmpin
-
-.loop:
-    mov eax, 0xe820            ; Исправляем затирание
-    mov [es:di + 20], dword 1  ; Делаем запись валидной для ACPI 3.x (Она сможет перезаписаться)
-    mov ecx, 24                ; Запрашиваем 24 байта
-    int 0x15
-
-    jc .done                ; Установленный Carry Flag - "конец списка достигнут"
-    mov edx, 0x0534D4150    ; Некоторые BIOS, могут затирать этот регистр
-
-.jmpin:
-    jcxz .skipentry            ; Пропускаем записи с нулевой длиной
-    cmp cl, 20                 ; Есть ли расширенные атрибуты ACPI 3.X?
-    jbe short .notext
-
-    test byte [es:di + 20], 1  ; Есть атрибуты: очищен ли бит "игнорировать эти данные"?
-    je short .skipentry
-
-.notext:
-    mov ecx, [es:di + 8]  ; Получаем младшие 32 бита длины области памяти
-    or ecx, [es:di + 12]  ; Проверяем старшие 32 бита на 0
+    mov eax, [es:di + 8]  ; Получаем младшие 32 бита длины области памяти
+    or eax, [es:di + 12]  ; Проверяем старшие 32 бита на 0
     jz .skipentry         ; Если 64-битная длина равна 0, пропустить запись
-    inc bp                ; Получена хорошая запись, переход к следующему месту хранения
 
-    ; Динамическая защита от перезаписи загрузчика по адресу 0x7C00
-    cmp di, 0x6FE8
-    jae .done
-    add di, 24
+    ; Если запись не превышает макс. размер в 24 байта, принимаем
+    cmp ecx, 24
+    jb .accept
+
+    ; Есть атрибуты: очищен ли бит "игнорировать эти данные"?
+    test byte [es:di + 20], 1
+    jz .skipentry
+
+.accept:
+    ; Получена хорошая запись, переход к следующему месту хранения
+    inc bp
+    add di, E820_ENTRY_SIZE
 
 .skipentry:
     ; Если ebx сбрасывается в 0, конец список достигнут
     test ebx, ebx
-    jne short .loop
+    jne .next
 
-.done:
-    ; Очищаем флаг переноса и выходим
+.success:
+    ; Очищаем CF и выходим
     clc
+    jmp .done
 
-    pop edx
-    pop ecx
-    pop ebx
-    pop eax
-    ret
+.carry_result:
+    ; CF при уже собранных записях обычно означает "конец списка достигнут"
+    test bp, bp
+    jnz .success
 
 .fail:
     ; Выход по ошибке "Функция не поддерживается"
     stc
 
+.done:
     pop edx
     pop ecx
     pop ebx
@@ -122,8 +115,8 @@ show_map_entries_cnt:
 ; Параметры:
 ;  - es:di: Указатель на `PC_INFO`
 ; Вывод:
-;  - ax: Число свободной памяти (МБ)
-get_free_memory:
+;  - ax: Число свободной памяти (МБ), насыщается на 65535 при переполнении
+get_usable_memory:
     push ebx
     push ecx
     push edx
@@ -133,10 +126,16 @@ get_free_memory:
     xor edx, edx
 
     ; Читаем количество записей (Если 0 - Выходим)
-    mov cl, [es:di + 3]
-    xor ch, ch
-    jcxz .empty
+    mov cx, [es:di + 3]
+    test cx, cx
+    jz .empty
 
+    ; Доп. защита от повреждённого PCINFO (не больше, чем реально бывает записей)
+    cmp cx, E820_MAX_ENTRIES
+    jbe .count_valid
+    mov cx, E820_MAX_ENTRIES
+
+.count_valid:
     ; Адрес первой записи E820
     mov si, di
     add si, 5
@@ -147,12 +146,12 @@ get_free_memory:
     jne .skip_entry
 
     ; Прибавляем 64-битную длину региона к edx:ebx
-    add ebx, [es:si + 8]       ; Смещение +8: Младшие 32 бита длины
-    adc edx, [es:si + 12]      ; Смещение +12: Старшие 32 бита длины + флаг переноса
+    add ebx, [es:si + 8]   ; Смещение +8: Младшие 32 бита длины
+    adc edx, [es:si + 12]  ; Смещение +12: Старшие 32 бита длины + флаг переноса
 
 .skip_entry:
     ; Переход к следующей записи
-    add si, 24
+    add si, E820_ENTRY_SIZE
     loop .loop
 
 .empty:
@@ -160,9 +159,19 @@ get_free_memory:
     shrd ebx, edx, 20  ; Сдвигаем ebx на 20 бит, заполняя верх ebx из edx
     shr edx, 20        ; Сдвигаем edx на 20 бит
 
-    ; Результат в ebx (МБ | До 64 ГБ)
-    mov ax, bx
+    ; Если результат не влезает в ax, насыщаем значение вместо переполнения
+    test edx, edx
+    jnz .saturate
+    cmp ebx, 0xFFFF
+    ja .saturate
 
+    mov ax, bx
+    jmp .done
+
+.saturate:
+    mov ax, 0xFFFF
+
+.done:
     pop si
     pop edx
     pop ecx
@@ -172,7 +181,7 @@ get_free_memory:
 
 ; > Вывод кол-ва свободной памяти в текстовом режиме
 ; ❗️ Зависимости: kernel16/print.asm, kernel16/print_reg.asm
-show_free_memory:
+show_usable_memory:
     push es
     push si
     push ax
@@ -181,10 +190,10 @@ show_free_memory:
     xor ax, ax
     mov es, ax
     mov di, PCINFO_ADDR
-    call get_free_memory
-    
-    ; NOTE: ax содержит нужное число после `call get_free_memory`
-    mov si, str_free_ram
+    call get_usable_memory
+
+    ; NOTE: ax содержит нужное число после `call get_usable_memory`
+    mov si, str_usable_ram
     call print
     call print_dec16
     mov si, str_mb
@@ -199,5 +208,5 @@ show_free_memory:
 ; Строки
 str_memory_map: db 'Memory Map: ', 0
 str_entries:    db ' entries', 0
-str_free_ram:   db 'Free RAM: ', 0
+str_usable_ram: db 'Usable RAM: ', 0
 str_mb:         db ' MB', 0
