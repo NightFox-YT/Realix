@@ -1,5 +1,5 @@
 // © Realix > PIT (Programmable Interval Timer)
-// (03.07.26) v0.08
+// (12.07.26) v0.09
 // ================
 
 // Подключение функций
@@ -50,8 +50,8 @@ pub fn tick() {
 }
 
 /// Возвращает кол-во тиков, которых прошло с момента загрузки
-pub fn get_ticks() -> u32 {
-    TICKS.load(Relaxed) as u32
+pub fn get_ticks() -> u64 {
+    TICKS.load(Relaxed) as u64
 }
 
 /// Возвращает uptime (сек.)
@@ -62,16 +62,23 @@ pub fn get_uptime() -> u32 {
     if cur_frequency == 0 {
         return 0;
     }
-    return TICKS.load(Relaxed) as u32 / cur_frequency;
+    return (TICKS.load(Relaxed) as u32) / cur_frequency;
 }
 
 /// Ждать `ms` миллисекунд
 pub fn sleep(ms: u32) {
-    let target: u64 = get_ticks() as u64 + (ms as u64 * (FREQUENCY.load(Relaxed)) as u64 / 1000);
+    let frequency: u64 = FREQUENCY.load(Relaxed) as u64;
+    if frequency == 0 {
+        return;
+    }
+    
+    // Вычисляем целевое количество тиков
+    let ticks_per_ms: u64 = frequency / 1000;
+    let target_ticks: u64 = get_ticks() + (ms as u64 * ticks_per_ms);
 
     // Ожидаем, когда кол-во тиков достигнет нужное значение
-    while (get_ticks() as u64) < target {
+    while get_ticks() < target_ticks {
         // Останавливаем процессор между прерываниями (тиками)
-        unsafe { core::arch::asm!("sti; hlt"); }
+        unsafe { core::arch::asm!("sti; hlt", options(nostack, nomem)); }
     }
 }

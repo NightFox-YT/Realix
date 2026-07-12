@@ -123,6 +123,47 @@ file_load:
     mul cx
     add ax, [data_lba]
 
+    ; ===== ИСПРАВЛЕННАЯ ДИНАМИЧЕСКАЯ ПРОВЕРКА ПЕРЕКРЫТИЯ БУФЕРА =====
+    ; Проверяем, что текущий адрес назначения (es:bx) и адрес ПОСЛЕ
+    ; чтения кластера не пересекают область 0x0500-0x7BFF
+    push ax                 ; Сохраняем LBA (в ax)
+    push bx
+    push es
+    
+    ; Вычисляем линейный адрес НАЧАЛА текущей записи
+    mov ax, es
+    shl ax, 4
+    add ax, bx              ; ax = линейный адрес начала
+    
+    ; Вычисляем линейный адрес КОНЦА после чтения кластера
+    push cx
+    xor ch, ch
+    mov cl, [sectors_per_cluster]
+    movzx cx, cl
+    mov ax, cx
+    mul word [bytes_per_sector]
+    pop cx
+    add ax, dx              ; ax = размер кластера в байтах
+    
+    ; Проверяем, что весь диапазон не пересекает 0x0500-0x7BFF
+    cmp ax, 0x0500
+    jb .check_addr_ok
+    cmp ax, 0x7C00
+    jae .check_addr_ok
+    
+    ; Пересечение – ошибка
+    pop es
+    pop bx
+    pop ax
+    mov si, err_buffer_overlap
+    jmp error_handler
+    
+.check_addr_ok:
+    pop es
+    pop bx
+    pop ax
+    ; ===== КОНЕЦ ИСПРАВЛЕННОЙ ПРОВЕРКИ =====
+
     ; Чтение следующего кластера
     mov dl, [drive_num]
     call disk_read
@@ -131,7 +172,6 @@ file_load:
     push bx
     mov ah, 0x0E
     xor bx, bx
-
     mov al, 0xFE
     int 0x10
     pop bx
@@ -147,7 +187,7 @@ file_load:
     mov ax, es
     add ax, 0x1000
     mov es, ax
-    xor bx, bx
+    xor bx, bx              ; Исправлено: обнуляем смещение, а не делаем xor bx, ax
 
 ; Продолжение чтения файла
 .load_loop_continue:

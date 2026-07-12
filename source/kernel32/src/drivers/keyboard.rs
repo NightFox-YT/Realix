@@ -1,10 +1,10 @@
 // © Realix > Keyboard
-// (03.07.26) v0.08
+// (12.07.26) v0.09
 // ================
 
 // Подключение функций
 use core::arch::asm;
-use core::sync::atomic::{AtomicUsize, Ordering::{Acquire, Relaxed, Release}};
+use core::sync::atomic::{AtomicU8, AtomicUsize, Ordering::{Acquire, Relaxed, Release}};
 use crate::drivers::vga::{self, Color};
 
 // Контанты
@@ -12,8 +12,12 @@ const INPUT_MAX: usize = 64;
 const QUEUE_SIZE: usize = 32;
 pub const KEYBOARD_DATA_PORT: u16 = 0x60;
 
-// Кольцевой буфер
-static mut QUEUE: [u8; QUEUE_SIZE] = [0; QUEUE_SIZE];
+// Кольцевой буфер с атомарными элементами
+static mut QUEUE: [AtomicU8; QUEUE_SIZE] = {
+    // Инициализация массива AtomicU8
+    const INIT: AtomicU8 = AtomicU8::new(0);
+    [INIT; QUEUE_SIZE]
+};
 static HEAD: AtomicUsize = AtomicUsize::new(0);
 static TAIL: AtomicUsize = AtomicUsize::new(0);
 
@@ -58,7 +62,7 @@ pub fn on_scancode(scancode: u8) {
 
     // Проверка на переполнение
     if next != TAIL.load(Acquire) {
-        unsafe { QUEUE[head] = scancode; }
+        unsafe { QUEUE[head].store(scancode, Release); }
         HEAD.store(next, Release);
     }
 }
@@ -71,7 +75,7 @@ pub fn queue_pop() -> Option<u8> {
     if tail == HEAD.load(Acquire) {
         return None;
     }
-    let value = unsafe { QUEUE[tail] };
+    let value = unsafe { QUEUE[tail].load(Acquire) };
     TAIL.store((tail + 1) % QUEUE_SIZE, Release);
     Some(value)
 }
@@ -94,16 +98,9 @@ pub fn read_key() -> u8 {
                 }
             }
         } else {
-            // Очередь пуста
+            // Очередь пуста - используем hlt с включенными прерываниями
             unsafe {
-                asm!("cli");
-
-                // Перепроверка очереди, пока нет прерываний
-                if is_queue_empty() {
-                    asm!("sti; hlt")
-                } else {
-                    asm!("sti");
-                }
+                asm!("sti; hlt", options(nostack, nomem));
             }
         }
     }

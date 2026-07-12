@@ -1,5 +1,5 @@
 // © Realix > VGA
-// (01.07.26) v0.08
+// (12.07.26) v0.09
 // ø Вдохновлено @liquifield
 // ================
 // ! Не вызывать из IRQ прерываний (Гонка данных на константах)
@@ -42,11 +42,14 @@ pub enum Color {
 
 
 pub fn clear_screen() {
-    // "Стираем" экран пробелами с чёрным фоном
-    for byte in 0..(VGA_WIDTH * VGA_HEIGHT) {
-        unsafe {
-            VGA_BUFFER.add(byte * 2).write_volatile(b' ');
-            VGA_BUFFER.add(byte * 2 + 1).write_volatile(0x0F);
+    // Используем write_bytes для быстрого заполнения
+    unsafe {
+        // Заполняем всю видеопамять пробелами
+        core::ptr::write_bytes(VGA_BUFFER, b' ', VGA_WIDTH * VGA_HEIGHT * 2);
+        
+        // Устанавливаем атрибуты (светло-серый на чёрном) для каждой позиции
+        for i in 0..VGA_WIDTH * VGA_HEIGHT {
+            VGA_BUFFER.add(i * 2 + 1).write_volatile(0x0F);
         }
     }
 
@@ -66,27 +69,28 @@ fn scroll_up(lines_count: usize) {
     }
 
     // Копируем все строки кроме первой на `n` позиций выше
-    for row in lines_count..VGA_HEIGHT {
-        let src_offset: usize = (row * VGA_WIDTH) * 2;
-        let dst_offset: usize = ((row - lines_count) * VGA_WIDTH) * 2;
-
-        for byte in 0..(VGA_WIDTH * 2) {
-            unsafe {
-                let value: u8 = VGA_BUFFER.add(src_offset + byte).read_volatile();
-                VGA_BUFFER.add(dst_offset + byte).write_volatile(value);
-            }
-        }
+    let src_offset: usize = (lines_count * VGA_WIDTH) * 2;
+    let dst_offset: usize = 0;
+    let copy_size: usize = ((VGA_HEIGHT - lines_count) * VGA_WIDTH) * 2;
+    
+    unsafe {
+        core::ptr::copy(
+            VGA_BUFFER.add(src_offset),
+            VGA_BUFFER.add(dst_offset),
+            copy_size,
+        );
     }
 
     // "Стираем" последние `n` строк пробелами с чёрным фоном
-    for row in (VGA_HEIGHT - lines_count)..VGA_HEIGHT {
-        let row_offset: usize = row * VGA_WIDTH * 2;
-
-        for col in 0..VGA_WIDTH {
-            unsafe {
-                VGA_BUFFER.add(row_offset + col * 2).write_volatile(b' ');
-                VGA_BUFFER.add(row_offset + col * 2 + 1).write_volatile(0x0F);
-            }
+    let clear_start: usize = ((VGA_HEIGHT - lines_count) * VGA_WIDTH) * 2;
+    let clear_size: usize = (lines_count * VGA_WIDTH) * 2;
+    
+    unsafe {
+        core::ptr::write_bytes(VGA_BUFFER.add(clear_start), b' ', clear_size);
+        
+        // Устанавливаем атрибуты для очищенных строк
+        for i in 0..lines_count * VGA_WIDTH {
+            VGA_BUFFER.add(clear_start + i * 2 + 1).write_volatile(0x0F);
         }
     }
 

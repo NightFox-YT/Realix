@@ -1,5 +1,5 @@
 // © Realix > ISR (Int service routine)
-// (11.07.26) v0.09
+// (12.07.26) v0.09
 // ================
 
 // Подключение функций
@@ -8,7 +8,6 @@ use core::arch::global_asm;
 use crate::drivers::vga::{self, Color};
 use crate::drivers::{keyboard, pit};
 use crate::halt_loop;
-use crate::x86::idt::{interrupts_disable, interrupts_enable};
 use crate::x86::pic;
 
 /// Состояние процессора, сформированное ассемблерной заглушкой.
@@ -63,7 +62,7 @@ const EXCEPTION_NAMES: [&str; 20] = [
 #[no_mangle]
 pub extern "C" fn exc_handler(regs: &Registers) -> ! {
     // Гарантируем остановку прерываний
-    interrupts_disable();
+    // (Прерывания уже отключены в exc_common_stub через cli)
 
     let exception_name: &str = if (regs.int_num as usize) < EXCEPTION_NAMES.len() {
         EXCEPTION_NAMES[regs.int_num as usize]
@@ -109,7 +108,6 @@ pub extern "C" fn exc_handler(regs: &Registers) -> ! {
 #[no_mangle]
 pub extern "C" fn irq_handler(regs: &Registers) {
     // Защита от вызова функции с неправильным аргументом
-    // (Такое может быть вследствие ошибки в IRQ stub или IDT)
     if regs.int_num < 32 || regs.int_num > 47 {
         vga::print_line("[!] IRQ num in handler is incorrect!", Color::Red);
         halt_loop();
@@ -119,8 +117,7 @@ pub extern "C" fn irq_handler(regs: &Registers) {
 
     // Обработка ложного прерывания (IRQ7/IRQ15)
     if pic::is_spurious(irq) {
-        interrupts_enable();
-        return;
+        return; // Прерывания будут включены через iretd
     }
 
     match irq {
@@ -135,10 +132,11 @@ pub extern "C" fn irq_handler(regs: &Registers) {
     }
 
     pic::send_eoi(irq);
-    interrupts_enable();
+    // Не включаем прерывания здесь - это сделает iretd при возврате,
+    // который восстановит EFLAGS с установленным битом IF
 }
 
-// Объявляем ассемблерные метки публичными (имена совпадают с метками в global_asm!)
+// Объявляем ассемблерные метки публичными
 unsafe extern "C" {
     pub fn exc_divide_by_zero();
     pub fn exc_debug();
@@ -184,7 +182,6 @@ global_asm!(
 .code32
 
 # Исключение без аппаратного error code
-# Добавляем искусственный нулевой код, чтобы структура стека была общей.
 .macro EXC_NOERRCODE num, name
 .global exc_\name
 exc_\name:
@@ -193,8 +190,7 @@ exc_\name:
     jmp exc_common_stub
 .endm
 
-# Исключение с аппаратным error code, процессор уже положил код
-# ошибки в стек, поэтому добавляется только номер вектора.
+# Исключение с аппаратным error code
 .macro EXC_ERRCODE num, name
 .global exc_\name
 exc_\name:
@@ -202,7 +198,7 @@ exc_\name:
     jmp exc_common_stub
 .endm
 
-# Аппаратные IRQ не имеют error code.
+# Аппаратные IRQ не имеют error code
 .macro IRQ_STUB num
 .global irq_stub_\num
 irq_stub_\num:
@@ -262,7 +258,7 @@ exc_common_stub:
     mov ax, ds
     push eax
 
-    # Передача номера Kernel data selector
+    # Переключение на Kernel data selector
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -272,7 +268,7 @@ exc_common_stub:
     # Передача указателя на Registers первым аргументом
     push esp
     call exc_handler
-    add esp, 4
+    # exc_handler не возвращается, поэтому код ниже не выполняется
 
     # Восстанавливаем старый сегмент данных
     pop eax
@@ -288,7 +284,7 @@ exc_common_stub:
     add esp, 8
     iretd
 
-# > Общая точка входа для IRQ-прерываний (Аналог exc_common_stub)
+# > Общая точка входа для IRQ-прерываний
 irq_common_stub:
     cld
     
@@ -300,7 +296,7 @@ irq_common_stub:
     mov ax, ds
     push eax
 
-    # Передача номера Kernel data selector
+    # Переключение на Kernel data selector
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -322,7 +318,7 @@ irq_common_stub:
     # Восстановление eax, ecx, edx, ebx, esp, ebp, esi, edi
     popa
 
-    # Удаление int_num и искусственного err_code.
+    # Удаление int_num и искусственного err_code
     add esp, 8
     iretd
 "#
