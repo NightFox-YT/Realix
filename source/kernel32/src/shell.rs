@@ -31,7 +31,10 @@ pub fn run() {
 
 /// Функция выполнения команды
 fn execute(input: &str) {
-    match input.trim() {
+    // Форматируем введённую строку
+    let input: &str = input.trim();
+
+    match input {
         "help" => {
             vga::print_line("Commands:\n", Color::Cyan);
             vga::print_line("  [Base]\n", Color::Cyan);
@@ -87,6 +90,7 @@ fn execute(input: &str) {
             vga::print_line(&input[5..], Color::LightGray);
             vga::new_line();
         }
+        "echo" => { vga::new_line(); }
         "uptime" => {
             let mut str_buffer: [u8; 10] = [0u8; 10];
 

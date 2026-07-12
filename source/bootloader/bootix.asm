@@ -232,6 +232,7 @@ error_handler:
     jmp 0xFFFF:0
 
 ; Подключение модулей
+%define PRINT_MINIMAL
 %include 'kernel16/io/print.asm'
 %include 'bios-api/disk/read.asm'
 

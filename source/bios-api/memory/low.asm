@@ -29,7 +29,7 @@ show_lower_memory:
     mov si, str_low_ram
     call print
     mov ax, word [es:PCINFO_ADDR]
-    call print_reg
+    call print_dec16
     mov si, str_kb_w_max
     call print
 

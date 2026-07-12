@@ -77,6 +77,12 @@ pub fn queue_pop() -> Option<u8> {
 }
 
 
+/// Проверка пустоты очереди
+fn is_queue_empty() -> bool {
+    TAIL.load(Relaxed) == HEAD.load(Acquire)
+}
+
+
 /// Чтение клавиши
 pub fn read_key() -> u8 {
     loop {
@@ -89,7 +95,16 @@ pub fn read_key() -> u8 {
             }
         } else {
             // Очередь пуста
-            unsafe { asm!("sti; hlt"); }
+            unsafe {
+                asm!("cli");
+
+                // Перепроверка очереди, пока нет прерываний
+                if is_queue_empty() {
+                    asm!("sti; hlt")
+                } else {
+                    asm!("sti");
+                }
+            }
         }
     }
 }

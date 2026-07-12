@@ -1,7 +1,8 @@
 ; © Realix > Switcher CPU modes
 ; (21.06.26) v0.07
 ; ================
-; ❗️ Зависимости: bootloader/initrix.asm (+kernel16/io)
+; ❗️ Не standalone: Подключается из initrix.asm (%include).
+;    Требует: print, print_new_line (io), file_load (fat12), boot_drive_num
 
 ; Настройка компиляции
 bits 16

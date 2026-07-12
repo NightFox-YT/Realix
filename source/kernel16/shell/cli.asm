@@ -377,6 +377,8 @@ str_equal:
     pop si
     ret
 
+; Подключение модулей
+%include "kernel16/shell/parse.asm"
 
 ; Сообщения и строки
 prompt_sign: db 'Realix >> ', 0
