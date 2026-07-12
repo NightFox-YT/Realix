@@ -1,4 +1,4 @@
-# ℹ️ Realix `v0.08`
+# ℹ️ Realix `v0.09`
 ![Status](https://img.shields.io/badge/status-latest-brightgreen)
 ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
@@ -6,10 +6,10 @@
 ✅ This version is officially supported and frequently updated by the author.
 
 ## 📌 About
-Realix is a **hybrid OS** designed for x86 architecture, written in NASM.
-It supports a built-in boot switcher that lets users choose between a 16-bit Real Mode kernel for legacy compatibility and a high-performance 32-bit Protected Mode kernel.
+Realix is a **hybrid OS** for the x86 architecture. The bootloader and 16-bit kernel are written in x86 assembly (NASM), the 32-bit kernel is written in Rust (`no_std`).
+It supports a built-in boot switcher that lets you choose between a 16-bit Real Mode kernel for legacy compatibility and a 32-bit Protected Mode kernel for high performance.
 
-- **OS size:** `≈16.6 KB`
+- **OS size:** `≈18.1 KB`
 - **Initial release:** `July 6, 2026`
 
 ## ✨ Key Features
@@ -23,33 +23,34 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
    - Detects available system memory (INT 12h, 15h)
 - Interactive CPU mode selector (`switcher.asm`)
 - Kernel16:
-   - Basic command-line interface
+   - Command-line interface with 🆕 history (Up and down arrows)
      - `calc` - Simple calculator (positive integers only)
+     - 🆕 `hex`, `ascii`, `fib` - number utilities
+     - 🆕 `len`, `upper`, `lower`, `reverse`, `repeat` - text utilities
+     - 🆕 `about`, `beep`, `meminfo`
      - `echo [t]`, `clear/cls`, `reboot`, `shutdown`
    - Network interface card (NIC) driver
-   - 🆕 Commands history (Up and down arrows)
 - Kernel32:
    - VGA text mode (80x25)
    - Basic command-line interface
      - `uptime` - Show uptime in seconds
      - `matrix` - Fun animation
      - `echo [t]`, `clear/cls`, `reboot`, `shutdown`
-   - 🆕 Advanced GDT with TSS
-   - 🆕 Advanced IDT with ISR (Exceptions, IRQ0 - PIT, IRQ1 - Keyboard)
-   - 🆕 PIC remap
+   - Advanced GDT with TSS
+   - Advanced IDT with ISR (Exceptions, IRQ0 - PIT, IRQ1 - Keyboard)
+   - PIC remap
+   - 🆕 Spurious interrupt (IRQ7/IRQ15) detection
+   - 🆕 BSS zeroing at kernel entry
 
-### ⏳ Upcoming Features (v0.09)
-- Kernel16: New simple commands with helper functions
-- Kernel32: Frame allocator, commands history
+### ⏳ Upcoming Features (v0.10)
+- BIOS-API: Disk / FAT12 file reading, `ls` command
+- Kernel32: Frame allocator
 
 ### ❌ Current Limitations
 - No memory allocator
 - No standard executable support
 - No write operations FAT12 support
 - No advanced networking stack
-
-## 📸 Preview
-![Realix Experience](screencast.gif)
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 compatible (i386+ recommended)
@@ -68,7 +69,7 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
 │  │  │  ├─ init.asm
 │  │  │  └─ read.asm
 │  │  ├─ fat12/
-│  │  │  ├─ file_open.asm
+│  │  │  ├─ file_load.asm
 │  │  │  └─ init.asm
 │  │  ├─ memory/
 │  │  │  ├─ high.asm
@@ -89,7 +90,8 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
 │  │  │  ├─ cli.asm
 │  │  │  ├─ cmd_calc.asm
 │  │  │  ├─ cmd_cls.asm
-│  │  │  └─ commands.asm
+│  │  │  ├─ commands.asm
+│  │  │  └─ parse.asm
 │  │  ├─ main.asm
 │  │  └─ Makefile
 │  ├─ kernel32/
@@ -121,10 +123,10 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
 ├─ .gitignore
 ├─ Cargo.lock
 ├─ Cargo.toml
+├─ Contributing.md
 ├─ LICENSE
 ├─ Makefile
-├─ README.md
-└─ screencast.gif
+└─ README.md
 ```
 
 ## 🛠️ Quick Start & Build
@@ -162,4 +164,4 @@ Contributions of any kind are welcome:
 - 💡 **Suggest new features** or improvements.
 - 🔧 **Help optimize or refactor code.**
 
-Feel free to open an issue or reach out via TikTok & Discord.
+See [Contributing.md](Contributing.md) for guidelines, or open an issue / reach out via TikTok & Discord.
