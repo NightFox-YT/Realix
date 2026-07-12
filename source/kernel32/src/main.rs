@@ -1,45 +1,78 @@
 // © Realix > Kernel32: Main
-// (03.07.26) v0.08
+// (11.07.26) v0.09
 // ================
+
 #![no_std]
 #![no_main]
 
 // Объявление модулей
-mod drivers;
-mod x86;
-mod shell;
 mod commands;
+mod drivers;
+mod shell;
 mod utils;
+mod x86;
 
 // Подключение функций
-use core::arch::{asm, naked_asm}; 
+use core::arch::{asm, naked_asm};
 use core::panic::PanicInfo;
-use drivers::{vga, keyboard, pit};
+
+use drivers::{keyboard, pit, vga};
 use x86::{gdt, idt, memory};
 // use core::ptr::read_unaligned;
 
-/// Структура PCINFO (см. Загрузчик)
+/// Структура PCINFO, формируемая загрузчиком.
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
-struct PCINFO {
+struct PcInfo {
     low_memory_amount: u16,
     disk_num: u8,
     memory_map: memory::E820Map,
 }
 
-/// Настройка окружения ядра
-/// (Получение адреса блока информации о ПК)
+
+// Границы секции BSS (определены в linker.ld) для обнуления вручную
+unsafe extern "C" {
+    unsafe static __bss_start: u8;
+    unsafe static __bss_end: u8;
+}
+
+/// Низкоуровневая точка входа Kernel32 (Настройка окружения)
+/// При входе: EBX = адрес PCINFO, ESP = стек от загрузчика.
 #[link_section = ".text.entry"]
 #[no_mangle]
 #[unsafe(naked)]
 pub extern "C" fn _start() -> ! {
-    // ! Полагаемся на настроенный стек из загрузчика
-    naked_asm!("push ebx", "call kmain");
+    naked_asm!(
+        // Устанавливаем DF & Сохраняем переданный адрес PCINFO
+        "cld",
+        "push ebx",
+
+        // Установка: EDI - начало BSS, ECX - её размер
+        "lea edi, [__bss_start]",
+        "lea ecx, [__bss_end]",
+        "sub ecx, edi",
+
+        // Обнуляем BSS через eax
+        "xor eax, eax",
+        "rep stosb",
+
+        // Восстанавливаем адрес PCINFO и передаём первым аргументом по cdecl
+        "pop ebx",
+        "push ebx",
+        "call kmain",
+
+        // Защита на случай незапланированного возвращения из функции
+        "2:",
+        "cli",
+        "hlt",
+        "jmp 2b"
+    );
 }
+
 
 /// Основный цикл работы ядра
 #[no_mangle]
-extern "C" fn kmain(_pcinfo_addr: *mut PCINFO) -> ! {
+extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     // Инициализация модулей
     idt::interrupts_disable();
     gdt::init();
@@ -47,27 +80,40 @@ extern "C" fn kmain(_pcinfo_addr: *mut PCINFO) -> ! {
     pit::init(100);
     idt::interrupts_enable();
 
-    // Вывод лого системы c ожиданием нажатия
+    // Проверка указателя PCINFO
+    if pcinfo_addr.is_null() {
+        vga::clear_screen();
+        vga::print_line(
+            "[KERNEL PANIC] Invalid PCINFO address.\n",
+            vga::Color::Red,
+        );
+        halt_loop();
+    }
+
     vga::clear_screen();
     draw_logo(4, 2);
     for _ in 0..11 { vga::new_line(); }
 
-    vga::print_line("   Press any key to continue...", vga::Color::LightGray);
-    
+    vga::print_line(
+        "   Press any key to continue...",
+        vga::Color::LightGray,
+    );
     keyboard::read_key();
     
     // Вывод заголовка Shell с его бесконечной работой
     vga::clear_screen();
     vga::print_line(
         "Welcome to Realix (Protected Mode with Rust kernel)...\n",
-        vga::Color::Cyan
+        vga::Color::Cyan,
     );
 
     shell::run();
     halt_loop();
 }
 
-fn draw_logo(start_x: usize, start_y: usize) {    
+
+/// Отрисовка логотипа Realix
+fn draw_logo(start_x: usize, start_y: usize) {
     // Массив из 2 уровней:
     // 1) Массивы для каждлой буквы
     // 2) Массив для каждой строки буквы (0 - пробел, 1 - блок)
@@ -95,49 +141,64 @@ fn draw_logo(start_x: usize, start_y: usize) {
         vga::Color::Blue,
         vga::Color::Magenta,
     ];
-    
-    for (lt_i, letter) in letters.iter().enumerate() {
-        let color = colors[lt_i % colors.len()];
-        let offset_x = start_x + lt_i * letter[0].len();
-        
+
+    for (letter_idx, letter) in letters.iter().enumerate() {
+        let color = colors[letter_idx % colors.len()];
+        let offset_x = start_x + letter_idx * letter[0].len();
+
         for (row, line) in letter.iter().enumerate() {
             for (col, &pixel) in line.iter().enumerate() {
                 if pixel == 1 {
-                    vga::write_char_at(start_y + row, offset_x + col, 0xDB, color);
+                    vga::write_char_at(
+                        start_y + row, offset_x + col,
+                        0xDB, color,
+                    );
                 }
             }
         }
     }
 }
 
-/// Бесконечная остановка процессора с выкл. прерываниями
-fn halt_loop() -> ! {
+
+/// Бесконечная остановка процессора
+pub fn halt_loop() -> ! {
     idt::interrupts_disable();
-    loop { unsafe { asm!("hlt"); } }
+    loop {
+        unsafe { asm!("hlt", options(nomem, nostack)); }
+    }
 }
 
-/// Обработчик ошибок
+
+/// Обработчик паники
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     halt_loop()
 }
 
-/// Функция записи байта в порт (Встраивается в бинарник)
+
+/// Запись байта в I/O-порт
 #[inline(always)]
 pub unsafe fn outb(port: u16, value: u8) {
     asm!(
-        "out dx, al", in("dx") port,
-        in("al") value, options(nostack, nomem, preserves_flags)
+        "out dx, al",
+        in("dx") port,
+        in("al") value,
+        options(nostack, nomem, preserves_flags),
     );
 }
 
-/// Функция чтения байт из порта (Встраивается в бинарник)
+
+/// Чтение байта из I/O-порта
 #[inline(always)]
 pub unsafe fn inb(port: u16) -> u8 {
     let value: u8;
+
     asm!(
-        "in al, dx", out("al") value,
-        in("dx") port, options(nostack, nomem, preserves_flags)
+        "in al, dx",
+        in("dx") port,
+        out("al") value,
+        options(nostack, nomem, preserves_flags),
     );
+
     value
 }
