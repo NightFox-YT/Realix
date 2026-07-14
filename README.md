@@ -1,44 +1,56 @@
-# ℹ️ Realix `v0.06`
-![Status](https://img.shields.io/badge/status-legacy-yellow)
+# ℹ️ Realix `v0.09`
+![Status](https://img.shields.io/badge/status-latest-brightgreen)
 ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
 
 ✅ This version is officially supported and frequently updated by the author.
 
 ## 📌 About
-Realix is a **hybrid OS** designed for x86 architecture, written in NASM.
-It supports a built-in boot switcher that lets users choose between a 16-bit Real Mode kernel for legacy compatibility and a high-performance 32-bit Protected Mode kernel.
+Realix is a **hybrid OS** for the x86 architecture. The bootloader and 16-bit kernel are written in x86 assembly (NASM), the 32-bit kernel is written in Rust (`no_std`).
+It supports a built-in boot switcher that lets you choose between a 16-bit Real Mode kernel for legacy compatibility and a 32-bit Protected Mode kernel for high performance.
 
-- **OS size:** `≈3.8 KB`
-- **Initial release:** `June 14, 2026`
+- **OS size:** `≈18.1 KB`
+- **Initial release:** `July 6, 2026`
 
 ## ✨ Key Features
 - BIOS-based bootloader
-- VGA text mode (80×25)
-- VGA video mode (320×200, 256 colors)
-- Reads raw sectors from disk (INT 13h)
-- Read-only FAT12 filesystem support
-  - Loads second-stage bootloader
-  - Loads kernel files by filename
-- Detects available system memory (INT 12h, 15h)
-- TTY bell character support
-- 🆕 Interactive CPU mode selector (`switcher.asm`)
-- 🆕 Kernel16: Basic command-line interface
+- BIOS-API (for kernel16):
+   - VGA text mode (80×25) and video mode (320×200, 256 colors)
+   - Reads raw sectors from disk (INT 13h)
+   - Read-only FAT12 filesystem support:
+     - Loads second-stage bootloader
+     - Loads files by filename
+   - Detects available system memory (INT 12h, 15h)
+- Interactive CPU mode selector (`switcher.asm`)
+- Kernel16:
+   - Command-line interface with 🆕 history (Up and down arrows)
+     - `calc` - Simple calculator (positive integers only)
+     - 🆕 `hex`, `ascii`, `fib` - number utilities
+     - 🆕 `len`, `upper`, `lower`, `reverse`, `repeat` - text utilities
+     - 🆕 `about`, `beep`, `meminfo`
+     - `echo [t]`, `clear/cls`, `reboot`, `shutdown`
+   - Network interface card (NIC) driver
+- Kernel32:
+   - VGA text mode (80x25)
+   - Basic command-line interface
+     - `uptime` - Show uptime in seconds
+     - `matrix` - Fun animation
+     - `echo [t]`, `clear/cls`, `reboot`, `shutdown`
+   - Advanced GDT with TSS
+   - Advanced IDT with ISR (Exceptions, IRQ0 - PIT, IRQ1 - Keyboard)
+   - PIC remap
+   - 🆕 Spurious interrupt (IRQ7/IRQ15) detection
+   - 🆕 BSS zeroing at kernel entry
 
-### ⏳ Upcoming Features (v0.07-v0.08)
-- Kernel32: Development of the 32-bit Protected Mode kernel space
-- Kernel32: Direct VGA video/text memory driver
-- Real Mode: Network interface card (NIC) driver
-- Kernel16: Simple calculator
+### ⏳ Upcoming Features (v0.10)
+- BIOS-API: Disk / FAT12 file reading, `ls` command
+- Kernel32: Frame allocator
 
 ### ❌ Current Limitations
 - No memory allocator
-- No standart executable support
+- No standard executable support
 - No write operations FAT12 support
-- No networking stack
-
-## 📸 Preview
-![Realix Experience](screencast.gif)
+- No advanced networking stack
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 compatible (i386+ recommended)
@@ -48,55 +60,93 @@ It supports a built-in boot switcher that lets users choose between a 16-bit Rea
 ## 📂 Project Structure
 ```
 .
+├─ .cargo/
+│  ├─ config.toml
+│  └─ i386.json
 ├─ source/
 │  ├─ bios-api/
 │  │  ├─ disk/
 │  │  │  ├─ init.asm
 │  │  │  └─ read.asm
-│  │  ├─ drivers/
-│  │  │  ├─ sounds.asm
-│  │  │  └─ vga.asm
 │  │  ├─ fat12/
-│  │  │  ├─ file_open.asm
+│  │  │  ├─ file_load.asm
 │  │  │  └─ init.asm
-│  │  └─ memory/
-│  │     ├─ get_free.asm
-│  │     ├─ get_lower.asm
-│  │     └─ get_map.asm
+│  │  ├─ memory/
+│  │  │  ├─ high.asm
+│  │  │  └─ low.asm
+│  │  └─ video/
+│  │     └─ vga.asm
 │  ├─ bootloader/
 │  │  ├─ bootix.asm
 │  │  ├─ initrix.asm
 │  │  └─ switcher.asm
-│  └─ kernel16/
-│     ├─ io/
-│     │  ├─ print_nl.asm
-│     │  ├─ print_reg.asm
-│     │  └─ print.asm
-│     ├─ shell/
-│     │  ├─ cli.asm
-│     │  ├─ cmd_cls.asm
-│     │  └─ commands.asm
-│     └─ kernel.asm
+│  ├─ crypto/arch_entropy.asm
+│  ├─ kernel16/
+│  │  ├─ io/
+│  │  │  ├─ print_ctrl.asm
+│  │  │  ├─ print_reg.asm
+│  │  │  └─ print.asm
+│  │  ├─ shell/
+│  │  │  ├─ cli.asm
+│  │  │  ├─ cmd_calc.asm
+│  │  │  ├─ cmd_cls.asm
+│  │  │  ├─ commands.asm
+│  │  │  └─ parse.asm
+│  │  ├─ main.asm
+│  │  └─ Makefile
+│  ├─ kernel32/
+│  │  ├─ src/
+│  │  │  ├─ commands/
+│  │  │  │  ├─ matrix.rs
+│  │  │  │  └─ mod.rs
+│  │  │  ├─ drivers/
+│  │  │  │  ├─ keyboard.rs
+│  │  │  │  ├─ mod.rs
+│  │  │  │  ├─ pit.rs
+│  │  │  │  └─ vga.rs
+│  │  │  ├─ x86/
+│  │  │  │  ├─ gdt.rs
+│  │  │  │  ├─ idt.rs
+│  │  │  │  ├─ isr.rs
+│  │  │  │  ├─ memory.rs
+│  │  │  │  ├─ mod.rs
+│  │  │  │  └─ pic.rs
+│  │  │  ├─ main.rs
+│  │  │  ├─ shell.rs
+│  │  │  └─ utils.rs
+│  │  ├─ linker.ld
+│  │  └─ Makefile
+│  ├─ network/rtl8139.asm
+│  └─ shared/config.asm
 ├─ build/
 │     # Output directory for compiled binaries and .img (gitignored)
-├─ Makefile
+├─ .gitignore
+├─ Cargo.lock
+├─ Cargo.toml
+├─ Contributing.md
 ├─ LICENSE
-├─ README.md
-└─ screen.png
+├─ Makefile
+└─ README.md
 ```
 
 ## 🛠️ Quick Start & Build
 
 **Prerequisites**
-* Compiler: `nasm` (Assembly)
-* Disk Tools: `mtools` (FAT12 image formatting), `coreutils` (dd/image creation)
-* (Optional) Emulator: `qemu-system-i386`
+* Compiler: `nasm` (Assembly), `rustup` + **nightly** toolchain (Rust)
+* Disk Tools: `mtools` (FAT12 image formatting via mformat/mcopy)
+* Objcopy: `cargo-binutils` (provides `rust-objcopy`)
+* (Optional) Emulator: `qemu-system-x86_64`
 
 ### Linux & macOS
-1. Install prerequisites
-  - Ubuntu/Debian example: `sudo apt update && sudo apt install nasm mtools qemu-system-i386`
+1. Install base tools
+  - Ubuntu/Debian example: `sudo apt update && sudo apt install nasm mtools qemu-system-x86 curl`
   - macOS example (via Homebrew): `brew install nasm mtools qemu`
-2. Build & Run via the `Makefile`
+2. Install the Rust toolchain (all platforms)
+   - `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+   - `rustup toolchain install nightly`
+   - `rustup component add rust-src llvm-tools --toolchain nightly`
+   - `cargo install cargo-binutils`
+3. Build & Run via the `Makefile`
   - Only build OS image: `make`
   - Full cycle (build & run in QEMU): `make run`
 
@@ -114,4 +164,4 @@ Contributions of any kind are welcome:
 - 💡 **Suggest new features** or improvements.
 - 🔧 **Help optimize or refactor code.**
 
-Feel free to open an issue or reach out via TikTok & Discord.
+See [Contributing.md](Contributing.md) for guidelines, or open an issue / reach out via TikTok & Discord.

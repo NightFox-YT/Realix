@@ -1,23 +1,24 @@
 ; © Realix > Initrix (Stage 2 Bootloader)
 ; (14.06.26) v0.06
 ; ================
-; ❗️ Бинарный файл должен быть размером <=64 КБ (Ограничение из Bootix)
 
 ; Настройка компиляции
 bits 16
 org 0x0
 
 ; Основные константы
-%include 'config.asm'
+%include 'shared/config.asm'
 
 main:
     ; Сохраняем номер диска, переданного из bootix
     mov [boot_drive_num], dl
 
-    ; Инициализация драйверов диска и FAT12
+    ; Инициализация драйверов
     call disk_init
     call fat12_init
-
+    call net_init
+    ;jc network_card_error  ; Уберите комментарий, если в ВМ есть это карта
+    
     mov si, msg_init
     call print
 
@@ -49,7 +50,7 @@ main:
     call show_lower_memory
     call print_new_line
 
-    call show_free_memory
+    call show_usable_memory
     call print_new_line
 
     call show_map_entries_cnt
@@ -64,6 +65,9 @@ main:
     hlt
     jmp $
 
+network_card_error:
+    mov si, err_network_card_not_found
+    jmp error_handler
 
 lower_memory_error:
     mov si, err_get_lower_memory
@@ -72,7 +76,6 @@ lower_memory_error:
 memory_map_error:
     mov si, err_get_memory_map
     jmp error_handler
-
 
 ; > Обработчик ошибок
 ; Параметры:
@@ -89,29 +92,28 @@ error_handler:
 
 ; Подключение модулей
 %include 'kernel16/io/print.asm'
-%include 'kernel16/io/print_nl.asm'
+%include 'kernel16/io/print_ctrl.asm'
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/shell/cmd_cls.asm'
 %include 'bios-api/disk/read.asm'
-%include 'bios-api/fat12/file_open.asm'
-%include 'bios-api/memory/get_free.asm'
-%include 'bios-api/memory/get_lower.asm'
-%include 'bios-api/memory/get_map.asm'
-%include 'bios-api/drivers/sounds.asm'
-%include 'bios-api/drivers/vga.asm'
+%include 'bios-api/fat12/file_load.asm'
+%include 'bios-api/memory/high.asm'
+%include 'bios-api/memory/low.asm'
+%include 'bios-api/video/vga.asm'
+%include 'network/rtl8139.asm'
 %include 'bootloader/switcher.asm'
 
 ; Сообщения и строки
-msg_init:             db '[+] Initializing...', ENTER, 0
+msg_init: db '[+] Initializing...', ENTER, 0
 
-err_get_memory_map:   db '[!] Get memory map failed (int 15h)!', 0
-err_get_lower_memory: db '[!] Get lower memory failed (int 12h)!', 0
+err_get_memory_map:         db '[!] Get memory map failed (int 15h)!', 0
+err_get_lower_memory:       db '[!] Get lower memory failed (int 12h)!', 0
+err_network_card_not_found: db '[!] Network card Realtek RTL8139 not found!', 0
 
 str_title:
-    db '     Realix v0.06', ENTER,
+    db '     Realix ', OS_VERSION, ENTER,
     db '(C) NightFox developer', ENTER, ENTER, 0
 
 ; Данные о ПК и Kernel
 boot_drive_num:  db 0
 low_memory_kb:   dw 0
-kernel_filename: db 'KERNEL  BIN'
