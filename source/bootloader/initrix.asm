@@ -94,7 +94,7 @@ error_handler:
 %include 'kernel16/io/print.asm'
 %include 'kernel16/io/print_ctrl.asm'
 %include 'kernel16/io/print_reg.asm'
-%include 'kernel16/shell/cmd_cls.asm'
+%include 'kernel16/commands/cls.asm'
 %include 'bios-api/disk/read.asm'
 %include 'bios-api/fat12/file_load.asm'
 %include 'bios-api/memory/high.asm'

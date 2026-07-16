@@ -1,5 +1,5 @@
 ; © Realix > Print CTRL chars
-; (30.06.26) v0.07
+; (15.07.26) v0.1
 ; ================
 
 ; Основные константы
@@ -35,6 +35,23 @@ print_beep_char:
 
     ; Вывод символа "BEL"
     mov al, BEEP_CHAR
+    int 0x10
+
+    pop bx
+    pop ax
+    ret
+
+; > Вывод символа "■" на экран (Текстовый режим)
+print_square_char:
+    push ax
+    push bx
+
+    ; Настройка TTY mode, номера страницы и цвета
+    mov ah, 0x0E
+    xor bx, bx
+
+    ; Вывод символа "■"
+    mov al, SQUARE_CHAR
     int 0x10
 
     pop bx

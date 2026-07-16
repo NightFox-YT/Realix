@@ -28,6 +28,7 @@ cmd_table:
     dw .str_ascii,    cmd_ascii
     dw .str_repeat,   cmd_repeat
     dw .str_fib,      cmd_fib
+    dw .str_load,     cmd_load
     dw 0, 0
 
 .str_help:     db 'help', 0
@@ -48,6 +49,7 @@ cmd_table:
 .str_ascii:    db 'ascii', 0
 .str_repeat:   db 'repeat', 0
 .str_fib:      db 'fib', 0
+.str_load:     db 'load', 0
 
 
 ; > Исполнитель команд
@@ -119,7 +121,7 @@ execute_cmd:
     jmp .done
 
 .not_found:
-    mov si, err_unknown_cmd
+    mov si, msg_err_unknown_cmd
     call print
 
 .done:
@@ -141,7 +143,7 @@ cmd_help:
     ret
 
 ; > Команда очистки экрана
-%include "kernel16/shell/cmd_cls.asm"
+%include "kernel16/commands/cls.asm"
 
 ; > Команда перезагрузки
 cmd_reboot:
@@ -215,7 +217,7 @@ cmd_shutdown:
     jmp $
 
 .error:
-    mov si, err_shutdown
+    mov si, msg_err_shutdown
     call print
     
     pop si
@@ -527,7 +529,7 @@ cmd_repeat:
     jmp .done
 
 .too_many:
-    mov si, err_repeat_count
+    mov si, msg_err_repeat_count
     call print
 
 .done:
@@ -597,7 +599,7 @@ cmd_fib:
     jmp .done
 
 .too_big:
-    mov si, err_fib_range
+    mov si, msg_err_fib_range
     call print
 
 .done:
@@ -609,7 +611,10 @@ cmd_fib:
     ret
 
 ; > Команда простого калькулятора
-%include "kernel16/shell/cmd_calc.asm"
+%include "kernel16/commands/calc.asm"
+
+; > Команда загрузки файла с диска
+%include "kernel16/commands/load.asm"
 
 ; > Пропуск пробелов до первого символа
 ; Вывод:
@@ -625,10 +630,11 @@ skip_spaces:
     dec si
     ret
 
-err_unknown_cmd:  db '[!] Unknown command, write help for list of commands.', 0
-err_shutdown:     db '[!] PC shutdown failed! (No APM)', 0
-err_repeat_count: db '[!] Repeat count must be 1..20.', 0
-err_fib_range:    db '[!] Fib argument must be 0..24.', 0
+; Сообщения об ошибках
+msg_err_unknown_cmd:  db '[!] Unknown command, write help for list of commands.', 0
+msg_err_shutdown:     db '[!] PC shutdown failed! (No APM)', 0
+msg_err_repeat_count: db '[!] Repeat count must be 1..20.', 0
+msg_err_fib_range:    db '[!] Fib argument must be 0..24.', 0
 
 ; Сообщения
 msg_help:
@@ -651,6 +657,8 @@ msg_help:
     db '> hex <num>     - Show <num> in hexadecimal', ENTER
     db '> ascii <0-255> - Print char by ASCII code', ENTER
     db '> fib <0-24>    - Nth Fibonacci number', ENTER
+    db '  [FAT12]', ENTER
+    db '> load <f> - Load file <f> into RAM (at 0x2000:0x0000)', ENTER
     db '  [Power]', ENTER
     db '> reboot   - Reboot PC', ENTER
     db '> shutdown - Power off PC', 0

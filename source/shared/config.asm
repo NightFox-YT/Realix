@@ -2,8 +2,8 @@
 ; (13.06.26) v0.06
 ; ================
 
-; ❗️ Не забывайте менять эту строку
-%define OS_VERSION 'v0.09'
+; ! Не забывайте менять эту строку
+%define OS_VERSION 'v0.1'
 
 ; Защита от повторного включения
 %ifndef CONFIG_ASM
@@ -14,6 +14,7 @@
 %define ENTER_KEY     0x0D
 %define BACKSPACE_KEY 0x08
 %define BEEP_CHAR     0x07
+%define SQUARE_CHAR   0xFE
 
 ; Скан-коды расширенных клавиш (int 0x16, al=0)
 %define KEY_UP_SCAN   0x48

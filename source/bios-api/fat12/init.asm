@@ -1,7 +1,7 @@
-; © Realix > FAT12 Initialization
-; (19.06.26) v0.07
+; © Realix > FAT12: Initialization
+; (16.07.26) v0.1
 ; ================
-; ❗️ Зависимости: error_handler (внешний обработчик)
+; ❗️ Требует запущенного Bootix с BPB по адресу 0x0:0x7C00
 
 ; Защита от повторного включения
 %ifndef FAT12_INIT
@@ -31,10 +31,6 @@ fat12_init:
     mov [dir_entries], ax
     mov ax, [es:0x7C00 + 22]
     mov [sectors_per_fat], ax
-    mov ax, [es:0x7C00 + 24]
-    mov [sectors_per_track], ax
-    mov ax, [es:0x7C00 + 26]
-    mov [heads], ax
 
 .calculations:
     ; Вычисление LBA корневого каталога
@@ -84,7 +80,5 @@ reserved_sectors:    dw 0
 fat_count:           db 0
 dir_entries:         dw 0
 sectors_per_fat:     dw 0
-sectors_per_track:   dw 0
-heads:               dw 0
 
 %endif

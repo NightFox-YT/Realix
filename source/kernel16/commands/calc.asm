@@ -130,7 +130,7 @@ cmd_calc:
     jmp .done
 
 .error_syntax:
-    mov si, err_syntax
+    mov si, msg_calc_usage
     call print
 
 .done:
@@ -149,7 +149,7 @@ cmd_calc:
 
 msg_result:     db 'Result: ', 0
 str_minus:      db '-', 0
-err_syntax:     db '[!] Usage: calc <num1> <+ - * /> <num2>', 0
+msg_calc_usage: db '[?] Usage: calc <num1> <+ - * /> <num2>', 0
 err_operator:   db '[!] Unknown operator, use + - * /', 0
 err_div_zero:   db '[!] Division by zero!', 0
 err_overflow:   db '[!] Result too large (overflow)', 0

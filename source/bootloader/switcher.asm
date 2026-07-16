@@ -40,7 +40,9 @@ boot_switcher:
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
     mov dl, [boot_drive_num]
+    xor di, di
     call file_load
+    jc error_handler
 
     ; Передача собранной структуры данных в ядро и настройка сегментов
     mov ax, KERNEL_LOAD_SEGMENT
@@ -62,7 +64,9 @@ boot_switcher:
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
     mov dl, [boot_drive_num]
+    xor di, di
     call file_load
+    jc error_handler
 
     ; Динамически вычисляем физический адрес GDT перед загрузкой
     xor eax, eax
