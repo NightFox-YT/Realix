@@ -1,5 +1,5 @@
 // © Realix > Kernel32: Main
-// (11.07.26) v0.09
+// (16.07.26) v0.1
 // ================
 
 #![no_std]
@@ -17,7 +17,7 @@ use core::arch::{asm, naked_asm};
 use core::panic::PanicInfo;
 
 use drivers::{keyboard, pit, vga};
-use x86::{gdt, idt, memory};
+use x86::{frame_allocator, gdt, idt, memory};
 // use core::ptr::read_unaligned;
 
 /// Структура PCINFO, формируемая загрузчиком.
@@ -88,6 +88,12 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
             vga::Color::Red,
         );
         halt_loop();
+    }
+
+    // Инициализация аллокатора фреймов по карте памяти E820 из PCINFO
+    unsafe {
+        let pcinfo: &PcInfo = &*pcinfo_addr;
+        frame_allocator::init(&pcinfo.memory_map);
     }
 
     vga::clear_screen();

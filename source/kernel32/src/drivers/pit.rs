@@ -62,16 +62,23 @@ pub fn get_uptime() -> u32 {
     if cur_frequency == 0 {
         return 0;
     }
-    return TICKS.load(Relaxed) as u32 / cur_frequency;
+    return (TICKS.load(Relaxed) as u32) / cur_frequency;
 }
 
 /// Ждать `ms` миллисекунд
 pub fn sleep(ms: u32) {
-    let target: u64 = get_ticks() as u64 + (ms as u64 * (FREQUENCY.load(Relaxed)) as u64 / 1000);
+    let frequency: u64 = FREQUENCY.load(Relaxed) as u64;
+
+    // Проверка: Если частота 0, то мы не можем посчитать target
+    if frequency == 0 {
+        return;
+    }
+
+    let target: u64 = get_ticks() as u64 + (ms as u64 * frequency / 1000);
 
     // Ожидаем, когда кол-во тиков достигнет нужное значение
     while (get_ticks() as u64) < target {
         // Останавливаем процессор между прерываниями (тиками)
-        unsafe { core::arch::asm!("sti; hlt"); }
+        unsafe { core::arch::asm!("sti; hlt", options(nostack, nomem)); }
     }
 }

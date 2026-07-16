@@ -1,5 +1,5 @@
 // © Realix > VGA
-// (01.07.26) v0.08
+// (16.07.26) v0.1
 // ø Вдохновлено @liquifield
 // ================
 // ! Не вызывать из IRQ прерываний (Гонка данных на константах)
@@ -13,6 +13,7 @@ use crate::utils;
 const VGA_BUFFER: *mut u8 = 0xB8000 as *mut u8;
 pub const VGA_WIDTH: usize = 80;
 pub const VGA_HEIGHT: usize = 25;
+const EMPTY_CELL: u16 = (0x0F << 8) | b' ' as u16;  // Пробел + 0x0F (белый на чёрном)
 
 static CURSOR_ROW: AtomicUsize = AtomicUsize::new(0);
 static CURSOR_COL: AtomicUsize = AtomicUsize::new(0);
@@ -40,15 +41,18 @@ pub enum Color {
     White = 0xF,
 }
 
+/// > Заполнение `count` ячеек экрана пустой ячейкой, начиная с `start_cell`
+fn clear_cells(start_cell: usize, count: usize) {
+    let cells: *mut u16 = VGA_BUFFER as *mut u16;
+
+    for i in start_cell..start_cell + count {
+        unsafe { cells.add(i).write_volatile(EMPTY_CELL); }
+    }
+}
 
 pub fn clear_screen() {
     // "Стираем" экран пробелами с чёрным фоном
-    for byte in 0..(VGA_WIDTH * VGA_HEIGHT) {
-        unsafe {
-            VGA_BUFFER.add(byte * 2).write_volatile(b' ');
-            VGA_BUFFER.add(byte * 2 + 1).write_volatile(0x0F);
-        }
-    }
+    clear_cells(0, VGA_WIDTH * VGA_HEIGHT);
 
     // Сбрасываем позицию курсора
     CURSOR_ROW.store(0, Relaxed);
@@ -65,30 +69,17 @@ fn scroll_up(lines_count: usize) {
         return;
     }
 
-    // Копируем все строки кроме первой на `n` позиций выше
-    for row in lines_count..VGA_HEIGHT {
-        let src_offset: usize = (row * VGA_WIDTH) * 2;
-        let dst_offset: usize = ((row - lines_count) * VGA_WIDTH) * 2;
-
-        for byte in 0..(VGA_WIDTH * 2) {
-            unsafe {
-                let value: u8 = VGA_BUFFER.add(src_offset + byte).read_volatile();
-                VGA_BUFFER.add(dst_offset + byte).write_volatile(value);
-            }
-        }
+    // Копируем строки `n`..HEIGHT в начало экрана единым блоком (memmove).
+    unsafe {
+        core::ptr::copy(
+            VGA_BUFFER.add(lines_count * VGA_WIDTH * 2),
+            VGA_BUFFER,
+            (VGA_HEIGHT - lines_count) * VGA_WIDTH * 2
+        );
     }
 
     // "Стираем" последние `n` строк пробелами с чёрным фоном
-    for row in (VGA_HEIGHT - lines_count)..VGA_HEIGHT {
-        let row_offset: usize = row * VGA_WIDTH * 2;
-
-        for col in 0..VGA_WIDTH {
-            unsafe {
-                VGA_BUFFER.add(row_offset + col * 2).write_volatile(b' ');
-                VGA_BUFFER.add(row_offset + col * 2 + 1).write_volatile(0x0F);
-            }
-        }
-    }
+    clear_cells((VGA_HEIGHT - lines_count) * VGA_WIDTH, lines_count * VGA_WIDTH);
 
     // Обновляем позицию курсора на `n` строк вверх
     let _row: usize = CURSOR_ROW.load(Relaxed);
