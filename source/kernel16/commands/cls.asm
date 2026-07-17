@@ -1,4 +1,4 @@
-; © Realix > Cmd "Clear"
+; © Realix > Clear Command
 ; (13.06.26) v0.06
 ; ================
 

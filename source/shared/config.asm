@@ -1,5 +1,5 @@
 ; © Realix > Config
-; (13.06.26) v0.06
+; (17.06.26) v0.1
 ; ================
 
 ; ! Не забывайте менять эту строку
@@ -22,6 +22,7 @@
 
 ; Системные адреса памяти
 PCINFO_ADDR          equ 0x4500
+FAT_BUFFER_ADDR      equ 0x0500
 INITRIX_LOAD_SEGMENT equ 0x07E0
 INITRIX_LOAD_OFFSET  equ 0
 KERNEL_LOAD_SEGMENT  equ 0x1000

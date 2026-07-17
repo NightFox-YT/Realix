@@ -7,6 +7,10 @@
 ; ! Требуется инициализация FAT12 через `fat12_init`
 %include "bios-api/fat12/init.asm"
 
+; Основные константы
+%include 'shared/config.asm'
+
+
 ; > Загрузка файла с диска в память
 ; Параметры:
 ;  - di: адрес extra-таблицы защиты регионов памяти (0 - только core)
@@ -39,16 +43,16 @@ file_load:
     mov [extra_table_offset], di
 
 .read_root_dir:
-    ; Читаем Root directory в память
+    ; Читаем корневой каталог в память
     mov ax, [root_dir_lba]
     mov cx, [root_dir_size]
     mov dl, [drive_num]
-    mov bx, 0x0500
+    mov bx, FAT_BUFFER_ADDR
     call disk_read
 
-    ; Подготовка к поиску файла
-    xor bx, bx      ; Счётчик пройденных записей корневого каталога
-    mov di, 0x0500  ; Смещение текущей записи корневого каталога
+    ; Подготовка к поиску файла в корневом каталоге
+    xor bx, bx               ; Счётчик пройденных записей
+    mov di, FAT_BUFFER_ADDR  ; Смещение текущей записи
 
 .search:
     ; Подготовка к сравнению названий (до 11 символов)
@@ -86,6 +90,7 @@ file_load:
 
     ; Считаем end (Добавляем размер файла)
     mov ecx, [es:di + 28]
+    mov [file_size], ecx    ; Публикуем размер файла для команд отображения
     add ecx, ebx
 
     ; Проверка core-таблицы (Запретна для любой загрузки)
@@ -110,7 +115,7 @@ file_load:
     mov ax, [reserved_sectors]
     mov cx, [sectors_per_fat]
     mov dl, [drive_num]
-    mov bx, 0x0500
+    mov bx, FAT_BUFFER_ADDR
     call disk_read
 
     ; Установка сегмента и смещения для чтения файла
@@ -164,7 +169,7 @@ file_load:
     xor cx, cx
     mov es, cx
 
-    mov si, 0x0500
+    mov si, FAT_BUFFER_ADDR
     add si, ax
     mov ax, [es:si]
 
@@ -263,6 +268,7 @@ dest_offset:        dw 0
 drive_num: db 0
 extra_table_offset: dw 0
 file_cluster:       dw 0
+file_size:          dd 0    ; Размер найденного файла в байтах (выход для type/hexdump)
 
 ; Сообщения об ошибках
 msg_err_not_found:   db '[!] E1: File not found!', 0

@@ -1,4 +1,4 @@
-; © Realix > Load Commands
+; © Realix > Load Command
 ; (16.07.26) v0.1
 ; ================
 ; ❗️ Зависимости: bios-api/fat12/file_load.asm,
@@ -19,22 +19,8 @@ cmd_load:
     push di
     push si
 
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
-
-    ; Конвертация имени в формат FAT 8.3 (11 байт)
-    call format_83
-    jc .usage
-
-    ; Загрузка файла с защитой региона работающего ядра
-    mov si, filename_83
-    mov cx, FILE_DEST_SEGMENT
-    mov bx, FILE_DEST_OFFSET
-    mov dl, [boot_drive_num]
-    mov di, guard_kernel16
-    call file_load
+    ; Разбор имени и загрузка файла в FILE_DEST_SEGMENT:0 (общий пролог)
+    call parse_and_load
     jc .fail
 
     ; Логирование успеха
@@ -42,13 +28,8 @@ cmd_load:
     call print
     jmp .done
 
-; Вывод сообщения об ошибке (Возврат si из file_load)
+; Вывод сообщения (usage при пустом имени / ошибка file_load — адрес в si)
 .fail:
-    call print
-    jmp .done
-
-.usage:
-    mov si, msg_load_usage
     call print
 
 .done:
@@ -170,6 +151,37 @@ format_83:
     pop di
     pop cx
     pop ax
+    ret
+
+; > Разбор аргумента-имени и загрузка файла в `FILE_DEST_SEGMENT:FILE_DEST_OFFSET`
+; (Общий пролог для команд, отображающих файл: type, hexdump и др.)
+; Параметры:
+;  - si: указатель на аргументы команды (после имени)
+; Вывод:
+;  - Файл загружен, размер в [file_size] (Если успех)
+;  - CF: 0 (Успех), 1 (Ошибка, si указывает на сообщение для печати)
+parse_and_load:
+    ; Пропуск пробелов до аргумента
+    call skip_spaces
+    cmp byte [si], 0
+    je .no_arg
+
+    ; Конвертация имени в формат FAT 8.3
+    call format_83
+    jc .no_arg
+
+    ; Загрузка файла с защитой региона работающего ядра
+    mov si, filename_83
+    mov cx, FILE_DEST_SEGMENT
+    mov bx, FILE_DEST_OFFSET
+    mov dl, [boot_drive_num]
+    mov di, guard_kernel16
+    call file_load          ; CF + si (сообщение) + [file_size]
+    ret
+
+.no_arg:
+    mov si, msg_load_usage
+    stc
     ret
 
 ; Буфер имени в формате 8.3

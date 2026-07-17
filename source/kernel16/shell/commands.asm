@@ -1,6 +1,6 @@
 ; © Realix > Shell Commands
 ; ø Вдохновлено @nyxmalware
-; (13.06.26) v0.06
+; (17.07.26) v0.1
 ; ================
 ; ❗️ Зависимости: bios-api/memory (модуль), bios-api/network
 ; TODO:
@@ -28,7 +28,10 @@ cmd_table:
     dw .str_ascii,    cmd_ascii
     dw .str_repeat,   cmd_repeat
     dw .str_fib,      cmd_fib
+    dw .str_ls,       cmd_ls
     dw .str_load,     cmd_load
+    dw .str_type,     cmd_type
+    dw .str_hexdump,  cmd_hexdump
     dw 0, 0
 
 .str_help:     db 'help', 0
@@ -50,7 +53,9 @@ cmd_table:
 .str_repeat:   db 'repeat', 0
 .str_fib:      db 'fib', 0
 .str_load:     db 'load', 0
-
+.str_ls:       db 'ls', 0
+.str_type:     db 'type', 0
+.str_hexdump:  db 'hexdump', 0
 
 ; > Исполнитель команд
 ; Параметры:
@@ -616,6 +621,15 @@ cmd_fib:
 ; > Команда загрузки файла с диска
 %include "kernel16/commands/load.asm"
 
+; > Команда вывода списка файлов
+%include "kernel16/commands/ls.asm"
+
+; > Команда печати файла как текста
+%include "kernel16/commands/type.asm"
+
+; > Команда шестнадцатеричного дампа файла
+%include "kernel16/commands/hexdump.asm"
+
 ; > Пропуск пробелов до первого символа
 ; Вывод:
 ;  - si: указатель на первый символ строки
@@ -657,8 +671,11 @@ msg_help:
     db '> hex <num>     - Show <num> in hexadecimal', ENTER
     db '> ascii <0-255> - Print char by ASCII code', ENTER
     db '> fib <0-24>    - Nth Fibonacci number', ENTER
-    db '  [FAT12]', ENTER
-    db '> load <f> - Load file <f> into RAM (at 0x2000:0x0000)', ENTER
+    db '  [Fat12]', ENTER
+    db '> load <f>    - Load file <f> into RAM (at 0x2000:0x0000)', ENTER
+    db '> ls          - List files in root directory', ENTER
+    db '> type <f>    - Print file <f> as text', ENTER
+    db '> hexdump <f> - Hex dump of file <f>', ENTER
     db '  [Power]', ENTER
     db '> reboot   - Reboot PC', ENTER
     db '> shutdown - Power off PC', 0
