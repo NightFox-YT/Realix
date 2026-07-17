@@ -4,11 +4,15 @@
 ; ❗️ Зависимости: bios-api/disk/read.asm,
 ;                 kernel16/io/print_ctrl.asm
 
-; ! Требуется инициализация FAT12 через `fat12_init`
+; ❗️ Требуется инициализация FAT12 через `fat12_init`
 %include "bios-api/fat12/init.asm"
 
 ; Основные константы
 %include 'shared/config.asm'
+
+; Маркеры кластеров в таблице FAT12
+CHAIN_END   equ 0x0FF8
+BAD_CLUSTER equ 0x0FF7
 
 
 ; > Загрузка файла с диска в память
@@ -195,13 +199,13 @@ file_load:
     jmp .fail
 
 ; Обработка следующего кластера
-.next_cluster: 
+.next_cluster:
     ; Проверка на конец файла
-    cmp ax, 0x0FF8
+    cmp ax, CHAIN_END
     jae .done
 
     ; Проверка на Bad Cluster
-    cmp ax, 0x0FF7
+    cmp ax, BAD_CLUSTER
     je .bad_cluster
 
     ; Обновляем номер текущего кластера, продолжая чтение
@@ -226,7 +230,6 @@ file_load:
     pop cx
     pop bx
     pop ax
-    
     ret
 
 ; > Проверка пересечения диапазона [start, end) с записями таблицы регионов
@@ -236,39 +239,49 @@ file_load:
 ; Вывод:
 ;  - CF: 0 (Нет пересечений), 1 (Найдено пересечение)
 check_table:
+    push eax
+    push edx
+    push di
+
+.scan:
     ; Проверяем текущую запись о регионе (терминатор -1 -> выход)
     mov eax, [di]      ; Начало региона из таблицы (a)
     cmp eax, -1
-    je .check_ok
+    je .ok
     mov edx, [di + 4]  ; Конец региона из таблицы (b)
 
     ; Пересечение [start, end) и [a, b): start < b && a < end
     cmp ebx, edx
-    jae .check_next
+    jae .next
     cmp eax, ecx
-    jb .check_hit
+    jb .hit
 
-.check_next:
+.next:
     ; Прибавляем размер записи (2 dword = 8 байт) и переходим к след.
     add di, 8
-    jmp check_table
+    jmp .scan
 
-.check_hit:
+.hit:
     stc
-    ret
+    jmp .return
 
-.check_ok:
+.ok:
     clc
+
+.return:
+    pop di
+    pop edx
+    pop eax
     ret
 
-; Параметры
+; Переменные модуля
 filename_offset:    dw 0
 dest_segment:       dw 0
 dest_offset:        dw 0
-drive_num: db 0
+drive_num:          db 0
 extra_table_offset: dw 0
 file_cluster:       dw 0
-file_size:          dd 0    ; Размер найденного файла в байтах (выход для type/hexdump)
+file_size:          dd 0
 
 ; Сообщения об ошибках
 msg_err_not_found:   db '[!] E1: File not found!', 0

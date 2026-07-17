@@ -349,6 +349,30 @@ cmd_len:
     pop ax
     ret
 
+; > Перевод символа al в верхний регистр (a-z -> A-Z, иначе без изменений)
+; Параметры & Вывод:
+;  - al: символ (Любой + a-z)
+char_to_upper::
+    cmp al, 'a'
+    jb .done
+    cmp al, 'z'
+    ja .done
+    sub al, 32
+.done:
+    ret
+
+; > Перевод символа al в нижний регистр (A-Z -> a-z, иначе без изменений)
+; Параметры & Вывод:
+;  - al: символ (Любой + A-Z)
+char_to_lower:
+    cmp al, 'A'
+    jb .done
+    cmp al, 'Z'
+    ja .done
+    add al, 32
+.done:
+    ret
+
 ; > Команда печати аргумента в верхнем регистре
 cmd_upper:
     push ax
@@ -362,16 +386,7 @@ cmd_upper:
     test al, al  ; Конец строки?
     jz .done
 
-    ; Переводим только a-z, остальное - как есть
-    cmp al, 'a'
-    jb .emit
-    cmp al, 'z'
-    ja .emit
-
-    ; Перевод в верхний регистр по сдвигу в таблице ASCII
-    sub al, 32
-
-.emit:
+    call char_to_upper
     call print_char
     jmp .loop
 
@@ -393,16 +408,7 @@ cmd_lower:
     test al, al
     jz .done
 
-    ; Переводим только A-Z, остальное - как есть
-    cmp al, 'A'
-    jb .emit
-    cmp al, 'Z'
-    ja .emit
-
-    ; Перевод в нижний регистр по сдвигу в таблице ASCII
-    add al, 32
-
-.emit:
+    call char_to_lower
     call print_char
     jmp .loop
 

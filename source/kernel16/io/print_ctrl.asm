@@ -5,6 +5,10 @@
 ; Основные константы
 %include 'shared/config.asm'
 
+; Управляющие символы
+%define BEEP_CHAR     0x07
+%define SQUARE_CHAR   0xFE
+
 ; > Вывод символов "\n\r" на экран (Текстовый режим)
 print_new_line:
     push ax

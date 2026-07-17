@@ -5,6 +5,10 @@
 ; Основные константы
 %include 'shared/config.asm'
 
+; Константы карты памяти (! MAX_ENTRIES идёт из Rust)
+E820_ENTRY_SIZE  equ 24
+E820_MAX_ENTRIES equ 64
+
 ; > Получение карты памяти через прерывание int 0x15 (E820)
 ; Параметры:
 ;  - es:di: адрес, куда мы будем сохранять таблицу карт памяти
@@ -24,7 +28,7 @@ get_memory_map:
 .next:
     ; Не позволяем BIOS записать больше, чем вмещает `E820Map` в kernel32
     cmp bp, E820_MAX_ENTRIES
-    jae .success
+    jae .done
 
     mov eax, 0xe820
     mov edx, 0x0534D4150       ; "SMAP"
@@ -46,7 +50,7 @@ get_memory_map:
     jz .skipentry         ; Если 64-битная длина равна 0, пропустить запись
 
     ; Если запись не превышает макс. размер в 24 байта, принимаем
-    cmp ecx, 24
+    cmp ecx, E820_ENTRY_SIZE
     jb .accept
 
     ; Есть атрибуты: очищен ли бит "игнорировать эти данные"?
@@ -63,21 +67,21 @@ get_memory_map:
     test ebx, ebx
     jne .next
 
-.success:
+.done:
     ; Очищаем CF и выходим
     clc
-    jmp .done
+    jmp .return
 
 .carry_result:
     ; CF при уже собранных записях обычно означает "конец списка достигнут"
     test bp, bp
-    jnz .success
+    jnz .done
 
 .fail:
     ; Выход по ошибке "Функция не поддерживается"
     stc
 
-.done:
+.return:
     pop edx
     pop ecx
     pop ebx

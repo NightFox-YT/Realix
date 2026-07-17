@@ -84,11 +84,7 @@ format_83:
     jae .invalid
 
     ; Перевод в верхний регистр (a-z, другие не трогаем)
-    cmp al, 'a'
-    jb .name_store
-    cmp al, 'z'
-    ja .name_store
-    sub al, 32
+    call to_upper_al
 
 .name_store:
     ; Записываем символ в буфер, увеличивая смещения и счётчик
@@ -122,11 +118,7 @@ format_83:
     jae .invalid
 
     ; Перевод в верхний регистр (a-z, другие не трогаем)
-    cmp al, 'a'
-    jb .ext_store
-    cmp al, 'z'
-    ja .ext_store
-    sub al, 32
+    call to_upper_al
 
 .ext_store:
     mov [di], al

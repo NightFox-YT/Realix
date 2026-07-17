@@ -99,7 +99,6 @@ error_handler:
 %include 'bios-api/fat12/file_load.asm'
 %include 'bios-api/memory/high.asm'
 %include 'bios-api/memory/low.asm'
-%include 'bios-api/video/vga.asm'
 %include 'network/rtl8139.asm'
 %include 'bootloader/switcher.asm'
 

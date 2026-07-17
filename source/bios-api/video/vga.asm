@@ -5,6 +5,11 @@
 ; Основные константы
 %include 'shared/config.asm'
 
+; Константы экрана VGA
+VGA_WIDTH   equ 320
+VGA_HEIGHT  equ 200
+VGA_SEGMENT equ 0xA000
+
 ; > Инициализация видеорежима 13h (320x200, 256 цветов)
 vga_video_mode:
     push ax

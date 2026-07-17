@@ -7,6 +7,9 @@
 %ifndef FAT12_INIT
 %define FAT12_INIT
 
+; Основные константы
+%include 'shared/config.asm'
+
 ; > Инициализация параметров FAT12 (Вызывается 1 раз)
 fat12_init:
     push ax
@@ -19,17 +22,17 @@ fat12_init:
     xor ax, ax
     mov es, ax
 
-    mov ax, [es:0x7C00 + 11]
+    mov ax, [es:BOOTIX_LOAD_ADDR + 11]
     mov [bytes_per_sector], ax
-    mov al, [es:0x7C00 + 13]
+    mov al, [es:BOOTIX_LOAD_ADDR + 13]
     mov [sectors_per_cluster], al
-    mov ax, [es:0x7C00 + 14]
+    mov ax, [es:BOOTIX_LOAD_ADDR + 14]
     mov [reserved_sectors], ax
-    mov al, [es:0x7C00 + 16]
+    mov al, [es:BOOTIX_LOAD_ADDR + 16]
     mov [fat_count], al
-    mov ax, [es:0x7C00 + 17]
+    mov ax, [es:BOOTIX_LOAD_ADDR + 17]
     mov [dir_entries], ax
-    mov ax, [es:0x7C00 + 22]
+    mov ax, [es:BOOTIX_LOAD_ADDR + 22]
     mov [sectors_per_fat], ax
 
 .calculations:
@@ -68,12 +71,12 @@ fat12_init:
     pop ax
     ret
 
-; Параметры FAT12
+; Переменные FAT12
 root_dir_lba:    dw 0
 root_dir_size:   dw 0
 data_lba:        dw 0
 
-; Параметры BPB
+; Переменные BPB
 bytes_per_sector:    dw 0
 sectors_per_cluster: db 0
 reserved_sectors:    dw 0
