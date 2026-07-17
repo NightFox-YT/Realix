@@ -83,8 +83,8 @@ format_83:
     cmp cx, 8
     jae .invalid
 
-    ; Перевод в верхний регистр (a-z, другие не трогаем)
-    call to_upper_al
+    ; Перевод в верхний регистр
+    call char_to_upper
 
 .name_store:
     ; Записываем символ в буфер, увеличивая смещения и счётчик
@@ -117,8 +117,8 @@ format_83:
     cmp cx, 3
     jae .invalid
 
-    ; Перевод в верхний регистр (a-z, другие не трогаем)
-    call to_upper_al
+    ; Перевод в верхний регистр
+    call char_to_upper
 
 .ext_store:
     mov [di], al

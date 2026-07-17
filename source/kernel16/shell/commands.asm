@@ -352,7 +352,7 @@ cmd_len:
 ; > Перевод символа al в верхний регистр (a-z -> A-Z, иначе без изменений)
 ; Параметры & Вывод:
 ;  - al: символ (Любой + a-z)
-char_to_upper::
+char_to_upper:
     cmp al, 'a'
     jb .done
     cmp al, 'z'

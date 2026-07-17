@@ -87,7 +87,7 @@ pub fn alloc_frame() -> Option<usize> {
 
         // Первый свободный (нулевой) бит и его пометка занятым
         let bit: usize = byte.trailing_ones() as usize;
-        *byte &= 1 << bit;
+        *byte |= 1 << bit;
 
         FREE_FRAMES.fetch_sub(1, Relaxed);
         return Some((byte_idx * 8 + bit) * PAGE_SIZE);
