@@ -22,4 +22,5 @@ Contributions of any kind are welcome:
 - 💡 **Suggest new features** or improvements.
 - 🔧 **Help optimize or refactor code.**
 
-Feel free to open an issue or reach out via TikTok & Discord.
+See [Contributing.md](Contributing.md) for guidelines (it documents
+the module style, error convention and memory model this codebase follows), or open an issue / reach out via TikTok & Discord.
