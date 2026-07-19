@@ -238,14 +238,11 @@ cmd_echo:
     push ax
     push si
 
-    ; Пропускаем пробелы
-    call skip_spaces
+    ; Проверка существования текстового аргумента
+    call require_arg
+    jc .done
 
-    ; Если аргументов нет (сразу конец строки)
-    cmp byte [si], 0
-    jz .done
-
-    ; Вывод сообщения         
+    ; Вывод сообщения
     call print
 
 .done:
@@ -420,29 +417,15 @@ cmd_lower:
 ; > Команда вывода числа в шестнадцатеричном виде
 cmd_hex:
     push ax
-    push bx
     push si
 
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
-
-    ; Парсинг числа
-    call parse_uint16
+    ; Парсинг единственного числового аргумента
+    call parse_uint16_arg
     jc .usage
-    mov bx, ax         ; Сохраняем число (parse затрёт ax)
 
-    ; После числа не должно быть мусора
-    call skip_spaces
-    cmp byte [si], 0
-    jne .usage
-
-    ; "Hex: 0x" + число
+    ; "Hex: 0x" + число (ax - число)
     mov si, msg_hex
     call print
-
-    mov ax, bx
     call print_hex16
     jmp .done
 
@@ -452,39 +435,25 @@ cmd_hex:
 
 .done:
     pop si
-    pop bx
     pop ax
     ret
 
 ; > Команда вывода символа по десятичному коду
 cmd_ascii:
     push ax
-    push bx
     push si
 
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
-
-    ; Парсинг кода символа
-    call parse_uint16
+    ; Парсинг единственного числового аргумента
+    call parse_uint16_arg
     jc .usage
 
     ; Код должен влезать в один байт
     cmp ax, 255
     ja .usage
-    mov bx, ax
 
-    ; После числа не должно быть мусора
-    call skip_spaces
-    cmp byte [si], 0
-    jne .usage
-
-    ; "Char: " + сам символ
+    ; "Char: " + сам символ (al - символ)
     mov si, msg_ascii
     call print
-    mov al, bl
     call print_char
     jmp .done
 
@@ -494,7 +463,6 @@ cmd_ascii:
 
 .done:
     pop si
-    pop bx
     pop ax
     ret
 
@@ -505,10 +473,9 @@ cmd_repeat:
     push cx
     push si
 
-    ; Пропуск пробелов до счётчика
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
+    ; Проверка существования счётчика повторов
+    call require_arg
+    jc .usage
 
     ; Парсинг числа повторов
     call parse_uint16
@@ -518,15 +485,14 @@ cmd_repeat:
     test ax, ax
     jz .done
 
-    ; Верхнее ограничение
+    ; Верхнее ограничение (cx - счётчик)
     cmp ax, 20
     ja .too_many
-    mov cx, ax        ; cx - счётчик
+    mov cx, ax
 
-    ; Пропуск пробелов до текста
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
+    ; Проверка существования текста для повтора
+    call require_arg
+    jc .usage
 
 .print_loop:
     ; Вывод одного и того же текста `N` раз
@@ -558,23 +524,11 @@ cmd_fib:
     push dx
     push si
 
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
-
-    ; Парсинг номера
-    call parse_uint16
+    ; Парсинг единственного числового аргумента
+    call parse_uint16_arg
     jc .usage
-    push ax
-
-    ; После числа не должно быть мусора
-    call skip_spaces
-    cmp byte [si], 0
-    jne .usage
 
     ; Ограничение сверху (иначе переполнение uint16)
-    pop ax
     cmp ax, 24
     ja .too_big
 
@@ -650,8 +604,59 @@ skip_spaces:
     dec si
     ret
 
+; > Разбор единственного числового аргумента команды
+; (Пропускает пробелы, читает число и требует пустой хвост)
+; Параметры:
+;  - si: указатель на аргументы команды
+; Вывод:
+;  - ax: число (uint16)
+;  - CF: 0 (успех), 1 (пусто / не число / мусор после числа)
+parse_uint16_arg:
+    ; Пропуск пробелов до аргумента
+    call skip_spaces
+    cmp byte [si], 0
+    je .fail
+
+    ; Парсинг числа
+    call parse_uint16
+    jc .fail
+
+    ; После числа допустимы только пробелы
+    push ax
+    call skip_spaces
+    cmp byte [si], 0
+    pop ax
+    jne .fail
+
+.done:
+    clc
+    ret
+
+.fail:
+    stc
+    ret
+
+; > Пропуск пробелов с проверкой, что аргумент не пуст
+; Параметры:
+;  - si: указатель на аргументы команды
+; Вывод:
+;  - si: указатель на первый символ аргумента
+;  - CF: 0 (аргумент есть), 1 (аргумент пуст)
+require_arg:
+    call skip_spaces
+    cmp byte [si], 0
+    je .fail
+
+.done:
+    clc
+    ret
+
+.fail:
+    stc
+    ret
+
 ; Сообщения об ошибках
-msg_err_unknown_cmd:  db '[!] Unknown command, write help for list of commands.', 0
+msg_err_unknown_cmd:  db "[!] Unknown command. Type 'help' for list of commands.", 0
 msg_err_shutdown:     db '[!] PC shutdown failed! (No APM)', 0
 msg_err_repeat_count: db '[!] Repeat count must be 1..20.', 0
 msg_err_fib_range:    db '[!] Fib argument must be 0..24.', 0
@@ -659,31 +664,22 @@ msg_err_fib_range:    db '[!] Fib argument must be 0..24.', 0
 ; Сообщения
 msg_help:
     db 'Commands:', ENTER
-    db '  [Base]', ENTER
-    db '> help      - Show this manual', ENTER
-    db '> clear/cls - Clear screen', ENTER
-    db '> echo <t>  - Print <text> to console', ENTER
-    db '> about     - Show system info', ENTER
-    db '> beep      - Beep via BIOS speaker', ENTER
-    db '> meminfo   - Display RAM configuration', ENTER
-    db '  [Text]', ENTER
-    db '> len <t>           - Length of <text>', ENTER
-    db '> upper <t>         - <text> to upper case', ENTER
-    db '> lower <t>         - <text> to lower case', ENTER
-    db '> reverse <t>       - Reverse <text>', ENTER
-    db '> repeat <1-20> <t> - Repeat <text> N times', ENTER
-    db '  [Numbers]', ENTER
-    db '> calc <num1> <+ - * /> <num2> - Simple calculator (positive only)', ENTER
-    db '> hex <num>     - Show <num> in hexadecimal', ENTER
-    db '> ascii <0-255> - Print char by ASCII code', ENTER
-    db '> fib <0-24>    - Nth Fibonacci number', ENTER
-    db '  [Fat12]', ENTER
-    db '> load <f>    - Load file <f> into RAM (at 0x2000:0x0000)', ENTER
-    db '> ls          - List files in root directory', ENTER
-    db '> type <f>    - Print file <f> as text', ENTER
-    db '> hexdump <f> - Hex dump of file <f>', ENTER
-    db '  [Power]', ENTER
-    db '> reboot   - Reboot PC', ENTER
+    db '[Base]                                 [Text]', ENTER
+    db '> help      - Show this manual         > len <t>        - Length of <t>', ENTER
+    db '> clear/cls - Clear screen             > upper <t>      - <t> to upper case', ENTER
+    db '> echo <t>  - Print <t> to console     > lower <t>      - <t> to lower case', ENTER
+    db '> about     - Show system info         > reverse <t>    - Reverse <t>', ENTER
+    db '> beep      - Beep via BIOS speaker    > repeat <n> <t> - Repeat <t> <n> times', ENTER
+    db '> meminfo   - Memory information', ENTER
+    db ENTER
+    db '[Numbers]                              [Fat12]', ENTER
+    db '> calc <a> <+ - * /> <b> - Calculator  > load <f>    - Load file into RAM', ENTER
+    db '> hex <num>     - <num> to hexadecimal > ls          - List root directory', ENTER
+    db '> ascii <0-255> - Char by ASCII code   > type <f>    - Print file as text', ENTER
+    db '> fib <0-24>    - Nth Fibonacci number > hexdump <f> - Hex dump of file', ENTER
+    db ENTER
+    db '[Power]', ENTER
+    db '> reboot   - Reboot PC', ENTER,
     db '> shutdown - Power off PC', 0
 msg_about:
     db '> Realix version: ', OS_VERSION, ENTER
@@ -694,14 +690,11 @@ msg_about:
 
 msg_len:          db 'Length: ', 0
 msg_hex:          db 'Hex: 0x', 0
-msg_hex_usage:    db 'Usage: hex <num>', 0
+msg_hex_usage:    db '[?] Usage: hex <num>', 0
 msg_ascii:        db 'Char: ', 0
-msg_ascii_usage:  db 'Usage: ascii <0-255>', 0
-msg_repeat_usage: db 'Usage: repeat <1-20> <text>', 0
+msg_ascii_usage:  db '[?] Usage: ascii <0-255>', 0
+msg_repeat_usage: db '[?] Usage: repeat <1-20> <text>', 0
 msg_fib:          db 'Fib: ', 0
-msg_fib_usage:    db 'Usage: fib <0-24>', 0
+msg_fib_usage:    db '[?] Usage: fib <0-24>', 0
 
 note_meminfo: db 'Note: In Real mode you can access only low RAM.', 0
-
-; Буфер ввода
-input_str: times 64 db 0

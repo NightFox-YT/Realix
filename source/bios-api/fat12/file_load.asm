@@ -127,6 +127,11 @@ file_load:
     mov es, bx
     mov bx, [dest_offset]
 
+    ; Проверка на пустой файл: Цепочки кластеров нет
+    ; (0 - пусто, 1 - резерв)
+    cmp word [file_cluster], 2
+    jb .done
+
 ; Обработка FAT цепочки
 .load_loop:
     ; Вычисление LBA кластера

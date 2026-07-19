@@ -15,11 +15,9 @@ cmd_calc:
     push si
     push di
 
-.skip_spaces_after_cmd:
-    ; Пропуск пробелов до первого числа
-    call skip_spaces
-    cmp byte [si], 0
-    je .error_syntax
+    ; Проверка существования первого числа
+    call require_arg
+    jc .error_syntax
 
     ; Парсинг первого числа
     call parse_uint16
@@ -34,11 +32,10 @@ cmd_calc:
     ; Читаем оператор
     lodsb
     mov [.operator], al
-    
-    ; Пропуск пробелов перед вторым числом
-    call skip_spaces
-    cmp byte [si], 0
-    je .error_syntax
+
+    ; Проверка существования второго числа
+    call require_arg
+    jc .error_syntax
 
     ; Парсинг второго числа
     call parse_uint16
@@ -68,7 +65,7 @@ cmd_calc:
 ; > Выполнение действий с проверкой безнакового переполнения
 .do_add:
     add ax, bx
-    jc .error_overflow 
+    jc .error_overflow
     jmp .show_result
 
 .do_sub:
@@ -98,7 +95,7 @@ cmd_calc:
 
 .do_div:
     ; Проверка деления на 0
-    cmp bx, 0
+    test bx, bx
     je .error_div_zero
 
     xor dx, dx
