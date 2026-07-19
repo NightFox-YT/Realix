@@ -14,7 +14,7 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
 
 ## 🔗 Links & 🙌 Contributing
 - **TikTok:** [tiktok.com/@mainfox.tt](https://www.tiktok.com/@mainfox.tt)
-- **Discord:** [discord.gg/Realix](https://discord.gg/D7cATZzSAxp)
+- **Discord:** [discord.gg/Realix](https://discord.gg/D7cATZzAxp)
 
 Contributions of any kind are welcome:
 
