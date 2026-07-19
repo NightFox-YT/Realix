@@ -41,8 +41,8 @@ run_cli:
     mov si, input_buffer
     call execute_cmd
 
-    ; Перевод строки на экране
-    call print_new_line
+    ; Перевод строки только если команда не перевела сама
+    call print_new_line_if_needed
 
     jmp .prompt
 

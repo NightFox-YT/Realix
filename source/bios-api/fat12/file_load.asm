@@ -10,10 +10,6 @@
 ; Основные константы
 %include 'shared/config.asm'
 
-; Маркеры кластеров в таблице FAT12
-CHAIN_END   equ 0x0FF8
-BAD_CLUSTER equ 0x0FF7
-
 
 ; > Загрузка файла с диска в память
 ; Параметры:
@@ -222,9 +218,9 @@ file_load:
     stc
     jmp .return
 
-; Удачное заверешение (с переносом строки)
+; Удачное завершение (с переносом строки после "кубиков" прогресса)
 .done:
-    call print_new_line
+    call print_new_line_if_needed
     xor si, si
     clc
 

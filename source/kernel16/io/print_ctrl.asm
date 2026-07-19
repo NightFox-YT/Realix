@@ -28,6 +28,31 @@ print_new_line:
     pop ax
     ret
 
+; > Перевод строки, только если курсор не в начале строки
+print_new_line_if_needed:
+    push ax
+    push bx
+    push cx
+    push dx
+
+    ; Запрос позиции курсора: dh - строка, dl - колонка
+    mov ah, 0x03
+    xor bh, bh
+    int 0x10
+
+    ; Курсор уже в начале строки - перевод не нужен
+    test dl, dl
+    jz .done
+
+    call print_new_line
+
+.done:
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
 ; > Вывод невидимого символа "BEL" на экран (Текстовый режим)
 print_beep_char:
     push ax

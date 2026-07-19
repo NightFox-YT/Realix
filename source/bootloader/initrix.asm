@@ -1,6 +1,7 @@
-; © Realix > Initrix (Stage 2 Bootloader)
-; (14.06.26) v0.06
+; © Realix > Initrix (Stage 2)
+; (19.07.26) v0.1
 ; ================
+; ❗️ Загружается Bootix по адресу INITRIX_LOAD_SEGMENT:0, номер диска в dl
 
 ; Настройка компиляции
 bits 16
@@ -16,9 +17,7 @@ main:
     ; Инициализация драйверов
     call disk_init
     call fat12_init
-    call net_init
-    ;jc network_card_error  ; Уберите комментарий, если в ВМ есть это карта
-    
+
     mov si, msg_init
     call print
 
@@ -57,17 +56,18 @@ main:
     call print_new_line
     call print_new_line
 
+    ; Инициализация сетевой карты (необязательно)
+    call net_init
+    jnc .nic_ready
+
+    mov si, msg_warn_no_nic
+    call print
+
+.nic_ready:
+    call print_new_line
+
     ; Переходим в след. модуль
     jmp boot_switcher
-
-.halt:
-    cli
-    hlt
-    jmp $
-
-network_card_error:
-    mov si, err_network_card_not_found
-    jmp error_handler
 
 lower_memory_error:
     mov si, err_get_lower_memory
@@ -105,12 +105,14 @@ error_handler:
 ; Сообщения и строки
 msg_init: db '[+] Initializing...', ENTER, 0
 
-err_get_memory_map:         db '[!] Get memory map failed (int 15h)!', 0
-err_get_lower_memory:       db '[!] Get lower memory failed (int 12h)!', 0
-err_network_card_not_found: db '[!] Network card Realtek RTL8139 not found!', 0
+err_get_memory_map:   db '[!] Get memory map failed (int 15h)!', 0
+err_get_lower_memory: db '[!] Get lower memory failed (int 12h)!', 0
+
+; Предупреждения
+msg_warn_no_nic: db '[!] Network card RTL8139 not found, networking disabled.', ENTER, 0
 
 str_title:
-    db '     Realix ', OS_VERSION, ENTER,
+    db '     Realix ', OS_VERSION, ENTER
     db '(C) NightFox developer', ENTER, ENTER, 0
 
 ; Данные о ПК и Kernel

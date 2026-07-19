@@ -29,7 +29,7 @@ cmd_type:
 .type_loop:
     ; Дошли до конца файла
     test ecx, ecx
-    jz .done
+    jz .return
 
     ; Печать очередного байта как символа
     mov al, [es:si]
@@ -51,8 +51,9 @@ cmd_type:
 .fail:
     call print
 
-.done:
-    call print_new_line
+.return:
+    call print_new_line_if_needed
+
     pop es
     pop di
     pop si

@@ -17,14 +17,14 @@ boot_switcher:
 
 .wait_key:
     ; Ожидание нажатия
-    mov ah, 0x00
+    mov ah, 0
     int 0x16
 
     ; Варианты выбора
     cmp al, '1'
     je .load_kernel16
     cmp al, '2'
-    je .load_32bit
+    je .load_kernel32
 
     ; Нажали что-то другое - возвращаемся в цикл
     jmp .wait_key
@@ -54,7 +54,7 @@ boot_switcher:
 
 
 ; > Ветка Protected Mode (32-bit)
-.load_32bit:
+.load_kernel32:
     call print_new_line
     mov si, msg_loading_32
     call print
@@ -86,9 +86,9 @@ boot_switcher:
     cli
     in al, 0x92   ; Читаем состояние системного порта 0x92
     and al, 0xFE  ; Сбрасываем 0-й бит (бит аппаратного сброса), чтобы случайно не перезагрузиться
-    or al, 2      ; Устанавливаем во 2-й бит единицу (Fast A20 gate)
+    or al, 2      ; Устанавливаем бит 1 - Fast A20 gate (10b)
     out 0x92, al  ; Отправляем обратно в порт
-    
+
     ; Загружаем GDT
     lgdt [gdt_descriptor]
 
@@ -131,7 +131,7 @@ gdt_data:
     db 10010010b  ; Access Byte
     db 11001111b  ; Flags (4 бита) + Лимит (Старшие 4 бита)
     db 0x00       ; Адрес начала (Старшие 8 бит)
-    
+
 gdt_end:
     ; Структура-указатель для LGDT
     gdt_descriptor:
@@ -167,7 +167,7 @@ pmode_entry:
 ; Сообщения и строки (16 бит для строковых данных)
 bits 16
 
-str_choose_mode: 
+str_choose_mode:
     db '[+] Select OS Mode:', ENTER
     db '  [1] 16-bit Real Mode', ENTER
     db '  [2] 32-bit Protected Mode (Rust)', ENTER, 0

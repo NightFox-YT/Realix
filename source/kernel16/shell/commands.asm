@@ -2,7 +2,7 @@
 ; ø Вдохновлено @nyxmalware
 ; (17.07.26) v0.1
 ; ================
-; ❗️ Зависимости: bios-api/memory (модуль), bios-api/network
+; ❗️ Зависимости: bios-api/memory (модуль), kernel16/io, kernel16/shell/parse.asm
 ; TODO:
 ;  - Возвращение carry_flag при ошибке
 ;  - В shutdown полагаться не только на APM
