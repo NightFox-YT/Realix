@@ -1,6 +1,11 @@
-; © Realix > Bootix
+; © Realix > Bootix (Stage 1)
 ; (14.06.26) v0.06
 ; ================
+; ❗️ Зависимости: kernel16/io/print.asm (в режиме PRINT_MINIMAL),
+;                 bios-api/disk/read.asm
+;
+; ❗️ Свой минимальный обход FAT12 вместо bios-api/fat12,
+;   чтобы стадия 1 влезла в 512 байт (Дублирование намеренное).
 
 ; Настройка компиляции
 bits 16
@@ -39,7 +44,7 @@ ebr_system_id:    db 'FAT12   '         ; Тип файловой системы
 start:
     ; Отключаем прерывания во время настройки
     cli
-    
+
     ; Настройка сегментных регистров (Напрямую настроить нельзя)
     xor ax, ax
     mov ds, ax
@@ -82,7 +87,7 @@ main:
     div word [bpb_bytes_per_sector]
 
     ; Округление размера корневого каталога до целого вверх
-    or dx, dx    
+    or dx, dx
     jz .read_root_dir
     inc ax
 
@@ -95,12 +100,12 @@ main:
     mov cl, al                  ; Кол-во секторов - размер каталога
     pop ax                      ; *Восстанавливаем сохранённый LBA каталога
     mov dl, [ebr_drive_number]  ; Номер диска
-    mov bx, 0x0500              ; Адрес записи
+    mov bx, FAT_BUFFER_ADDR     ; Адрес записи
     call disk_read
 
     ; Подготовка к поиску файла
     xor bx, bx      ; Кол-во пройденных записей корневого каталога
-    mov di, 0x0500  ; Адрес текущей записи корневого каталога
+    mov di, FAT_BUFFER_ADDR  ; Адрес текущей записи корневого каталога
 
 .search_initrix:
     ; Подготовка к сравнению названий (до 11 символов)
@@ -118,7 +123,7 @@ main:
     add di, 32                ; Увеличиваем адрес на размер записи (32 байта)
     inc bx                    ; Увеличиваем индекс записи
     cmp bx, [bpb_dir_entries]
-    jl .search_initrix        ; Если не вышли за предел, продолжаем поиск
+    jb .search_initrix        ; Если не вышли за предел, продолжаем поиск
 
     ; Выход за предел, => файла второго этапа загрузчика нет
     mov si, err_initrix_not_found
@@ -133,7 +138,7 @@ main:
     mov ax, [bpb_reserved_sectors]  ; LBA
     mov cl, [bpb_sectors_per_fat]   ; Кол-во секторов - размер FAT
     mov dl, [ebr_drive_number]      ; Номер диска
-    mov bx, 0x0500                  ; Адрес записи
+    mov bx, FAT_BUFFER_ADDR         ; Адрес записи
     call disk_read
 
     ; Установка сегмента и смещения для чтения initrix
@@ -181,9 +186,9 @@ main:
     div cx
 
     ; Считывание записи из таблицы FAT
-    mov si, 0x0500
+    mov si, FAT_BUFFER_ADDR
     add si, ax
-    mov ax, [ds:si]
+    mov ax, [si]
 
     ; Проверка чётности кластера
     or dx, dx
@@ -192,22 +197,22 @@ main:
 .odd_cluster:
     ; Нечётный кластер - оставляем старшие 12 бит
     shr ax, 4
-    jmp .next_cluster_after
+    jmp .next_cluster
 
 .even_cluster:
     ; Чётный кластер - оставляем младшие 12 бит
     and ax, 0x0FFF
 
-.next_cluster_after: 
+.next_cluster:
     ; Проверка на конец файла
-    cmp ax, 0x0FF8
+    cmp ax, CHAIN_END
     jae .read_initrix_finish
 
     ; *Сохраняем номер кластера для след. итерации, продолжая чтение
     push ax
     jmp .load_initrix_loop
 
-.read_initrix_finish: 
+.read_initrix_finish:
     ; Настройка сегментных регистров под initrix
     mov ax, INITRIX_LOAD_SEGMENT
     mov ds, ax

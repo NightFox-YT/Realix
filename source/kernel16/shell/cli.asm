@@ -7,6 +7,21 @@
 ; Основные константы
 %include 'shared/config.asm'
 
+; ASCII коды клавишей
+%define ENTER_KEY     0x0D
+%define BACKSPACE_KEY 0x08
+
+; Скан-коды расширенных клавиш (int 0x16, al=0)
+%define KEY_UP_SCAN   0x48
+%define KEY_DOWN_SCAN 0x50
+
+; Настройки CLI
+INPUT_BUFFER_LEN equ 64
+
+; Константы истории команд (Кол-во слотов должно быть степенью двойки)
+HISTORY_SIZE      equ 8
+HISTORY_SLOT_SIZE equ INPUT_BUFFER_LEN + 1
+
 ; > Главный цикл CLI (Вызывается из ядра для обработки команд)
 run_cli:
     push si
@@ -26,12 +41,12 @@ run_cli:
     mov si, input_buffer
     call execute_cmd
 
-    ; Перевод строки на экране
-    call print_new_line
+    ; Перевод строки только если команда не перевела сама
+    call print_new_line_if_needed
 
     jmp .prompt
 
-.done:
+.return:
     pop si
     ret
 
@@ -109,9 +124,9 @@ cli_input:
 
 .extended_key:
     ; Проверка на скан-код стрелок
-    cmp ah, 0x48            ; Стрелка вверх
+    cmp ah, KEY_UP_SCAN     ; Стрелка вверх
     je .history_up_arrow
-    cmp ah, 0x50            ; Стрелка вниз
+    cmp ah, KEY_DOWN_SCAN   ; Стрелка вниз
     je .history_down_arrow
 
     ; Прочие "расширенные" клавиши игнорируем
@@ -190,7 +205,7 @@ history_add:
     and ax, HISTORY_SIZE - 1  ; Остаток от деления, т.к. hsize - степень двойки
 
     ; Высчитываем адрес слота в памяти
-    mov dx, INPUT_BUFFER_LEN + 1
+    mov dx, HISTORY_SLOT_SIZE
     mul dx
     add ax, history_data
     mov di, ax
@@ -203,7 +218,7 @@ history_add:
 .store:
     ; Вычисляем указатель на слот записи (history_next)
     mov ax, [history_next]
-    mov dx, INPUT_BUFFER_LEN + 1
+    mov dx, HISTORY_SLOT_SIZE
     mul dx
     add ax, history_data
     mov di, ax
@@ -255,9 +270,9 @@ history_get_ptr:
     sub ax, [history_browse]
     and ax, HISTORY_SIZE - 1
 
-    ; Вычисление смещеняе записи
+    ; Вычисление смещения записи
     ; > slot * (INPUT_BUFFER_LEN + 1)
-    mov dx, INPUT_BUFFER_LEN + 1
+    mov dx, HISTORY_SLOT_SIZE
     mul dx
     add ax, history_data
     mov si, ax
@@ -387,7 +402,7 @@ prompt_sign: db 'Realix >> ', 0
 input_buffer: times (INPUT_BUFFER_LEN + 1) db 0
 
 ; История команд (Кольцевой буфер)
-history_data:   times HISTORY_SIZE * (INPUT_BUFFER_LEN + 1) db 0
+history_data:   times HISTORY_SIZE * HISTORY_SLOT_SIZE db 0
 history_next:   dw 0  ; Индекс слота следующей записи
 history_count:  dw 0  ; Количество сохранённых команд
 history_browse: dw 0  ; Позиция навигации (0 - текущая строка)

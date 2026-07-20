@@ -1,4 +1,4 @@
-; © Realix > Cmd "Clear"
+; © Realix > Clear Command
 ; (13.06.26) v0.06
 ; ================
 
@@ -6,8 +6,10 @@
 cmd_cls:
     push ax
 
+    ; Установка текстового режима 80x25
+    ; (Переустановка очищает экран)
     mov ax, 0x0003
-    int 10h
+    int 0x10
 
     pop ax
     ret

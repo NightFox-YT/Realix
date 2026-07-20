@@ -1,6 +1,6 @@
 [package]
 name = "kernel32"
-version = "0.0.8"
+version = "0.1.0"
 edition = "2021"
 
 # Путь к исходному коду

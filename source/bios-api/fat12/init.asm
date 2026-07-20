@@ -1,11 +1,14 @@
-; © Realix > FAT12 Initialization
-; (19.06.26) v0.07
+; © Realix > FAT12: Initialization
+; (16.07.26) v0.1
 ; ================
-; ❗️ Зависимости: error_handler (внешний обработчик)
+; ❗️ Требует запущенного Bootix с BPB по адресу 0x0:0x7C00
 
 ; Защита от повторного включения
 %ifndef FAT12_INIT
 %define FAT12_INIT
+
+; Основные константы
+%include 'shared/config.asm'
 
 ; > Инициализация параметров FAT12 (Вызывается 1 раз)
 fat12_init:
@@ -19,22 +22,18 @@ fat12_init:
     xor ax, ax
     mov es, ax
 
-    mov ax, [es:0x7C00 + 11]
+    mov ax, [es:BOOTIX_LOAD_ADDR + 11]
     mov [bytes_per_sector], ax
-    mov al, [es:0x7C00 + 13]
+    mov al, [es:BOOTIX_LOAD_ADDR + 13]
     mov [sectors_per_cluster], al
-    mov ax, [es:0x7C00 + 14]
+    mov ax, [es:BOOTIX_LOAD_ADDR + 14]
     mov [reserved_sectors], ax
-    mov al, [es:0x7C00 + 16]
+    mov al, [es:BOOTIX_LOAD_ADDR + 16]
     mov [fat_count], al
-    mov ax, [es:0x7C00 + 17]
+    mov ax, [es:BOOTIX_LOAD_ADDR + 17]
     mov [dir_entries], ax
-    mov ax, [es:0x7C00 + 22]
+    mov ax, [es:BOOTIX_LOAD_ADDR + 22]
     mov [sectors_per_fat], ax
-    mov ax, [es:0x7C00 + 24]
-    mov [sectors_per_track], ax
-    mov ax, [es:0x7C00 + 26]
-    mov [heads], ax
 
 .calculations:
     ; Вычисление LBA корневого каталога
@@ -72,19 +71,17 @@ fat12_init:
     pop ax
     ret
 
-; Параметры FAT12
+; Переменные FAT12
 root_dir_lba:    dw 0
 root_dir_size:   dw 0
 data_lba:        dw 0
 
-; Параметры BPB
+; Переменные BPB
 bytes_per_sector:    dw 0
 sectors_per_cluster: db 0
 reserved_sectors:    dw 0
 fat_count:           db 0
 dir_entries:         dw 0
 sectors_per_fat:     dw 0
-sectors_per_track:   dw 0
-heads:               dw 0
 
 %endif

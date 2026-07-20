@@ -1,5 +1,5 @@
 // © Realix > ISR (Int service routine)
-// (11.07.26) v0.09
+// (16.07.26) v0.1
 // ================
 
 // Подключение функций
@@ -61,7 +61,7 @@ const EXCEPTION_NAMES: [&str; 20] = [
 
 /// Общий обработчик исключений CPU (0-19)
 #[no_mangle]
-pub extern "C" fn exc_handler(regs: &Registers) -> ! {
+pub extern "C" fn exc_handler(regs: &Registers) {
     // Гарантируем остановку прерываний
     interrupts_disable();
 
@@ -70,6 +70,15 @@ pub extern "C" fn exc_handler(regs: &Registers) -> ! {
     } else {
         "Unknown"
     };
+
+    // Возвращаемые исключения (Breakpoint)
+    if regs.int_num == 3 {
+        vga::print_line("[#] Breakpoint, continuing:\n", Color::Yellow);
+        vga::print_reg_line("EIP", regs.eip);
+
+        interrupts_enable();
+        return;
+    }
 
     vga::print_line(
         "[KERNEL PANIC] Realix got exception: ",
@@ -96,16 +105,21 @@ pub extern "C" fn exc_handler(regs: &Registers) -> ! {
     vga::print_reg_line("ERR_CODE", regs.err_code);
 
     vga::new_line();
+    vga::print_line("! System halted, please, reboot the machine.\n", Color::Red);
     vga::print_line(
-        "! System halted. Please reboot the machine.",
-        Color::Red,
+        "! If the problem repeats, report this screen to the developer: ",
+        Color::Red
+    );
+    vga::print_line(
+        "https://github.com/NightFox-YT/Realix/issues",
+        Color::Red
     );
 
-    crate::halt_loop()
+    halt_loop();
 }
 
 
-/// Общий обработчик аппаратных IRQ.
+/// Общий обработчик аппаратных IRQ
 #[no_mangle]
 pub extern "C" fn irq_handler(regs: &Registers) {
     // Защита от вызова функции с неправильным аргументом
@@ -183,8 +197,8 @@ global_asm!(
     r#"
 .code32
 
-# Исключение без аппаратного error code
-# Добавляем искусственный нулевой код, чтобы структура стека была общей.
+# > Исключение без аппаратного error code
+# Добавляем искусственный нулевой код, чтобы структура стека была общей
 .macro EXC_NOERRCODE num, name
 .global exc_\name
 exc_\name:
@@ -193,8 +207,8 @@ exc_\name:
     jmp exc_common_stub
 .endm
 
-# Исключение с аппаратным error code, процессор уже положил код
-# ошибки в стек, поэтому добавляется только номер вектора.
+# > Исключение с аппаратным error code
+# Процессор уже положил код ошибки в стек
 .macro EXC_ERRCODE num, name
 .global exc_\name
 exc_\name:
@@ -202,7 +216,7 @@ exc_\name:
     jmp exc_common_stub
 .endm
 
-# Аппаратные IRQ не имеют error code.
+# > Аппаратные IRQ не имеют error code
 .macro IRQ_STUB num
 .global irq_stub_\num
 irq_stub_\num:
@@ -250,7 +264,7 @@ IRQ_STUB 45
 IRQ_STUB 46
 IRQ_STUB 47
 
-# Общая точка входа исключений
+# > Общая точка входа исключений
 exc_common_stub:
     cld
 
@@ -262,7 +276,7 @@ exc_common_stub:
     mov ax, ds
     push eax
 
-    # Передача номера Kernel data selector
+    # Переключение на Kernel data selector
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -300,7 +314,7 @@ irq_common_stub:
     mov ax, ds
     push eax
 
-    # Передача номера Kernel data selector
+    # Переключение на Kernel data selector
     mov ax, 0x10
     mov ds, ax
     mov es, ax
@@ -322,7 +336,7 @@ irq_common_stub:
     # Восстановление eax, ecx, edx, ebx, esp, ebp, esi, edi
     popa
 
-    # Удаление int_num и искусственного err_code.
+    # Удаление int_num и искусственного err_code
     add esp, 8
     iretd
 "#

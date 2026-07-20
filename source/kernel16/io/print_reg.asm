@@ -17,7 +17,7 @@ print_dec16:
 .next_digit:
     xor dx, dx    ; Обнуление dx с ASCII символом
     div bx        ; ax - частное (dx - остаток: цифра)
-    add dl, 0x30  ; Цифра → ASCII
+    add dl, '0'   ; Цифра -> ASCII
     push dx       ; Сохраняем цифру в стеке
 
     ; Переход к след. цифре
@@ -112,30 +112,31 @@ print_byte:
     pop ax
     ret
 
+; ! (Пока не используется — оставлено на будущее, раскомментировать при надобности)
 ; > Вывод BCD значения al на экран (Текстовый режим)
 ; Параметры:
 ;  - al: значение регистра
-print_bcd2:
-    push ax
-    push bx
-
-    ; Сохранение байта числа al в bl
-    mov bl, al
-
-    ; Старший ниббл → младшие 4 бита со "страховкой"
-    shr al, 4
-    and al, 0x0F
-
-    add al, '0'      ; Цифра → ASCII
-    call print_char  ; Печать первой цифры
-    
-    mov al, bl       ; Берём сохранённый байт заново
-
-    ; Младший ниббл → младшие 4 бита
-    and al, 0x0F
-    add al, '0'      ; Цифра → ASCII
-    call print_char  ; Печать второй цифры
-
-    pop bx
-    pop ax
-    ret
+; print_bcd2:
+;     push ax
+;     push bx
+;
+;     ; Сохранение байта числа al в bl
+;     mov bl, al
+;
+;     ; Старший ниббл -> младшие 4 бита со "страховкой"
+;     shr al, 4
+;     and al, 0x0F
+;
+;     add al, '0'      ; Цифра -> ASCII
+;     call print_char  ; Печать первой цифры
+;
+;     mov al, bl       ; Берём сохранённый байт заново
+;
+;     ; Младший ниббл -> младшие 4 бита
+;     and al, 0x0F
+;     add al, '0'      ; Цифра -> ASCII
+;     call print_char  ; Печать второй цифры
+;
+;     pop bx
+;     pop ax
+;     ret
