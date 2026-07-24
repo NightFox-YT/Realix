@@ -50,9 +50,36 @@ kernel32: always
 	$(MAKE) -C $(SRC_DIR)/kernel32 BUILD_DIR=$(abspath $(BUILD_DIR))
 
 
-# Запуск собранного образа диска
+# Запуск с KVM (быстро), без NOVA
 run: floppy
-	qemu-system-x86_64 -drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy
+	qemu-system-x86_64 -enable-kvm -cpu host -m 2G \
+		-drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy
+
+# Запуск NOVA с KVM + GPT-2 GGUF
+run-nova: floppy
+	qemu-system-x86_64 -enable-kvm -cpu host -m 2G \
+		-drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy \
+		-device loader,file=$(SRC_DIR)/kernel32/build/nova_f16.gguf,addr=0x10000000
+
+# Запуск NOVA с Qwen 2.5 0.5B (1.6 GB)
+run-qwen: floppy
+	qemu-system-x86_64 -enable-kvm -cpu host -m 2G \
+		-drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy \
+		-device loader,file=$(SRC_DIR)/kernel32/build/qwen_nova_q8.gguf,addr=0x10000000
+
+# Запуск NOVA без KVM (медленно, отладка)
+run-nova-nokvm: floppy
+	qemu-system-x86_64 -m 2G \
+		-drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy \
+		-device loader,file=$(SRC_DIR)/kernel32/build/nova_f16.gguf,addr=0x10000000
+
+# Запуск NOVA с KVM (старая цель, алиас на run-nova)
+run-nova-kvm: run-nova
+	@true
+
+
+nova_f16.gguf: $(SRC_DIR)/kernel32/build/nova_f16.gguf
+	@true
 
 
 # Подготовка к сборке

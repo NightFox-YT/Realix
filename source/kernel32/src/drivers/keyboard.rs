@@ -47,6 +47,7 @@ pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x2B => Some(b'\\'), 0x35 => Some(b'/'),
         0x33 => Some(b','),  0x34 => Some(b'.'),
         0x1A => Some(b'['),  0x1B => Some(b']'),
+        0x01 => Some(0x1B),   // ESC
         _ => None,
     }
 }

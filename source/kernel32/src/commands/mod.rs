@@ -3,3 +3,4 @@
 // ================
 
 pub mod matrix;
+pub mod nova_ai;

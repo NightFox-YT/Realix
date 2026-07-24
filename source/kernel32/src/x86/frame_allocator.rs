@@ -8,7 +8,7 @@ use crate::x86::memory::E820Map;
 
 // Константы
 const PAGE_SIZE: usize = 4096;                          // 4 КБ
-const MAX_PHYSICAL_MEMORY: usize = 128 * 1024 * 1024;  // ! 128 МБ для теста
+const MAX_PHYSICAL_MEMORY: usize = 2048 * 1024 * 1024; // 2GB
 const FRAME_COUNT: usize = MAX_PHYSICAL_MEMORY / PAGE_SIZE;
 const BITMAP_SIZE: usize = FRAME_COUNT / 8;
 

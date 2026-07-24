@@ -9,6 +9,7 @@ use crate::drivers::vga::{self, Color};
 use crate::drivers::{pit, keyboard};
 use crate::utils;
 use crate::commands::matrix;
+use crate::commands::nova_ai;
 use crate::x86::frame_allocator;
 
 // Константы
@@ -16,6 +17,7 @@ const PROMPT: &str = "Realix >> ";
 
 /// Основной цикл CLI
 pub fn run() {
+    vga::print_line("Realix OS + NOVA AI (type 'nova -a' to chat)\n", Color::Cyan);
     vga::print_line("Type 'help' for list of commands.\n\n", Color::LightGray);
 
     loop {
@@ -46,6 +48,9 @@ fn execute(input: &str) {
             vga::print_line("> meminfo  - Show memory information\n", Color::LightGray);
             vga::print_line("  [Fun]\n", Color::Cyan);
             vga::print_line("> matrix   - Show matrix rain\n", Color::LightGray);
+            vga::print_line("  [NOVA]\n", Color::Cyan);
+            vga::print_line("> nova     - NOVA AI assistant\n", Color::LightGray);
+            vga::print_line("> nova -a  - Start NOVA interactive\n", Color::LightGray);
             vga::print_line("  [Power]\n", Color::Cyan);
             vga::print_line("> reboot   - Reboot PC\n", Color::LightGray);
             vga::print_line("> shutdown - Power off PC\n", Color::LightGray);
@@ -183,6 +188,13 @@ fn execute(input: &str) {
         "matrix" => {
             vga::print_line("Entering Matrix... (Press any key to exit)\n", Color::Green);
             matrix::run();
+        }
+        "nova" => {
+            unsafe { nova_ai::BC(""); }
+        }
+        _ if input.starts_with("nova ") => {
+            let args = &input[5..];
+            unsafe { nova_ai::BC(args); }
         }
         "" => {}
         _ => {
