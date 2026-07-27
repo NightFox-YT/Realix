@@ -1,6 +1,7 @@
 // © Realix > Kernel32: Main
-// (16.07.26) v0.1
+// (27.07.26) v0.1
 // ================
+// ❗️ Загружается Switcher по адресу KERNEL32_PHYS_ADDR, адрес PCINFO в ebx
 
 #![no_std]
 #![no_main]
@@ -8,17 +9,15 @@
 // Объявление модулей
 mod commands;
 mod drivers;
+mod x86;
 mod shell;
 mod utils;
-mod x86;
 
 // Подключение функций
 use core::arch::{asm, naked_asm};
 use core::panic::PanicInfo;
-
 use drivers::{keyboard, pit, vga};
 use x86::{frame_allocator, gdt, idt, memory};
-// use core::ptr::read_unaligned;
 
 /// Структура PCINFO, формируемая загрузчиком.
 #[derive(Copy, Clone)]
@@ -29,25 +28,23 @@ struct PcInfo {
     memory_map: memory::E820Map,
 }
 
-
-// Границы секции BSS (определены в linker.ld) для обнуления вручную
+// Границы секции BSS (из linker.ld) для обнуления вручную
 unsafe extern "C" {
     unsafe static __bss_start: u8;
     unsafe static __bss_end: u8;
 }
 
 /// Низкоуровневая точка входа Kernel32 (Настройка окружения)
-/// При входе: EBX = адрес PCINFO, ESP = стек от загрузчика.
+/// Параметры:
+///  - ebx: адрес PCINFO
+///  - esp: стек от загрузчика
 #[link_section = ".text.entry"]
 #[no_mangle]
 #[unsafe(naked)]
 pub extern "C" fn _start() -> ! {
     naked_asm!(
-        // Устанавливаем DF & Сохраняем переданный адрес PCINFO
+        // Установка: Сброс DF, edi - начало BSS, ecx - её размер
         "cld",
-        "push ebx",
-
-        // Установка: EDI - начало BSS, ECX - её размер
         "lea edi, [__bss_start]",
         "lea ecx, [__bss_end]",
         "sub ecx, edi",
@@ -56,8 +53,7 @@ pub extern "C" fn _start() -> ! {
         "xor eax, eax",
         "rep stosb",
 
-        // Восстанавливаем адрес PCINFO и передаём первым аргументом по cdecl
-        "pop ebx",
+        // Передаём адрес PCINFO первым аргументом по cdecl
         "push ebx",
         "call kmain",
 
@@ -69,8 +65,9 @@ pub extern "C" fn _start() -> ! {
     );
 }
 
-
-/// Основный цикл работы ядра
+/// Основной цикл работы ядра
+/// Параметры:
+///  - pcinfo_addr: адрес структуры PCINFO, собранной загрузчиком
 #[no_mangle]
 extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     // Инициализация модулей
@@ -96,16 +93,16 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
         frame_allocator::init(&pcinfo.memory_map);
     }
 
+    // Вывод логотипа и приглашения
     vga::clear_screen();
     draw_logo(4, 2);
-    for _ in 0..11 { vga::new_line(); }
 
     vga::print_line(
         "   Press any key to continue...",
         vga::Color::LightGray,
     );
     keyboard::read_key();
-    
+
     // Вывод заголовка Shell с его бесконечной работой
     vga::clear_screen();
     vga::print_line(
@@ -117,12 +114,11 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     halt_loop();
 }
 
-
 /// Отрисовка логотипа Realix
 fn draw_logo(start_x: usize, start_y: usize) {
     // Массив из 2 уровней:
-    // 1) Массивы для каждлой буквы
-    // 2) Массив для каждой строки буквы (0 - пробел, 1 - блок)
+    // 1. Массивы для каждой буквы
+    // 2. Массивы для каждой строки буквы (0 - пробел, 1 - блок)
     let letters: [[[u8; 6]; 8]; 6] = [
         [[1,1,1,1,0,0],[1,0,0,1,0,0],[1,0,0,1,0,0],[1,1,1,1,0,0],
          [1,1,0,0,0,0],[1,0,1,0,0,0],[1,0,0,1,0,0],[1,0,0,1,0,0]],
@@ -163,8 +159,9 @@ fn draw_logo(start_x: usize, start_y: usize) {
             }
         }
     }
-}
 
+    for _ in 0..11 { vga::new_line(); }
+}
 
 /// Бесконечная остановка процессора
 pub fn halt_loop() -> ! {
@@ -174,37 +171,8 @@ pub fn halt_loop() -> ! {
     }
 }
 
-
 /// Обработчик паники
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     halt_loop()
-}
-
-
-/// Запись байта в I/O-порт
-#[inline(always)]
-pub unsafe fn outb(port: u16, value: u8) {
-    asm!(
-        "out dx, al",
-        in("dx") port,
-        in("al") value,
-        options(nostack, nomem, preserves_flags),
-    );
-}
-
-
-/// Чтение байта из I/O-порта
-#[inline(always)]
-pub unsafe fn inb(port: u16) -> u8 {
-    let value: u8;
-
-    asm!(
-        "in al, dx",
-        in("dx") port,
-        out("al") value,
-        options(nostack, nomem, preserves_flags),
-    );
-
-    value
 }

@@ -1,16 +1,23 @@
-// © Realix > Frame Allocator
-// (16.07.26) v0.1
+// © Realix > x86: Frame Allocator
+// (27.07.26) v0.1
 // ================
 // ❗️ Только однопоточный доступ из ядра (не из IRQ-обработчиков)
 
+// Подключение функций
 use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use crate::x86::memory::E820Map;
 
-// Константы
-const PAGE_SIZE: usize = 4096;                          // 4 КБ
+// Размер фрейма и границы адресного пространства
+const PAGE_SIZE: usize = 4096;                         // 4 КБ
 const MAX_PHYSICAL_MEMORY: usize = 128 * 1024 * 1024;  // ! 128 МБ для теста
 const FRAME_COUNT: usize = MAX_PHYSICAL_MEMORY / PAGE_SIZE;
+
+// Битмап: 1 байт на 8 фреймов
 const BITMAP_SIZE: usize = FRAME_COUNT / 8;
+
+// Первый 1 МБ резервируется целиком:
+// IVT+BDA, загрузчик, kernel32, стек ядра, видеопамять и BIOS ROM
+const RESERVED_LOW_MEMORY: usize = 1024 * 1024;
 
 /// Тип свободного региона в карте памяти E820
 const E820_TYPE_FREE: u32 = 1;
@@ -66,9 +73,8 @@ pub fn init(memory_map: &E820Map) {
     // Всего полезных фреймов, освобождённых по карте E820
     let total_frames: usize = count_free_frames();
 
-    // Резервируем первый 1 МБ целиком:
-    // IVT+BDA, загрузчик, kernel32, стек ядра, видеопамять и BIOS ROM
-    for frame in 0..(1024 * 1024 / PAGE_SIZE) {
+    // Резервируем нижнюю память (см. RESERVED_LOW_MEMORY)
+    for frame in 0..(RESERVED_LOW_MEMORY / PAGE_SIZE) {
         mark_frame_used(frame);
     }
 
@@ -200,15 +206,22 @@ fn count_free_frames() -> usize {
 pub fn dump_bitmap() {
     use crate::drivers::vga;
 
+    // 8 байт на строку: префикс + 64 символа влезают
+    const BYTES_PER_ROW: usize = 8;
+
+    // Сколько байт битмапа показать (Первые 4 МБ)
+    const DUMP_BYTES: usize = 4 * 1024 * 1024 / PAGE_SIZE / 8;
+
     vga::print_line("Frame map, first 4 MB ('.' free, '#' used):\n", vga::Color::Cyan);
 
-    for (i, byte) in bitmap().iter().take(128).enumerate() {
-        // Тратим 8 байт на строку
-        if i % 8 == 0 {
+    for (i, byte) in bitmap().iter().take(DUMP_BYTES).enumerate() {
+        // Пишем адрес в начале каждой строки
+        if i % BYTES_PER_ROW == 0 {
             let mut buf: [u8; 10] = [0; 10];
             vga::print_line("  ", vga::Color::LightGray);
             vga::print_line(
-                crate::utils::u32_to_hex_str((i * 8 * PAGE_SIZE) as u32, &mut buf),
+                crate::utils::u32_to_hex_str(
+                    (i * 8 * PAGE_SIZE) as u32, &mut buf),
                 vga::Color::White,
             );
             vga::print_line(": ", vga::Color::LightGray);
@@ -223,8 +236,8 @@ pub fn dump_bitmap() {
             }
         }
 
-        // 8 байт на строку: префикс + 64 символа влезают в 80 колонок
-        if (i + 1) % 8 == 0 {
+        // Переносим крусор на след. строку после BYTES_PER_ROW байт
+        if (i + 1) % BYTES_PER_ROW == 0 {
             vga::new_line();
         }
     }
