@@ -35,7 +35,7 @@ pub fn run() {
         outw(PORT_VIRTUALBOX, SLEEP_CMD_VBOX);
         pit::sleep(SHUTDOWN_STEP_DELAY);
 
-        vga::print_line("[!] i440FX shutdown failed...", Color::Red);
+        vga::print_line("[!] i440FX shutdown failed...\n", Color::Red);
 
         // Метод 4: ACPI (Если доступен)
         // Пробуем отправить команду через PM1a_CNT

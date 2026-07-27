@@ -1,7 +1,7 @@
 ; © Realix > Switcher CPU modes
 ; (21.06.26) v0.07
 ; ================
-; ❗️ Не standalone: Подключается из initrix.asm (%include) и требует boot_drive_num
+; ❗️ Не standalone: Подключается из initrix.asm (%include)
 ; ❗️ Зависимости: kernel16/io: print & print_new_line; bios-api/fat12/file_load
 
 ; Настройка компиляции
@@ -40,16 +40,19 @@ boot_switcher:
     mov si, kernel16_filename
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
-    mov dl, [boot_drive_num]
     xor di, di
     call file_load
     jc error_handler
 
-    ; Передача собранной структуры данных в ядро и настройка сегментов
+    ; Передача номера диска и собранной структуры данных в ядро
+    ; (Читаем переменные Initrix до смены сегмента ds)
+    mov dl, [disk_current_drive]
+    mov di, PCINFO_ADDR
+
+    ; Настройка сегментов под ядро
     mov ax, KERNEL_LOAD_SEGMENT
     mov ds, ax
     mov es, ax
-    mov di, PCINFO_ADDR
 
     jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
 
@@ -64,7 +67,6 @@ boot_switcher:
     mov si, kernel32_filename
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
-    mov dl, [boot_drive_num]
     xor di, di
     call file_load
     jc error_handler

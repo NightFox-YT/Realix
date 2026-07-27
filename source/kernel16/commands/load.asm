@@ -1,7 +1,7 @@
 ; © Realix > Command: Load
 ; (27.07.26) v0.1
 ; ================
-; ❗️ Зависимости: bios-api/fat12/file_load.asm, boot_drive_num (main.asm),
+; ❗️ Зависимости: bios-api/fat12/file_load.asm,
 ;                 kernel16/io: print & print_reg
 
 ; Адрес назначения загружаемых файлов (свободная зона за регионом kernel16)
@@ -172,7 +172,6 @@ parse_and_load:
     mov si, filename_83
     mov cx, FILE_DEST_SEGMENT
     mov bx, FILE_DEST_OFFSET
-    mov dl, [boot_drive_num]
     mov di, guard_kernel16
     call file_load          ; CF + si (сообщение) + [file_size]
     ret

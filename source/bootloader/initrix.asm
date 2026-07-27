@@ -11,10 +11,8 @@ org 0x0
 %include 'shared/config.asm'
 
 main:
-    ; Сохраняем номер диска, переданного из Bootix
-    mov [boot_drive_num], dl
-
-    ; Инициализация драйверов
+    ; Инициализация драйверов 
+    ; (`disk_init` запоминает номер диска, переданный из Bootix)
     call disk_init
     jc disk_init_error
     call fat12_init
@@ -38,7 +36,7 @@ main:
 
     ; Экспорт собранных данных (*Доп. сегмент)
     mov ax, [low_memory_kb]
-    mov dl, [boot_drive_num]
+    mov dl, [disk_current_drive]
     mov word [es:PCINFO_ADDR + PCINFO_LOW_MEM], ax  ; Размер "нижней" памяти (КБ)
     mov byte [es:PCINFO_ADDR + PCINFO_DRIVE], dl    ; Номер загрузочного диска
     mov word [es:PCINFO_ADDR + PCINFO_ENTRIES], bp  ; Кол-во записей в карте памяти
@@ -130,5 +128,4 @@ str_title:
     db '(C) NightFox developer', ENTER, ENTER, 0
 
 ; Данные о ПК и Kernel
-boot_drive_num:  db 0
 low_memory_kb:   dw 0

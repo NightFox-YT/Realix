@@ -28,7 +28,7 @@ msg_help:
     db '> calc <a> <+ - * /> <b> - Calculator > ls          - List root directory', ENTER
     db '> hex <num>  - <num> to hexadecimal   > load <f>    - Load file into RAM', ENTER
     db '> fib <0-24> - Nth Fibonacci number   > type <f>    - Print file as text', ENTER
-    db '                                      > hexdump <f> - Hex dump of file', ENTER
+    db '                                      > hexdump <f> - Hex dump of file',
     db ENTER
     db '[Power]', ENTER
     db '> reboot   - Reboot PC', ENTER

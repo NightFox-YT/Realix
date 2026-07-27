@@ -96,10 +96,9 @@ main:
     mov [data_lba], cx
 
     ; Чтение корневого каталога
-    mov cl, al                  ; Кол-во секторов - размер каталога
-    pop ax                      ; *Восстанавливаем сохранённый LBA каталога
-    mov dl, [ebr_drive_number]  ; Номер диска
-    mov bx, FAT_BUFFER_ADDR     ; Адрес записи
+    mov cl, al               ; Кол-во секторов - размер каталога
+    pop ax                   ; *Восстанавливаем сохранённый LBA каталога
+    mov bx, FAT_BUFFER_ADDR  ; Адрес записи
     call disk_read
 
     ; Подготовка к поиску файла
@@ -136,7 +135,6 @@ main:
     ; Чтение FAT таблицы
     mov ax, [bpb_reserved_sectors]  ; LBA
     mov cl, [bpb_sectors_per_fat]   ; Кол-во секторов - размер FAT
-    mov dl, [ebr_drive_number]      ; Номер диска
     mov bx, FAT_BUFFER_ADDR         ; Адрес записи
     call disk_read
 
@@ -159,7 +157,6 @@ main:
     add ax, [data_lba]
 
     ; Чтение следующего кластера (cl уже содержит нужное кол-во секторов)
-    mov dl, [ebr_drive_number]
     call disk_read
 
     ; Увеличиваем адрес смещения Initrix на кол-во прочитанных байт
@@ -212,11 +209,13 @@ main:
     jmp .load_initrix_loop
 
 .read_initrix_finish:
+    ; Передача номера диска
+    mov dl, [ebr_drive_number]
+    
     ; Настройка сегментных регистров под Initrix
     mov ax, INITRIX_LOAD_SEGMENT
     mov ds, ax
     mov es, ax
-    mov dl, [ebr_drive_number]
 
     ; Переход к Initrix
     jmp INITRIX_LOAD_SEGMENT:INITRIX_LOAD_OFFSET

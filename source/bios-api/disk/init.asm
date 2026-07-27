@@ -13,9 +13,12 @@
 ;  - cx: sectors_per_track
 ;  - dh: heads
 ;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка чтения)
-;  - Заполняет переменные disk_spt и disk_heads
+;  - Заполняет переменные disk_current_drive, disk_spt и disk_heads
 disk_init:
     push ax
+
+    ; Запоминаем номер диска до вызова BIOS
+    mov [disk_current_drive], dl
 
     ; Считывание параметров диска
     push es
@@ -40,8 +43,9 @@ disk_init:
     pop ax
     ret
 
-; Переменные геометрии текущего диска
-disk_spt:   dw 0
-disk_heads: dw 0
+; Переменные текущего диска (Номер и геометрия)
+disk_current_drive: db 0
+disk_spt:           dw 0
+disk_heads:         dw 0
 
 %endif

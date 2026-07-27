@@ -12,10 +12,8 @@ org 0x0
 
 ; > Установка ядра
 kernel_start:
-    ; Сохраняем номер диска, переданного из Switcher
-    mov [boot_drive_num], dl
-
     ; Инициализация драйвера диска и fat12
+    ; (`disk_init` запоминает номер диска, переданный из Switcher в dl)
     call disk_init
     jc disk_init_error
     call fat12_init
@@ -85,6 +83,3 @@ cli_hint:         db "Type 'help' for list of commands.", ENTER, ENTER, 0
 
 ; Сообщения об ошибках
 err_disk_init: db '[!] E6: Disk init failed!', ENTER, 0
-
-; Переменные устройства загрузки
-boot_drive_num: db 0

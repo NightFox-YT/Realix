@@ -209,10 +209,10 @@ show_usable_memory:
     call print
 
 .done:
-    pop di
     pop ax
     pop si
     pop es
+    pop di
     ret
 
 ; Строки

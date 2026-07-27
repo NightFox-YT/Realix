@@ -1,7 +1,7 @@
 ; © Realix > FAT12: File Load
 ; (27.07.26) v0.1
 ; ================
-; ❗️ Зависимости: bios-api/disk/read.asm, kernel16/io/print_ctrl.asm
+; ❗️ Зависимости: bios-api/disk/*, kernel16/io/print_ctrl.asm
 
 ; ❗️ Требуется инициализация FAT12 через `fat12_init`
 %include "bios-api/fat12/init.asm"
@@ -10,11 +10,11 @@
 %include 'shared/config.asm'
 
 ; > Загрузка файла с диска в память
+; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
 ; Параметры:
 ;  - si: смещение адреса имени файла (11 символов, формат 8.3)
 ;  - cx: сегмент назначения файла
 ;  - bx: смещение назначения файла
-;  - dl: номер диска
 ;  - di: адрес extra-таблицы защиты регионов памяти (0 - только core)
 ; Вывод:
 ;  ! Входной si (имя файла) при возврате не сохраняется
@@ -37,14 +37,12 @@ file_load:
     mov [filename_offset], si
     mov [dest_segment], cx
     mov [dest_offset], bx
-    mov [drive_num], dl
     mov [extra_table_offset], di
 
 .read_root_dir:
     ; Читаем корневой каталог в память
     mov ax, [root_dir_lba]
     mov cx, [root_dir_size]
-    mov dl, [drive_num]
     mov bx, FAT_BUFFER_ADDR
     call disk_read
 
@@ -117,7 +115,6 @@ file_load:
     ; Читаем FAT в память
     mov ax, [reserved_sectors]
     mov cx, [sectors_per_fat]
-    mov dl, [drive_num]
     mov bx, FAT_BUFFER_ADDR
     call disk_read
 
@@ -137,7 +134,6 @@ file_load:
     add ax, [data_lba]
 
     ; Чтение следующего кластера (cl содержит кол-во секторов)
-    mov dl, [drive_num]
     call disk_read
 
     ; Индикатор прогресса чтения ("кубики")
@@ -275,7 +271,6 @@ check_table:
 filename_offset:    dw 0
 dest_segment:       dw 0
 dest_offset:        dw 0
-drive_num:          db 0
 extra_table_offset: dw 0
 file_cluster:       dw 0
 file_size:          dd 0

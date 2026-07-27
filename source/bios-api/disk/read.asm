@@ -7,16 +7,19 @@
 %include "bios-api/disk/init.asm"
 
 ; > Чтение секторов с диска
+; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
 ; Параметры:
 ;  - ax: LBA
 ;  - cl: кол-во секторов для чтения (до 128)
-;  - dl: номер диска
 ;  - es:bx: адрес памяти для записи данных
 disk_read:
     push cx
     push dx
     push di
     push ax
+
+    ; Номер текущего диска для BIOS
+    mov dl, [disk_current_drive]
 
     push cx          ; *Сохраняем кол-во секторов (cl)
     call .lba_to_chs
@@ -95,11 +98,12 @@ disk_read:
 
 
 ; > Сброс контроллера диска
-; Параметры:
-;  - dl: номер диска
+; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
 disk_reset:
     pusha
 
+    mov dl, [disk_current_drive]
+    
     ; Сброс контроллера диска
     xor ax, ax  ; Функция BIOS: Сброс дискового контроллера
     stc         ; Установка Carry Flag (Некоторые BIOS не устанавливают)

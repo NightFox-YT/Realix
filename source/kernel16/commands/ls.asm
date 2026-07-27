@@ -44,7 +44,6 @@ cmd_ls:
     mov es, ax
     mov ax, [root_dir_lba]
     mov cx, [root_dir_size]
-    mov dl, [drive_num]
     mov bx, FAT_BUFFER_ADDR
     call disk_read
 
