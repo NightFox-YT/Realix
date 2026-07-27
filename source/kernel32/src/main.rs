@@ -110,6 +110,12 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
         vga::Color::Cyan,
     );
 
+    // ! Вывод заметки о экспериментальной функции NovaAI
+    vga::print_line(
+        "Integration with NovaAI (type 'nova -a' to chat)\n",
+        vga::Color::LightCyan,
+    );
+
     shell::run();
     halt_loop();
 }

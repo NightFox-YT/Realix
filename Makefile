@@ -58,9 +58,25 @@ kernel32:
 	$(MAKE) -C $(KERNEL32_DIR) BUILD_DIR=$(abspath $(BUILD_DIR))
 
 
-# Запуск собранного образа диска
+# Запуск (без NOVA)
 run: floppy
 	qemu-system-x86_64 -drive file=$(IMAGE),format=raw,if=floppy
+
+# Запуск (NOVA Qwen 2.5 0.5B (1.6 GB) с KVM)
+run-nova: floppy
+	qemu-system-x86_64 -enable-kvm -cpu host -m 2G \
+		-drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy \
+		-device loader,file=$(SRC_DIR)/kernel32/nova-models/qwen_nova_q8.gguf,addr=0x10000000
+
+# Запуск (NOVA Qwen 2.5 0.5B (1.6 GB) без KVM - медленно)
+run-nova-nokvm: floppy
+	qemu-system-x86_64 -m 2G \
+		-drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy \
+		-device loader,file=$(SRC_DIR)/kernel32/nova-models/qwen_nova_q8.gguf,addr=0x10000000
+
+# Подготовка к сборке
+always:
+	mkdir -p $(BUILD_DIR)
 
 
 # Очистка
