@@ -1,6 +1,7 @@
 ; © Realix > Kernel16: Main
-; (13.06.26) v0.06
+; (27.07.26) v0.1
 ; ================
+; ❗️ Загружается Switcher по адресу KERNEL_LOAD_SEGMENT:0, номер диска в dl
 
 ; Настройка компиляции
 bits 16
@@ -11,14 +12,15 @@ org 0x0
 
 ; > Установка ядра
 kernel_start:
-    ; Сохраняем номер диска, переданного из switcher
+    ; Сохраняем номер диска, переданного из Switcher
     mov [boot_drive_num], dl
 
-    ; Инициализация драйвера диска
+    ; Инициализация драйвера диска и fat12
     call disk_init
     jc disk_init_error
     call fat12_init
 
+    ; "Запуск ядра" && "Нажмите, чтобы продолжить"
     mov si, msg_start_kernel
     call print
 
@@ -46,9 +48,9 @@ main:
     hlt
     jmp $
 
-; > Ошибки инициализации
+; > Ошибка 6
 disk_init_error:
-    mov si, msg_err_disk_init
+    mov si, err_disk_init
     jmp error_handler
 
 ; > Обработчик ошибок
@@ -76,13 +78,13 @@ error_handler:
 %include 'bios-api/fat12/file_load.asm'
 
 ; Сообщения и строки
-msg_start_kernel: db '[+] Starting kernel.', ENTER, 0
+msg_start_kernel: db '[+] Starting kernel16.', ENTER, 0
 msg_enter_os:     db 'Press any key to continue.', 0
 cli_title:        db 'Welcome to Realix (Real Mode with NASM kernel)...', ENTER, 0
 cli_hint:         db "Type 'help' for list of commands.", ENTER, ENTER, 0
 
 ; Сообщения об ошибках
-msg_err_disk_init: db '[!] Disk init failed!', ENTER, 0
+err_disk_init: db '[!] E6: Disk init failed!', ENTER, 0
 
 ; Переменные устройства загрузки
 boot_drive_num: db 0

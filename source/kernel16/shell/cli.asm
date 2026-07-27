@@ -1,25 +1,26 @@
-; © Realix > Command Line Interface
+; © Realix > Shell: Command Line Interface
 ; ø Вдохновлено @nyxmalware
-; (13.06.26) v0.06
+; (27.07.26) v0.1
 ; ================
-; ❗️ Зависимости: kernel16/io
+; ❗️ Зависимости: kernel16/io, kernel16/shell/commands (execute_cmd)
 
 ; Основные константы
 %include 'shared/config.asm'
 
-; ASCII коды клавишей
-%define ENTER_KEY     0x0D
-%define BACKSPACE_KEY 0x08
+; ASCII коды клавиш
+ENTER_KEY     equ 0x0D
+BACKSPACE_KEY equ 0x08
+ESCAPE_KEY    equ 0x1B
+SPACE_KEY     equ 0x20
 
-; Скан-коды расширенных клавиш (int 0x16, al=0)
-%define KEY_UP_SCAN   0x48
-%define KEY_DOWN_SCAN 0x50
+; Скан-коды расширенных клавиш (int 0x16, al = 0)
+KEY_UP_SCAN   equ 0x48
+KEY_DOWN_SCAN equ 0x50
+KEY_F7_SCAN   equ 0x41
 
-; Настройки CLI
-INPUT_BUFFER_LEN equ 64
-
-; Константы истории команд (Кол-во слотов должно быть степенью двойки)
-HISTORY_SIZE      equ 8
+; Настройки CLI + Истории команд (Кол-во слотов должно быть степенью двойки)
+INPUT_BUFFER_LEN  equ 64
+HISTORY_SIZE      equ 16
 HISTORY_SLOT_SIZE equ INPUT_BUFFER_LEN + 1
 
 ; > Главный цикл CLI (Вызывается из ядра для обработки команд)
@@ -41,7 +42,7 @@ run_cli:
     mov si, input_buffer
     call execute_cmd
 
-    ; Перевод строки только если команда не перевела сама
+    ; Перевод строки, если команда не перевела сама
     call print_new_line_if_needed
 
     jmp .prompt
@@ -72,17 +73,21 @@ cli_input:
     ; ENTER > Проверка введённой строки
     cmp al, ENTER_KEY
     je .enter_pressed
-    
+
     ; Backspace > Стирание последнего символа
     cmp al, BACKSPACE_KEY
     je .backspace_pressed
+
+    ; Escape > Стирание всей строки ввода
+    cmp al, ESCAPE_KEY
+    je .escape_pressed
 
     ; "Расширенные клавиши" > Навигация по истории
     test al, al
     jz .extended_key
 
     ; Игнор управляющих символов
-    cmp al, 0x20
+    cmp al, SPACE_KEY
     jb .input_loop
 
     ; Проверка на переполнение
@@ -90,29 +95,12 @@ cli_input:
     jae .buffer_full
 
     ; Отображение символа на экране (Эхо)
-    mov ah, 0x0E
-    int 0x10
+    call print_char
 
     ; Сохранение символа в буфер
     mov [di], al
     inc di
     inc bx
-
-    ; Возвращаемся в поток ввода
-    jmp .input_loop
-
-.backspace_pressed:
-    ; Проверка на пустой буффер
-    test bx, bx
-    jz .input_loop
-    
-    ; Стирание последнего символа из буфера
-    dec di
-    dec bx
-    mov byte [di], 0
-
-    ; Визуальное стирание символа на экране
-    call visual_erase_char
 
     ; Возвращаемся в поток ввода
     jmp .input_loop
@@ -128,6 +116,10 @@ cli_input:
     je .history_up_arrow
     cmp ah, KEY_DOWN_SCAN   ; Стрелка вниз
     je .history_down_arrow
+
+    ; Проверка на скан-коды функциональных клавиш
+    cmp ah, KEY_F7_SCAN
+    je .history_list
 
     ; Прочие "расширенные" клавиши игнорируем
     jmp .input_loop
@@ -171,6 +163,46 @@ cli_input:
     call erase_input_line
     jmp .input_loop
 
+.history_list:
+    ; Перевод строки и вывод списка истории команд
+    call print_new_line
+    call print_history
+
+    ; Выводим промпт
+    mov si, prompt_sign
+    call print
+
+    ; Закрываем текущую строку нуль-терминатором и выводим её
+    mov byte [di], 0
+    mov si, input_buffer
+    call print
+
+    ; Возвращаемся в поток ввода
+    jmp .input_loop
+
+.backspace_pressed:
+    ; Проверка на пустой буфер
+    test bx, bx
+    jz .input_loop
+
+    ; Стирание последнего символа из буфера
+    dec di
+    dec bx
+    mov byte [di], 0
+
+    ; Визуальное стирание символа на экране
+    call visual_erase_char
+
+    ; Возвращаемся в поток ввода
+    jmp .input_loop
+
+.escape_pressed:
+    ; Стираем строку ввода
+    call erase_input_line
+
+    ; Возвращаемся в поток ввода
+    jmp .input_loop
+
 .enter_pressed:
     call print_new_line
 
@@ -183,7 +215,7 @@ cli_input:
     ret
 
 
-; > Добавление непустой строки input_buffer в историю команд.
+; > Добавление непустой строки input_buffer в историю команд
 history_add:
     push ax
     push dx
@@ -256,7 +288,7 @@ history_add:
     ret
 
 
-; > Указатель на запись истории по текущему history_browse
+; > Указатель на запись истории по текущему `history_browse`
 ; Вывод:
 ;  - si: указатель на строку записи
 history_get_ptr:
@@ -297,16 +329,13 @@ history_replace_line:
 
 ; Вывод строки посимвольно на экран
 .copy:
+    ; Загрузка символа из si в al
     lodsb
     test al, al
     jz .done
 
     ; Эхо символа на экран
-    mov ah, 0x0E
-    push bx
-    xor bx, bx
-    int 0x10
-    pop bx
+    call print_char
 
     ; Сохранение символа в буфер
     mov [di], al
@@ -315,27 +344,74 @@ history_replace_line:
     jmp .copy
 
 .done:
+    ; Закрываем строку нуль-терминатором и выходим
     mov byte [di], 0
     pop ax
+
+    ret
+
+; > Вывод буфера истории команд в виде списка
+print_history:
+    push si
+    push ax
+    push cx
+
+    ; *Сохраняем `history_browse` (Используется в `history_get_ptr`)
+    mov ax, [history_browse]
+    push ax
+
+    ; Начальные параметры
+    ; (cx - кол-во команд вывода, ax - счётчик)
+    mov cx, [history_count]
+    xor ax, ax
+
+    ; История пуста: Выводить нечего
+    test cx, cx
+    jz .done
+
+.print_loop:
+    ; Вывод номера след. записи (Увеличивая счётчик)
+    inc ax
+    call print_dec16
+
+    ; Выводим разделитель для списка
+    mov si, list_separator
+    call print
+
+    ; Получаем адрес текущей записи (начиная со старой)
+    mov [history_browse], cx
+    call history_get_ptr
+
+    ; Выводим строку записи
+    call print
+
+    ; Переход к след. записи
+    call print_new_line
+    loop .print_loop
+
+.done:
+    ; *Восстановление `history_browse`
+    pop ax
+    mov [history_browse], ax
+
+    pop cx
+    pop ax
+    pop si
     ret
 
 
-; > Визуальное стирание одного символа на экране.
+; > Визуальное стирание одного символа на экране
 visual_erase_char:
     push ax
-    push bx
 
     ; Печатаем "Backspace + Space + Backspace"
-    mov ah, 0x0E
-    xor bx, bx
-    mov al, 0x08
-    int 0x10
+    mov al, BACKSPACE_KEY
+    call print_char
     mov al, ' '
-    int 0x10
-    mov al, 0x08
-    int 0x10
+    call print_char
+    mov al, BACKSPACE_KEY
+    call print_char
 
-    pop bx
     pop ax
     ret
 
@@ -345,19 +421,23 @@ visual_erase_char:
 ;  - bx: длина строки
 ;  - di: конец буфера
 ; Вывод:
-;  - di: input_buffer
 ;  - bx: 0
+;  - di: input_buffer
 erase_input_line:
+    ; Проверка: Текущая строка теперь пустая?
     test bx, bx
     jz .done
 
+    ; Стираем текущий символ строки
     call visual_erase_char
     dec bx
     jmp erase_input_line
 
 .done:
+    ; Обновляыем переменные о строке ввода и выходим
     mov di, input_buffer
     mov byte [di], 0
+    
     ret
 
 
@@ -396,7 +476,8 @@ str_equal:
 %include "kernel16/shell/parse.asm"
 
 ; Сообщения и строки
-prompt_sign: db 'Realix >> ', 0
+prompt_sign:    db 'Realix >> ', 0
+list_separator: db ': ', 0
 
 ; Переменные
 input_buffer: times (INPUT_BUFFER_LEN + 1) db 0

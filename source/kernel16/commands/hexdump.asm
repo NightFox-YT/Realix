@@ -1,4 +1,4 @@
-; © Realix > Hexdump Command
+; © Realix > Command: Hexdump
 ; (17.07.26) v0.1
 ; ================
 ; ❗️ Зависимости: kernel16/commands/load.asm (parse_and_load, file_size),
