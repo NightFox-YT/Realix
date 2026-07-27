@@ -1,5 +1,5 @@
 ; © Realix > FAT12: Initialization
-; (16.07.26) v0.1
+; (27.07.26) v0.1
 ; ================
 ; ❗️ Требует запущенного Bootix с BPB по адресу 0x0:0x7C00
 
@@ -10,7 +10,8 @@
 ; Основные константы
 %include 'shared/config.asm'
 
-; > Инициализация параметров FAT12 (Вызывается 1 раз)
+; > Инициализация параметров FAT12
+; (Вызывается при переключении/инициализации диска)
 fat12_init:
     push ax
     push bx
@@ -39,8 +40,7 @@ fat12_init:
     ; Вычисление LBA корневого каталога
     ; > LBA = sectors_per_fat * fats + reserved
     mov ax, [sectors_per_fat]
-    xor bh, bh
-    mov bl, [fat_count]
+    movzx bx, byte [fat_count]
     mul bx
     add ax, [reserved_sectors]
     mov [root_dir_lba], ax
@@ -72,9 +72,9 @@ fat12_init:
     ret
 
 ; Переменные FAT12
-root_dir_lba:    dw 0
-root_dir_size:   dw 0
-data_lba:        dw 0
+root_dir_lba:  dw 0
+root_dir_size: dw 0
+data_lba:      dw 0
 
 ; Переменные BPB
 bytes_per_sector:    dw 0

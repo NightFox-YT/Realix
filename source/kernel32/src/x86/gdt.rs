@@ -41,7 +41,7 @@ pub struct GdtDescriptor {
     base_mid:    u8,
     access_byte: u8,
     granularity: u8,  // Флаги (4 бита) + Лимит (Старшие 4 бита)
-    base_high:   u8, 
+    base_high:   u8,
 }
 
 impl GdtDescriptor {
@@ -152,7 +152,7 @@ unsafe fn tss_flush(tss_selector: u16) {
     );
 }
 
-// > Инициализация GDT
+/// Инициализация GDT
 pub fn init() {
     use access::*;
     use granularity::*;

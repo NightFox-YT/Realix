@@ -1,147 +1,104 @@
 // © Realix > Shell
-// (03.07.26) v0.08
-// ø Вдохновлено @liquifield
+// ø @liquifield
+// (26.07.26) v0.1
 // ================
 
 // Импорт функций
-use core::arch::asm;
+use crate::commands;
+use crate::drivers::keyboard::{self, read_key};
+use crate::drivers::pit;
 use crate::drivers::vga::{self, Color};
-use crate::drivers::{pit, keyboard};
 use crate::utils;
-use crate::commands::matrix;
-use crate::x86::frame_allocator;
 
 // Константы
+pub const INPUT_MAX: usize = 64;
+const HISTORY_SIZE: usize = 16;
+const HISTORY_SLOT_SIZE: usize = INPUT_MAX + 1;
 const PROMPT: &str = "Realix >> ";
 
-/// Основной цикл CLI
-pub fn run() {
-    vga::print_line("Type 'help' for list of commands.\n\n", Color::LightGray);
+// История команд (Кольцевой буфер)
+struct History {
+    data: [[u8; HISTORY_SLOT_SIZE]; HISTORY_SIZE],
+    browse: usize, // Позиция навигации (0 - текущая строка)
+    next: usize,   // Индекс слота след. записи
+    count: usize,  // Кол-во сохранённых команд
+}
 
-    loop {
-        vga::print_line(PROMPT, Color::Green);
-        let input_array = keyboard::read_line();
-        let input_str: &str = core::str::from_utf8(&input_array).unwrap_or("");
+impl History {
+    fn new() -> Self {
+        History {
+            data: [[0; HISTORY_SLOT_SIZE]; HISTORY_SIZE],
+            browse: 0, next: 0, count: 0,
+        }
+    }
 
-        // Обрезаем по нуль-терминатору
-        let end_idx: usize = input_str.find('\0').unwrap_or(input_str.len());
-        execute(&input_str[..end_idx]);
+    /// Получение строки записи истории по позиции
+    fn get(&self, browse: usize) -> &str {
+        let slot: usize = (self.next + HISTORY_SIZE - browse) % HISTORY_SIZE;
+        self.slot_str(slot)
+    }
+
+    /// Парсинг строки, хранящаяся в слоте (до нуль-терминатора)
+    fn slot_str(&self, slot: usize) -> &str {
+        let record: &[u8] = &self.data[slot];
+        let end: usize = record.iter().position(|&b| b == 0).unwrap_or(record.len());
+        core::str::from_utf8(&record[..end]).unwrap_or("")
+    }
+
+    /// Добавление непустой строки в историю (дубликат последней команды не сохраняется)
+    fn add(&mut self, line: &str) {
+        if line.is_empty() { return; }
+
+        if self.count > 0 {
+            let last_slot: usize = (self.next + HISTORY_SIZE - 1) % HISTORY_SIZE;
+            if self.slot_str(last_slot) == line {
+                return;
+            }
+        }
+
+        let bytes: &[u8] = line.as_bytes();
+        let len: usize = bytes.len().min(HISTORY_SLOT_SIZE - 1);
+
+        let slot: &mut [u8; HISTORY_SLOT_SIZE] = &mut self.data[self.next];
+        slot.fill(0);
+        slot[..len].copy_from_slice(&bytes[..len]);
+
+        self.next = (self.next + 1) % HISTORY_SIZE;
+        self.count = (self.count + 1).min(HISTORY_SIZE);
+    }
+
+    /// Список записей истории от старой к новой, с номерами (команда F7)
+    fn list(&self) {
+        for i in 1..=self.count {
+            let browse: usize = self.count - i + 1;
+            let line: &str = self.get(browse);
+            let mut num_buf: [u8; 10] = [0u8; 10];
+
+            vga::print_line(utils::u32_to_dec_str(i as u32, &mut num_buf), Color::White);
+            vga::print_line(": ", Color::LightGray);
+            vga::print_line(line, Color::LightGray);
+            vga::new_line();
+        }
     }
 }
 
-
 /// Функция выполнения команды
+/// ! Гарантируется, что переданный указатель содержит валидную строку
 fn execute(input: &str) {
     // Форматируем введённую строку
     let input: &str = input.trim();
 
-    match input {
-        "help" => {
-            vga::print_line("Commands:\n", Color::Cyan);
-            vga::print_line("  [Base]\n", Color::Cyan);
-            vga::print_line("> help     - Show this manual\n", Color::LightGray);
-            vga::print_line("> clear    - Clear screen\n", Color::LightGray);
-            vga::print_line("> echo [t] - Print text to console\n", Color::LightGray);
-            vga::print_line("> uptime   - Show uptime (seconds)\n", Color::LightGray);
-            vga::print_line("> meminfo  - Show memory information\n", Color::LightGray);
-            vga::print_line("  [Fun]\n", Color::Cyan);
-            vga::print_line("> matrix   - Show matrix rain\n", Color::LightGray);
-            vga::print_line("  [Power]\n", Color::Cyan);
-            vga::print_line("> reboot   - Reboot PC\n", Color::LightGray);
-            vga::print_line("> shutdown - Power off PC\n", Color::LightGray);
-        }
-        "clear" => { vga::clear_screen(); }
-        "reboot" => {
-            vga::print_line("[.] Trying sent PS/2 controller reboot command...\n", Color::Red);
-            unsafe {
-                let mut timeout: u32 = 0;
+    // Имя команды — до первого пробела, остальное — аргументы
+    let name_end: usize = input.find(' ').unwrap_or(input.len());
+    let (name, args) = input.split_at(name_end);
 
-                // Метод 1: Опрашиваем контроллер PS/2
-                loop {
-                    let status: u8;
-                    asm!("in al, 0x64", out("al") status);
-                    
-                    // Если порта нет (0xFF) или превышен таймаут, запасной план
-                    if status == 0xFF || timeout > 100_000 {
-                        break;
-                    }
-                    
-                    // Если первый бит равен 0 (Входной буфер PS/2 пуст), сбрасываем
-                    if status & 0x02 == 0 {
-                        asm!("out 0x64, al", in("al") 0xFEu8);
-                        vga::print_line("[+] PS/2 reboot command sent.\n", Color::Green);
-                        break;
-                    }
-                    timeout += 1;
-                }
-
-                // Метод 2: Сброс через контроллер клавиатуры
-                vga::print_line("[.] Trying keyboard controller reset...\n", Color::Red);
-                timeout = 0;
-
-                loop {
-                    let status: u8;
-                    asm!("in al, 0x64", out("al") status);
-                    
-                    if status == 0xFF || timeout > 100_000 {
-                        break;
-                    }
-                    
-                    if status & 0x02 == 0 {
-                        asm!("out 0x64, al", in("al") 0xD1u8);
-                        pit::sleep(10);
-                        asm!("out 0x60, al", in("al") 0xFEu8);
-                        vga::print_line("[+] Keyboard controller reset sent.\n", Color::Green);
-                        break;
-                    }
-                    timeout += 1;
-                }
-
-                // Метод 3: Тройной отказ (Triple fault)
-                vga::print_line("[.] All methods failed. Attempting triple fault...\n", Color::Red);
-
-                // Загружаем пустой IDT, чтобы вызвать тройной отказ
-                let null_idt: [u8; 6] = [0; 6];
-                asm!("lidt [{}]", in(reg) &null_idt, options(nostack));
-
-                // Генерируем исключение (деление на ноль)
-                asm!("div {}", in(reg) 0u32, options(nostack));
-                
-                vga::print_line("[!] Triple fault failed. Halting.\n", Color::Red);
-                crate::halt_loop();
-            }
-        }
-        "shutdown" => {
-            vga::print_line("Shutting down...\n", Color::Red);
-            unsafe {
-                // Метод 1: i440FX (QEMU)
-                asm!("out dx, ax", in("dx") 0x604u16, in("ax") 0x2000u16);
-                pit::sleep(100);
-                
-                // Метод 2: Bochs/QEMU alternative
-                asm!("out dx, ax", in("dx") 0xB004u16, in("ax") 0x2000u16);
-                pit::sleep(100);
-                
-                // Метод 3: VirtualBox
-                asm!("out dx, ax", in("dx") 0x4004u16, in("ax") 0x3400u16);
-                pit::sleep(100);
-
-                vga::print_line("[!] i440FX shutdown failed...", Color::Red);
-
-                // Метод 4: ACPI (Если доступен)
-                // Пробуем отправить команду через PM1a_CNT
-                asm!("out dx, ax", in("dx") 0x1000u16, in("ax") 0x2000u16);
-                
-                vga::print_line("[!] All shutdown methods failed. Halting.\n", Color::Red);
-                crate::halt_loop();
-            }
-
-        }
-        _ if input.starts_with("echo ") => {
-            vga::print_line(&input[5..], Color::LightGray);
-            vga::new_line();
-        }
-        "echo" => { vga::new_line(); }
+    match name {
+        "" => {}
+        "help" => { commands::help::show(); }
+        "clear" | "cls" => { vga::clear_screen(); }
+        "reboot" => { commands::reboot::run() }
+        "shutdown" => { commands::shutdown::run() }
+        "echo" => { commands::echo::run(args) }
         "uptime" => {
             let mut str_buffer: [u8; 10] = [0u8; 10];
 
@@ -151,42 +108,124 @@ fn execute(input: &str) {
                 Color::LightGray);
             vga::new_line();
         }
-        "meminfo" => {
-            let (total_frames, free_frames) = frame_allocator::get_stats();
-            let mut str_buffer: [u8; 10] = [0u8; 10];
-
-            vga::print_line("Memory information:\n", Color::Cyan);
-
-            vga::print_line("> Total frames: ", Color::LightGray);
-            vga::print_line(
-                utils::u32_to_dec_str(total_frames as u32, &mut str_buffer),
-                Color::White);
-            vga::new_line();
-
-            vga::print_line("> Free frames:  ", Color::LightGray);
-            vga::print_line(
-                utils::u32_to_dec_str(free_frames as u32, &mut str_buffer),
-                Color::White);
-            vga::new_line();
-
-            let total_mb: u32 = (frame_allocator::get_total_memory() / (1024 * 1024)) as u32;
-            let free_mb: u32 = (frame_allocator::get_free_memory() / (1024 * 1024)) as u32;
-
-            vga::print_line("> Total memory: ", Color::LightGray);
-            vga::print_line(utils::u32_to_dec_str(total_mb, &mut str_buffer), Color::White);
-            vga::print_line(" MB\n", Color::LightGray);
-
-            vga::print_line("> Free memory:  ", Color::LightGray);
-            vga::print_line(utils::u32_to_dec_str(free_mb, &mut str_buffer), Color::White);
-            vga::print_line(" MB\n", Color::LightGray);
-        }
+        "meminfo" => { commands::meminfo::show(); }
         "matrix" => {
             vga::print_line("Entering Matrix... (Press any key to exit)\n", Color::Green);
-            matrix::run();
+            commands::matrix::run();
         }
-        "" => {}
         _ => {
             vga::print_line("[!] Unknown command. Type 'help' for list of commands.\n", Color::Red);
+        }
+    }
+}
+
+/// CLI: Основной цикл
+pub fn run() {
+    vga::print_line("Type 'help' for list of commands.\n\n", Color::LightGray);
+    let mut history: History = History::new();
+
+    loop {
+        vga::print_line(PROMPT, Color::Green);
+        let input_array: [u8; HISTORY_SLOT_SIZE] = read_line(&mut history);
+
+        // Пропускаем пустой ввод
+        if input_array[0] == 0 {
+            continue;
+        }
+
+        // Обрезаем по нуль-терминатору
+        let input_str: &str = core::str::from_utf8(&input_array).unwrap_or("");
+        let end_idx: usize = input_str.find('\0').unwrap_or(input_str.len());
+        execute(&input_str[..end_idx]);
+
+        vga::new_line_if_needed();
+    }
+}
+
+/// Замена видимой строки ввода строкой `text` (стирание + перерисовка).
+fn replace_input(buffer: &mut [u8; HISTORY_SLOT_SIZE], pos: &mut usize, text: &str) {
+    // Стираем видимую часть текущей строки
+    for _ in 0..*pos {
+        vga::print_backspace();
+    }
+
+    // Печатаем новую строку и сохраняем её в буфер
+    *pos = 0;
+    for &byte in text.as_bytes().iter().take(INPUT_MAX) {
+        buffer[*pos] = byte;
+        *pos += 1;
+        vga::print_char(byte, Color::LightGray);
+    }
+    buffer[*pos] = 0;
+}
+
+/// CLI: Чтение строки
+fn read_line(history: &mut History) -> [u8; HISTORY_SLOT_SIZE] {
+    let mut buffer: [u8; HISTORY_SLOT_SIZE] = [0u8; HISTORY_SLOT_SIZE];
+    let mut pos: usize = 0;
+    history.browse = 0;
+
+    loop {
+        match read_key() {
+            keyboard::Key::Char(b'\n') => {
+                vga::new_line();
+                buffer[pos] = 0;
+
+                let line: &str = core::str::from_utf8(&buffer[..pos]).unwrap_or("");
+                history.add(line);
+
+                return buffer;
+            }
+            keyboard::Key::Char(b'\x08') => {
+                if pos > 0 {
+                    pos -= 1;
+                    buffer[pos] = 0;
+                    vga::print_backspace();
+                }
+            }
+            keyboard::Key::Escape => {
+                replace_input(&mut buffer, &mut pos, "");
+            }
+            keyboard::Key::Up => {
+                // Уже на самой старой записи
+                if history.browse >= history.count {
+                    continue;
+                }
+
+                history.browse += 1;
+                let line: &str = history.get(history.browse);
+                replace_input(&mut buffer, &mut pos, line);
+            }
+            keyboard::Key::Down => {
+                // Уже на текущей строке (0)
+                if history.browse == 0 {
+                    continue;
+                }
+
+                history.browse -= 1;
+
+                if history.browse == 0 {
+                    replace_input(&mut buffer, &mut pos, "");
+                } else {
+                    let line: &str = history.get(history.browse);
+                    replace_input(&mut buffer, &mut pos, line);
+                }
+            }
+            keyboard::Key::F7 => {
+                vga::new_line();
+                history.list();
+
+                // Заново показываем промпт и уже набранную строку
+                vga::print_line(PROMPT, Color::Green);
+                let line: &str = core::str::from_utf8(&buffer[..pos]).unwrap_or("");
+                vga::print_line(line, Color::LightGray);
+            }
+            keyboard::Key::Char(byte) if pos < INPUT_MAX && (0x20..=0x7E).contains(&byte) => {
+                buffer[pos] = byte;
+                pos += 1;
+                vga::print_char(byte, Color::LightGray);
+            }
+            _ => {}
         }
     }
 }

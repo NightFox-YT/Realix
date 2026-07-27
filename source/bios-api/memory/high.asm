@@ -1,5 +1,5 @@
 ; © Realix > High memory (Memory Map)
-; (12.07.26) v0.09
+; (27.07.26) v0.1
 ; ================
 
 ; Основные константы
@@ -9,12 +9,13 @@
 E820_ENTRY_SIZE  equ 24
 E820_MAX_ENTRIES equ 64
 
-; > Получение карты памяти через прерывание int 0x15 (E820)
+; > Получение карты памяти: int 0x15 (E820)
 ; Параметры:
-;  - es:di: адрес, куда мы будем сохранять таблицу карт памяти
+;  - es:di: адрес сохранения таблицы карты памяти
 ; Вывод:
 ;  - bp: количество успешно прочитанных записей
 ;  - di: указатель на конец таблицы
+;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка)
 get_memory_map:
     push eax
     push ebx
@@ -35,10 +36,12 @@ get_memory_map:
     mov ecx, E820_ENTRY_SIZE   ; Запрашиваем 24 байта
     mov [es:di + 20], dword 1  ; Делаем запись валидной для ACPI 3.X (Она сможет перезаписаться)
 
+    ; Установленный CF - "функция не поддерживается" или "конец списка"
     int 0x15
-    jc .carry_result      ; Установленный CF - "функция не поддерживается" или "конец списка"
+    jc .carry_result
 
-    cmp eax, 0x0534D4150  ; В случае успеха eax должен быть сброшен в "SMAP"
+    ; В случае успеха eax должен быть сброшен в "SMAP"
+    cmp eax, 0x0534D4150
     jne .fail
 
     ; Есть ли расширенные атрибуты ACPI 3.X? (BIOS может вернуть 20 или 24 байта)
@@ -68,12 +71,11 @@ get_memory_map:
     jne .next
 
 .done:
-    ; Очищаем CF и выходим
     clc
     jmp .return
 
 .carry_result:
-    ; CF при уже собранных записях обычно означает "конец списка достигнут"
+    ; CF при собранных записях означает "конец списка достигнут"
     test bp, bp
     jnz .done
 
@@ -96,14 +98,14 @@ show_map_entries_cnt:
     push ax
     push es
 
-    ; Настраиваем сегмент `es` под PCINFO
+    ; Настраиваем сегмент es под `PCINFO`
     xor ax, ax
     mov es, ax
 
     ; Выводим информацию о кол-ве записей карты памяти
     mov si, str_memory_map
     call print
-    mov ax, word [es:PCINFO_ADDR + 3]
+    mov ax, word [es:PCINFO_ADDR + PCINFO_ENTRIES]
     call print_dec16
     mov si, str_entries
     call print
@@ -117,7 +119,7 @@ show_map_entries_cnt:
 
 ; > Получение общей длины всех отрезкой памяти по её карте
 ; Параметры:
-;  - es:di: Указатель на `PC_INFO`
+;  - es:di: Указатель на `PCINFO`
 ; Вывод:
 ;  - ax: Число свободной памяти (МБ), насыщается на 65535 при переполнении
 get_usable_memory:
@@ -126,15 +128,17 @@ get_usable_memory:
     push edx
     push si
 
+    ; Подготовка параметров
     xor ebx, ebx
     xor edx, edx
 
     ; Читаем количество записей (Если 0 - Выходим)
-    mov cx, [es:di + 3]
+    mov cx, [es:di + PCINFO_ENTRIES]
     test cx, cx
     jz .empty
 
-    ; Доп. защита от повреждённого PCINFO (не больше, чем реально бывает записей)
+    ; Доп. защита от повреждённого `PCINFO`
+    ; (не больше, чем реально бывает записей)
     cmp cx, E820_MAX_ENTRIES
     jbe .count_valid
     mov cx, E820_MAX_ENTRIES
@@ -142,7 +146,7 @@ get_usable_memory:
 .count_valid:
     ; Адрес первой записи E820
     mov si, di
-    add si, 5
+    add si, PCINFO_MAP
 
 .loop:
     ; Проходим по свободным регионам памяти
@@ -186,6 +190,7 @@ get_usable_memory:
 ; > Вывод кол-ва свободной памяти в текстовом режиме
 ; ❗️ Зависимости: kernel16/print.asm, kernel16/print_reg.asm
 show_usable_memory:
+    push di
     push es
     push si
     push ax
@@ -196,7 +201,7 @@ show_usable_memory:
     mov di, PCINFO_ADDR
     call get_usable_memory
 
-    ; NOTE: ax содержит нужное число после `call get_usable_memory`
+    ; (ax содержит нужное число после `call get_usable_memory`)
     mov si, str_usable_ram
     call print
     call print_dec16
@@ -207,6 +212,7 @@ show_usable_memory:
     pop ax
     pop si
     pop es
+    pop di
     ret
 
 ; Строки

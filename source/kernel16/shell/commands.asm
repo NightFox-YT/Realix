@@ -1,13 +1,15 @@
-; © Realix > Shell Commands
+; © Realix > Shell: Commands
 ; ø Вдохновлено @nyxmalware
-; (17.07.26) v0.1
+; (27.07.26) v0.1
 ; ================
-; ❗️ Зависимости: bios-api/memory (модуль), kernel16/io, kernel16/shell/parse.asm
+; ❗️ Зависимости: bios-api/memory, kernel16/io, kernel16/shell/parse
 ; TODO:
 ;  - Возвращение carry_flag при ошибке
 ;  - В shutdown полагаться не только на APM
 
-; Таблица команд (С названиями)
+; Таблица команд (С названиями и нуль-терминатором)
+CMD_ENTRY_SIZE equ 4
+
 align 2
 cmd_table:
     dw .str_help,     cmd_help
@@ -32,7 +34,7 @@ cmd_table:
     dw .str_load,     cmd_load
     dw .str_type,     cmd_type
     dw .str_hexdump,  cmd_hexdump
-    dw 0, 0
+    dw 0
 
 .str_help:     db 'help', 0
 .str_cls:      db 'cls', 0
@@ -67,11 +69,12 @@ execute_cmd:
     push bx
 
 .skip_spaces:
+    ; Загрузка символа из si в al (Проверка на пробел)
     lodsb
     cmp al, ' '
     je .skip_spaces
 
-    ; SI указывает на первый символ команды
+    ; si указывает на первый символ команды
     dec si
 
     ; Проверка на пустую строку после пробелов
@@ -85,8 +88,8 @@ execute_cmd:
     mov bx, [di]   ; Получаем имя команды по адресу
     test bx, bx    ; Проверяем имя команды на конец таблицы (0)
     jz .not_found
-    
-    ; Сохраняем указатель на начало ввода пользователя
+
+    ; *Сохраняем указатель на начало ввода пользователя
     push si
 
 .compare_loop:
@@ -98,6 +101,9 @@ execute_cmd:
     test ah, ah
     jz .check_match
 
+    ; Перевод символа ввода к нижнему регистру
+    call char_to_lower
+
     ; Сравнение символов ввода и таблицы
     cmp al, ah
     jne .mismatch
@@ -108,25 +114,27 @@ execute_cmd:
     jmp .compare_loop
 
 .check_match:
-    ; Проверка, что во вводе дальше
+    ; Проверка, след. символа после названия
     cmp al, 0
     je .match
     cmp al, ' '
     je .match
 
 .mismatch:
-    pop si            ; *Восстанавливаем для проверки след. команды
-    add di, 4         ; Сдвигаем на следующую запись
+    pop si                  ; *Восстанавливаем указатель для проверки след.
+    add di, CMD_ENTRY_SIZE  ; Сдвигаем на следующую запись
     jmp .search_next
 
 .match:
-    pop ax            ; *Восстанавливаем push si из стека
-    mov ax, [di + 2]  ; Берем адрес функции
-    call ax           ; Вызываем функцию команды
+    ; Убираем сохранённый ввод со стека (si уже указывает на аргументы)
+    add sp, 2
+
+    ; Вызываем обработчик команды по адресу из таблицы
+    call word [di + 2]
     jmp .done
 
 .not_found:
-    mov si, msg_err_unknown_cmd
+    mov si, err_unknown_cmd
     call print
 
 .done:
@@ -135,20 +143,6 @@ execute_cmd:
     pop di
     pop si
     ret
-
-
-; > Команда помощи
-cmd_help:
-    push si
-
-    mov si, msg_help
-    call print
-
-    pop si
-    ret
-
-; > Команда очистки экрана
-%include "kernel16/commands/cls.asm"
 
 ; > Команда перезагрузки
 cmd_reboot:
@@ -160,20 +154,15 @@ cmd_reboot:
 ; > Команда вывода информации о памяти
 cmd_meminfo:
     push si
-    push di
 
     ; Показ строк с информацией о памяти
-    mov di, PCINFO_ADDR
     call show_lower_memory
     call print_new_line
 
-    mov di, PCINFO_ADDR
     call show_usable_memory
     call print_new_line
 
-    mov di, PCINFO_ADDR
     call show_map_entries_cnt
-
     call print_new_line
     call print_new_line
 
@@ -181,10 +170,10 @@ cmd_meminfo:
     mov si, note_meminfo
     call print
 
-    pop di
     pop si
     ret
 
+; > Команда выключения ПК (через APM)
 cmd_shutdown:
     push ax
     push bx
@@ -218,13 +207,14 @@ cmd_shutdown:
     mov cx, 0x0003
     int 0x15
     jc .error
-    
+
     jmp $
 
 .error:
-    mov si, msg_err_shutdown
+    ; Ошибка 7: Не удалось выключить ПК
+    mov si, err_shutdown
     call print
-    
+
     pop si
     pop cx
     pop bx
@@ -248,7 +238,6 @@ cmd_echo:
 .done:
     pop si
     pop ax
-
     ret
 
 ; > Команда "About"
@@ -261,90 +250,32 @@ cmd_about:
     pop si
     ret
 
-; > Команда печати аргумента задом наперед
-cmd_reverse:
-    push ax
-    push bx
-    push di
-    push si
+; > Команда очистки экрана
+%include "kernel16/commands/cls.asm"
 
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    mov bx, si        ; bx - указатель начала строки
-    mov di, si        ; di - указатель для поиска конца
+; > Команды для работы с текстом
+%include "kernel16/commands/text.asm"
 
-.find_end:
-    ; Идём до нуль-терминатора
-    cmp byte [di], 0
-    je .is_empty
+; > Команды для работы с числами
+%include "kernel16/commands/nums.asm"
 
-    inc di
-    jmp .find_end
+; > Команда простого калькулятора
+%include "kernel16/commands/calc.asm"
 
-.is_empty:
-    ; Проверка на пустой аргумент (Конец совпал с началом)
-    cmp di, bx
-    je .done
+; > Команда загрузки файла с диска
+%include "kernel16/commands/load.asm"
 
-    ; Устанавливаем di на последний символ строки
-    dec di
+; > Команда вывода списка файлов
+%include "kernel16/commands/ls.asm"
 
-.print_loop:
-    ; Печать символов от конца к началу
-    cmp di, bx
-    jb .done
+; > Команда печати файла как текста
+%include "kernel16/commands/type.asm"
 
-    mov al, [di]
-    call print_char
+; > Команда шестнадцатеричного дампа файла
+%include "kernel16/commands/hexdump.asm"
 
-    ; Дошли до начала строки
-    cmp di, bx
-    je .done
-
-    ; Переход к след. символу
-    dec di
-    jmp .print_loop
-
-.done:
-    pop si
-    pop di
-    pop bx
-    pop ax
-    ret
-
-; > Команда подсчёта длины аргумента
-cmd_len:
-    push ax
-    push cx
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    xor cx, cx        ; Счётчик символов
-
-.loop:
-    ; Идём до нуль-терминатора
-    cmp byte [si], 0
-    je .print
-
-    ; Переход к след. символу, увеличивая счётчик
-    inc si
-    inc cx
-    jmp .loop
-
-.print:
-    ; "Length: " + число
-    mov si, msg_len
-    call print
-
-    ; Печать длины строки
-    mov ax, cx
-    call print_dec16
-
-    pop si
-    pop cx
-    pop ax
-    ret
+; > Команда помощи
+%include "kernel16/commands/help.asm"
 
 ; > Перевод символа al в верхний регистр (a-z -> A-Z, иначе без изменений)
 ; Параметры & Вывод:
@@ -370,226 +301,6 @@ char_to_lower:
 .done:
     ret
 
-; > Команда печати аргумента в верхнем регистре
-cmd_upper:
-    push ax
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-
-.loop:
-    lodsb        ; Загрузка символа (si > al)
-    test al, al  ; Конец строки?
-    jz .done
-
-    call char_to_upper
-    call print_char
-    jmp .loop
-
-.done:
-    pop si
-    pop ax
-    ret
-
-; > Команда печати аргумента в нижнем регистре
-cmd_lower:
-    push ax
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-
-.loop:
-    lodsb
-    test al, al
-    jz .done
-
-    call char_to_lower
-    call print_char
-    jmp .loop
-
-.done:
-    pop si
-    pop ax
-    ret
-
-; > Команда вывода числа в шестнадцатеричном виде
-cmd_hex:
-    push ax
-    push si
-
-    ; Парсинг единственного числового аргумента
-    call parse_uint16_arg
-    jc .usage
-
-    ; "Hex: 0x" + число (ax - число)
-    mov si, msg_hex
-    call print
-    call print_hex16
-    jmp .done
-
-.usage:
-    mov si, msg_hex_usage
-    call print
-
-.done:
-    pop si
-    pop ax
-    ret
-
-; > Команда вывода символа по десятичному коду
-cmd_ascii:
-    push ax
-    push si
-
-    ; Парсинг единственного числового аргумента
-    call parse_uint16_arg
-    jc .usage
-
-    ; Код должен влезать в один байт
-    cmp ax, 255
-    ja .usage
-
-    ; "Char: " + сам символ (al - символ)
-    mov si, msg_ascii
-    call print
-    call print_char
-    jmp .done
-
-.usage:
-    mov si, msg_ascii_usage
-    call print
-
-.done:
-    pop si
-    pop ax
-    ret
-
-; > Команда повтора текста `N` раз
-; ❗️ Предел N: 20, иначе ошибка синтаксиса
-cmd_repeat:
-    push ax
-    push cx
-    push si
-
-    ; Проверка существования счётчика повторов
-    call require_arg
-    jc .usage
-
-    ; Парсинг числа повторов
-    call parse_uint16
-    jc .usage
-
-    ; Ноль повторов - тихо выходим
-    test ax, ax
-    jz .done
-
-    ; Верхнее ограничение (cx - счётчик)
-    cmp ax, 20
-    ja .too_many
-    mov cx, ax
-
-    ; Проверка существования текста для повтора
-    call require_arg
-    jc .usage
-
-.print_loop:
-    ; Вывод одного и того же текста `N` раз
-    call print
-    loop .print_loop
-    jmp .done
-
-.usage:
-    mov si, msg_repeat_usage
-    call print
-    jmp .done
-
-.too_many:
-    mov si, msg_err_repeat_count
-    call print
-
-.done:
-    pop si
-    pop cx
-    pop ax
-    ret
-
-; > Команда вычисления числа Фибоначчи (0-24)
-; ❗️ Предел 24, чтобы результат влез в 16 бит (fib(24) = 46368)
-cmd_fib:
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-
-    ; Парсинг единственного числового аргумента
-    call parse_uint16_arg
-    jc .usage
-
-    ; Ограничение сверху (иначе переполнение uint16)
-    cmp ax, 24
-    ja .too_big
-
-    ; Начальная пара: ax = fib(n-1), bx = fib(n) = 1
-    mov cx, ax
-    xor ax, ax
-    mov bx, 1
-
-    ; Позиция 0 в последовательности Фибоначчи известна заранее
-    test cx, cx
-    jz .print
-
-.loop:
-    ; Линейный счёт числа в последовательности (dx = ax + bx)
-    mov dx, ax
-    add dx, bx
-
-    ; Обновляем позиции: fib(n-1), fib(n)
-    mov ax, bx
-    mov bx, dx
-    loop .loop
-
-.print:
-    ; "Fib: " + результат (уже в ax)
-    mov si, msg_fib
-    call print
-    call print_dec16
-    jmp .done
-
-.usage:
-    mov si, msg_fib_usage
-    call print
-    jmp .done
-
-.too_big:
-    mov si, msg_err_fib_range
-    call print
-
-.done:
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-
-; > Команда простого калькулятора
-%include "kernel16/commands/calc.asm"
-
-; > Команда загрузки файла с диска
-%include "kernel16/commands/load.asm"
-
-; > Команда вывода списка файлов
-%include "kernel16/commands/ls.asm"
-
-; > Команда печати файла как текста
-%include "kernel16/commands/type.asm"
-
-; > Команда шестнадцатеричного дампа файла
-%include "kernel16/commands/hexdump.asm"
-
 ; > Пропуск пробелов до первого символа
 ; Вывод:
 ;  - si: указатель на первый символ строки
@@ -610,7 +321,7 @@ skip_spaces:
 ;  - si: указатель на аргументы команды
 ; Вывод:
 ;  - ax: число (uint16)
-;  - CF: 0 (успех), 1 (пусто / не число / мусор после числа)
+;  - CF (Carry Flag): 0 (Успех), 1 (Пусто / Не число / Мусор после числа)
 parse_uint16_arg:
     ; Пропуск пробелов до аргумента
     call skip_spaces
@@ -641,7 +352,7 @@ parse_uint16_arg:
 ;  - si: указатель на аргументы команды
 ; Вывод:
 ;  - si: указатель на первый символ аргумента
-;  - CF: 0 (аргумент есть), 1 (аргумент пуст)
+;  - CF (Carry Flag): 0 (Аргумент есть), 1 (Аргумент пуст)
 require_arg:
     call skip_spaces
     cmp byte [si], 0
@@ -656,45 +367,15 @@ require_arg:
     ret
 
 ; Сообщения об ошибках
-msg_err_unknown_cmd:  db "[!] Unknown command. Type 'help' for list of commands.", 0
-msg_err_shutdown:     db '[!] PC shutdown failed! (No APM)', 0
-msg_err_repeat_count: db '[!] Repeat count must be 1..20.', 0
-msg_err_fib_range:    db '[!] Fib argument must be 0..24.', 0
+err_unknown_cmd: db "[!] Unknown command. Type 'help' for list of commands.", 0
+err_shutdown:    db '[!] E7: PC shutdown failed! (No APM)', 0
 
 ; Сообщения
-msg_help:
-    db 'Commands:', ENTER
-    db '[Base]                                 [Text]', ENTER
-    db '> help      - Show this manual         > len <t>        - Length of <t>', ENTER
-    db '> clear/cls - Clear screen             > upper <t>      - <t> to upper case', ENTER
-    db '> echo <t>  - Print <t> to console     > lower <t>      - <t> to lower case', ENTER
-    db '> about     - Show system info         > reverse <t>    - Reverse <t>', ENTER
-    db '> beep      - Beep via BIOS speaker    > repeat <n> <t> - Repeat <t> <n> times', ENTER
-    db '> meminfo   - Memory information', ENTER
-    db ENTER
-    db '[Numbers]                              [Fat12]', ENTER
-    db '> calc <a> <+ - * /> <b> - Calculator  > load <f>    - Load file into RAM', ENTER
-    db '> hex <num>     - <num> to hexadecimal > ls          - List root directory', ENTER
-    db '> ascii <0-255> - Char by ASCII code   > type <f>    - Print file as text', ENTER
-    db '> fib <0-24>    - Nth Fibonacci number > hexdump <f> - Hex dump of file', ENTER
-    db ENTER
-    db '[Power]', ENTER
-    db '> reboot   - Reboot PC', ENTER,
-    db '> shutdown - Power off PC', 0
 msg_about:
     db '> Realix version: ', OS_VERSION, ENTER
-    db '> Realix is a lightweight hybrid x86 OS.', ENTER
+    db 'Realix is a lightweight hybrid x86 OS.', ENTER
     db 'It supports a built-in boot switcher that lets users choose:', ENTER
     db '1. 16-bit Real Mode kernel for legacy compatibility', ENTER
     db '2. 32-bit Protected Mode kernel for high performance.', 0
-
-msg_len:          db 'Length: ', 0
-msg_hex:          db 'Hex: 0x', 0
-msg_hex_usage:    db '[?] Usage: hex <num>', 0
-msg_ascii:        db 'Char: ', 0
-msg_ascii_usage:  db '[?] Usage: ascii <0-255>', 0
-msg_repeat_usage: db '[?] Usage: repeat <1-20> <text>', 0
-msg_fib:          db 'Fib: ', 0
-msg_fib_usage:    db '[?] Usage: fib <0-24>', 0
 
 note_meminfo: db 'Note: In Real mode you can access only low RAM.', 0

@@ -35,7 +35,7 @@ impl InterruptDescriptor {
     pub fn set_handler(&mut self, handler_addr: u32, selector: u16, flags: u8) {
         self.base_low = (handler_addr & 0xFFFF) as u16;
         self.selector = selector;
-        self.reserved = 0 as u8;
+        self.reserved = 0;
         self.flags = flags;
         self.base_high = ((handler_addr >> 16) & 0xFFFF) as u16;
     }
@@ -55,7 +55,7 @@ static mut IDT: [InterruptDescriptor; IDT_SIZE] = [InterruptDescriptor::missing(
 pub fn init() {
     unsafe { set_handlers(&mut *addr_of_mut!(IDT)); }
     pic::remap();
-    
+
     // Формируем указатель на IDT
     let idt_pointer: IdtPointer = IdtPointer {
         limit: (size_of::<[InterruptDescriptor; IDT_SIZE]>() - 1) as u16,
@@ -65,8 +65,8 @@ pub fn init() {
     // Загружаем таблицу в процессор
     unsafe {
         core::arch::asm!(
-            "lidt [{}]", 
-            in(reg) &raw const idt_pointer, 
+            "lidt [{}]",
+            in(reg) &raw const idt_pointer,
             options(readonly, nostack, preserves_flags),
         );
     }
@@ -125,10 +125,12 @@ fn set_handlers(idt_addr: &mut [InterruptDescriptor; IDT_SIZE]) {
     // ... (Остальные обработчики)
 }
 
+/// Разрешение аппаратных прерываний (sti)
 pub fn interrupts_enable() {
     unsafe { core::arch::asm!("sti", options(nostack, preserves_flags)); }
 }
 
+/// Запрет аппаратных прерываний (cli)
 pub fn interrupts_disable() {
     unsafe { core::arch::asm!("cli", options(nostack, preserves_flags)); }
 }

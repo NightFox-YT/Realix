@@ -1,35 +1,35 @@
-; © Realix > Print number (dec / hex/ bcd)
-; (11.07.26) v0.09
+; © Realix > IO: Print number (dec / hex / bcd)
+; (27.07.26) v0.1
 ; ================
 ; ❗️ Зависимости: kernel16/io/print.asm
 
 ; > Вывод значения ax в десятичном виде на экран (Текстовый режим)
 ; Параметры:
-;  - ax: значение регистра
+;  - ax: значение
 print_dec16:
     push bx
     push cx
     push dx
 
-    mov bx, 10    ; Делитель (Для перевода в десятичный вид)
-    xor cx, cx    ; Счётчик цифр
+    mov bx, 10   ; Делитель (Для перевода в десятичный вид)
+    xor cx, cx   ; Счётчик цифр
 
 .next_digit:
-    xor dx, dx    ; Обнуление dx с ASCII символом
-    div bx        ; ax - частное (dx - остаток: цифра)
-    add dl, '0'   ; Цифра -> ASCII
-    push dx       ; Сохраняем цифру в стеке
+    xor dx, dx   ; Обнуление dx с ASCII символом
+    div bx       ; ax - частное (dx - остаток: цифра)
+    add dl, '0'  ; Цифра -> ASCII
+    push dx      ; *Сохраняем цифру в стеке
 
     ; Переход к след. цифре
     inc cx
     test ax, ax
     jnz .next_digit
 
-.print_char:
-    pop ax        ; Достаём цифру из стека
-    mov ah, 0x0E  ; TTY mode (Вывод с прокруткой курсора)
-    int 0x10
-    loop .print_char
+.print_loop:
+    ; Достаём цифры из стека в обратном порядке
+    pop ax
+    call print_char
+    loop .print_loop
 
 .done:
     pop dx
@@ -49,9 +49,9 @@ print_hex16:
     mov cx, 4   ; Счётчик для 4 цифр
 
 .next_digit:
-    rol bx, 4   ; Старший ниббл → младшие 4 бита
+    rol bx, 4   ; Старший ниббл -> младшие 4 бита
 
-    ; Берём цифру из bx (младшие 4 бита из младшего байта bx) и печатаем
+    ; Берём цифру из bl (младшие 4 бита будут использованы) и печатаем
     mov al, bl
     call print_hex_digit
     loop .next_digit
@@ -68,7 +68,7 @@ print_hex16:
 print_hex_digit:
     push ax
 
-    and al, 0x0F
+    and al, 0x0F      ; Оставляем только младшие 4 бита
     cmp al, 9
     jbe .digit        ; Обработка цифры (0-9)
     add al, 'A' - 10  ; Обработка буквы (A-F)
@@ -105,6 +105,7 @@ print_byte:
     mov al, bl
     call print_hex_digit
 
+    ; Разделитель байтов
     mov al, ' '
     call print_char
 

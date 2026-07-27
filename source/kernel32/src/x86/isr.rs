@@ -1,6 +1,7 @@
-// © Realix > ISR (Int service routine)
-// (16.07.26) v0.1
+// © Realix > x86: ISR (Interrupt Service Routine)
+// (27.07.26) v0.1
 // ================
+// ❗️ Имена в `unsafe extern "C"` должны совпадать с метками в global_asm!
 
 // Подключение функций
 use core::arch::global_asm;
@@ -9,7 +10,12 @@ use crate::drivers::vga::{self, Color};
 use crate::drivers::{keyboard, pit};
 use crate::halt_loop;
 use crate::x86::idt::{interrupts_disable, interrupts_enable};
-use crate::x86::pic;
+use crate::x86::{gdt, pic};
+use crate::utils::inb;
+
+// Номера обрабатываемых IRQ
+const IRQ_TIMER: u8 = 0;
+const IRQ_KEYBOARD: u8 = 1;
 
 /// Состояние процессора, сформированное ассемблерной заглушкой.
 /// (Порядок полей соответствует обратному порядку PUSH)
@@ -124,7 +130,7 @@ pub extern "C" fn exc_handler(regs: &Registers) {
 pub extern "C" fn irq_handler(regs: &Registers) {
     // Защита от вызова функции с неправильным аргументом
     // (Такое может быть вследствие ошибки в IRQ stub или IDT)
-    if regs.int_num < 32 || regs.int_num > 47 {
+    if !(32..=47).contains(&regs.int_num) {
         vga::print_line("[!] IRQ num in handler is incorrect!", Color::Red);
         halt_loop();
     }
@@ -138,11 +144,9 @@ pub extern "C" fn irq_handler(regs: &Registers) {
     }
 
     match irq {
-        0 => { pit::tick(); }
-        1 => {
-            let scancode = unsafe {
-                crate::inb(keyboard::KEYBOARD_DATA_PORT)
-            };
+        IRQ_TIMER => { pit::tick(); }
+        IRQ_KEYBOARD => {
+            let scancode: u8 = unsafe { inb(keyboard::KEYBOARD_DATA_PORT) };
             keyboard::on_scancode(scancode);
         }
         _ => { /* Остальные IRQ сейчас замаскированы */ }
@@ -225,6 +229,47 @@ irq_stub_\num:
     jmp irq_common_stub
 .endm
 
+# > Общая точка входа (Исключения и IRQ отличаются только обработчиком)
+# К этому моменту в стеке уже лежат err_code и int_num
+.macro COMMON_STUB name, handler
+\name:
+    cld
+
+    # Сохранение eax, ecx, edx, ebx, esp, ebp, esi, edi
+    pusha
+
+    # Сохранение текущего сегмента данных (ds)
+    xor eax, eax
+    mov ax, ds
+    push eax
+
+    # Переключение на Kernel data selector
+    mov ax, {kernel_data_sel}
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    # Передача указателя на Registers первым аргументом
+    push esp
+    call \handler
+    add esp, 4
+
+    # Восстанавливаем исходные сегменты данных
+    pop eax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    # Восстановление eax, ecx, edx, ebx, esp, ebp, esi, edi
+    popa
+
+    # Удаление int_num и err_code из стека
+    add esp, 8
+    iretd
+.endm
+
 
 EXC_NOERRCODE 0,  divide_by_zero
 EXC_NOERRCODE 1,  debug
@@ -264,80 +309,9 @@ IRQ_STUB 45
 IRQ_STUB 46
 IRQ_STUB 47
 
-# > Общая точка входа исключений
-exc_common_stub:
-    cld
-
-    # Сохранение eax, ecx, edx, ebx, esp, ebp, esi, edi
-    pusha
-
-    # Сохранение текущего сегмента данных (ds)
-    xor eax, eax
-    mov ax, ds
-    push eax
-
-    # Переключение на Kernel data selector
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-
-    # Передача указателя на Registers первым аргументом
-    push esp
-    call exc_handler
-    add esp, 4
-
-    # Восстанавливаем старый сегмент данных
-    pop eax
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-
-    # Восстановление eax, ecx, edx, ebx, esp, ebp, esi, edi
-    popa
-
-    # Удаление err_code и int_num из стека
-    add esp, 8
-    iretd
-
-# > Общая точка входа для IRQ-прерываний (Аналог exc_common_stub)
-irq_common_stub:
-    cld
-    
-    # Сохранение eax, ecx, edx, ebx, esp, ebp, esi, edi
-    pusha
-
-    # Сохранение текущего сегмента данных (ds)
-    xor eax, eax
-    mov ax, ds
-    push eax
-
-    # Переключение на Kernel data selector
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-
-    # Передача указателя на Registers первым аргументом
-    push esp
-    call irq_handler
-    add esp, 4
-
-    # Восстанавливаем исходные сегменты данных
-    pop eax
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-
-    # Восстановление eax, ecx, edx, ebx, esp, ebp, esi, edi
-    popa
-
-    # Удаление int_num и искусственного err_code
-    add esp, 8
-    iretd
-"#
+# > Точки входа: исключения CPU и аппаратные IRQ
+COMMON_STUB exc_common_stub, exc_handler
+COMMON_STUB irq_common_stub, irq_handler
+"#,
+    kernel_data_sel = const gdt::KERNEL_DATA_SELECTOR,
 );

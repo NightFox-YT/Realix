@@ -1,15 +1,13 @@
-; © Realix > Print CTRL chars
-; (15.07.26) v0.1
+; © Realix > IO: Print CTRL chars
+; (27.07.26) v0.1
 ; ================
-
-; Основные константы
-%include 'shared/config.asm'
+; ❗️ Зависимости: kernel16/io/print
 
 ; Управляющие символы
-%define BEEP_CHAR     0x07
-%define SQUARE_CHAR   0xFE
+BEEP_CHAR   equ 0x07
+SQUARE_CHAR equ 0xFE
 
-; > Вывод символов "\n\r" на экран (Текстовый режим)
+; > Вывод символов "\r\n" на экран (Текстовый режим)
 print_new_line:
     push ax
     push bx
@@ -18,7 +16,7 @@ print_new_line:
     mov ah, 0x0E
     xor bx, bx
 
-    ; Вывод символов "\n\r"
+    ; Вывод символов "\r\n"
     mov al, 0x0D
     int 0x10
     mov al, 0x0A
@@ -28,11 +26,10 @@ print_new_line:
     pop ax
     ret
 
-; > Перевод строки, только если курсор не в начале строки
+; > Перевод строки, если курсор не в начале строки (Текстовый режим)
 print_new_line_if_needed:
     push ax
     push bx
-    push cx
     push dx
 
     ; Запрос позиции курсора: dh - строка, dl - колонка
@@ -48,7 +45,6 @@ print_new_line_if_needed:
 
 .done:
     pop dx
-    pop cx
     pop bx
     pop ax
     ret
@@ -56,33 +52,21 @@ print_new_line_if_needed:
 ; > Вывод невидимого символа "BEL" на экран (Текстовый режим)
 print_beep_char:
     push ax
-    push bx
-
-    ; Настройка TTY mode, номера страницы и цвета
-    mov ah, 0x0E
-    xor bx, bx
 
     ; Вывод символа "BEL"
     mov al, BEEP_CHAR
-    int 0x10
+    call print_char
 
-    pop bx
     pop ax
     ret
 
 ; > Вывод символа "■" на экран (Текстовый режим)
 print_square_char:
     push ax
-    push bx
-
-    ; Настройка TTY mode, номера страницы и цвета
-    mov ah, 0x0E
-    xor bx, bx
 
     ; Вывод символа "■"
     mov al, SQUARE_CHAR
-    int 0x10
+    call print_char
 
-    pop bx
     pop ax
     ret

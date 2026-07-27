@@ -1,21 +1,25 @@
-// © Realix > Keyboard
-// (03.07.26) v0.08
+// © Realix > Driver: Keyboard
+// (27.07.26) v0.1
 // ================
 
 // Подключение функций
 use core::arch::asm;
 use core::sync::atomic::{AtomicUsize, Ordering::{Acquire, Relaxed, Release}};
-use crate::drivers::vga::{self, Color};
 
-// Контанты
-const INPUT_MAX: usize = 64;
-const QUEUE_SIZE: usize = 32;
+// Константы
 pub const KEYBOARD_DATA_PORT: u16 = 0x60;
+const QUEUE_SIZE: usize = 32;
+const PREFIX_EXTENDED_KEY: u8 = 0xE0;
+pub const SCANCODE_RELEASE: u8 = 0x80;
 
 // Кольцевой буфер
 static mut QUEUE: [u8; QUEUE_SIZE] = [0; QUEUE_SIZE];
 static HEAD: AtomicUsize = AtomicUsize::new(0);
 static TAIL: AtomicUsize = AtomicUsize::new(0);
+
+/// Клавиша
+#[derive(Clone, Copy)]
+pub enum Key { Char(u8), Up, Down, Escape, F7 }
 
 /// Перевод scancode в ASCII
 pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
@@ -51,7 +55,27 @@ pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
     }
 }
 
-/// Вызывается из irq_handler (`isr.rs``)
+/// Перевод scancode в функциональную клавишу
+fn scancode_to_key(scancode: u8) -> Option<Key> {
+    match scancode {
+        0x01 => Some(Key::Escape),
+        0x41 => Some(Key::F7),
+
+        // Остальное: Символ из существующей таблицы (`scancode_to_ascii`)
+        _ => scancode_to_ascii(scancode).map(Key::Char),
+    }
+}
+
+/// Перевод расширенного scancode (с префиксом 0xE0)
+fn extended_to_key(scancode: u8) -> Option<Key> {
+    match scancode {
+        0x48 => Some(Key::Up),
+        0x50 => Some(Key::Down),
+        _ => None,
+    }
+}
+
+/// Вызывается из irq_handler (`isr.rs`)
 pub fn on_scancode(scancode: u8) {
     let head: usize = HEAD.load(Relaxed);
     let next: usize = (head + 1) % QUEUE_SIZE;
@@ -84,14 +108,35 @@ fn is_queue_empty() -> bool {
 
 
 /// Чтение клавиши
-pub fn read_key() -> u8 {
+pub fn read_key() -> Key {
+    // Флаг: Предыдущий байт был префиксом 0xE0
+    let mut extended: bool = false;
+
     loop {
         if let Some(scancode) = queue_pop() {
+            // Префикс 0xE0: Клавиша прибежит след. байтом
+            if scancode == PREFIX_EXTENDED_KEY {
+                extended = true;
+                continue;
+            }
+
             // Игнорируем отпускание клавиш (бит 7 = 1)
-            if scancode & 0x80 == 0 {
-                if let Some(ascii) = scancode_to_ascii(scancode) {
-                    return ascii;
-                }
+            if scancode & SCANCODE_RELEASE != 0 {
+                extended = false;
+                continue;
+            }
+
+            // Распознаём функциональную клавишу
+            let key: Option<Key> = if extended {
+                extended = false;
+                extended_to_key(scancode)
+            } else {
+                scancode_to_key(scancode)
+            };
+
+            // Возвращаем только распознанные клавиши
+            if let Some(key) = key {
+                return key;
             }
         } else {
             // Очередь пуста
@@ -105,36 +150,6 @@ pub fn read_key() -> u8 {
                     asm!("sti");
                 }
             }
-        }
-    }
-}
-
-/// Чтение строки
-pub fn read_line() -> [u8; INPUT_MAX] {
-    let mut buffer: [u8; INPUT_MAX] = [0u8; INPUT_MAX];
-    let mut pos: usize = 0;
-
-    loop {
-        let key: u8 = read_key();
-        match key {
-            b'\n' => {
-                buffer[pos] = 0;
-                vga::new_line();
-                return buffer;
-            }
-            b'\x08' => {
-                if pos > 0 {
-                    pos -= 1;
-                    buffer[pos] = 0;
-                    vga::print_backspace();
-                }
-            }
-            byte if pos < INPUT_MAX - 1 && byte >= 0x20 && byte <= 0x7E => {
-                buffer[pos] = byte;
-                pos += 1;
-                vga::print_char(byte, Color::LightGray);
-            }
-            _ => {}
         }
     }
 }

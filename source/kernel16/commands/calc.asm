@@ -1,19 +1,18 @@
-; © Realix > Calculator Command
+; © Realix > Command: Calculator
 ; ø Copyright by @liquifield + @Atimenka
-; (23.06.26) v0.07
+; (27.07.26) v0.1
 ; ================
-; ❗️ Зависимости: kernel16/io/print,
+; ❗️ Зависимости: kernel16/io: print & print_reg,
 ;                 kernel16/shell: commands & parse
 
-
-; > Команда простого калькулятора
+; > Команда простого калькулятора: calc <a> <+ - * /> <b>
+; Параметры:
+;  - si: указатель на аргументы (после имени команды)
 cmd_calc:
     push ax
     push bx
-    push cx
     push dx
     push si
-    push di
 
     ; Проверка существования первого числа
     call require_arg
@@ -131,19 +130,18 @@ cmd_calc:
     call print
 
 .done:
-    pop di
     pop si
     pop dx
-    pop cx
     pop bx
     pop ax
     ret
 
 ; Локальные переменные
-.num1:      dw 0
-.num2:      dw 0
-.operator:  db 0
+.num1:     dw 0
+.num2:     dw 0
+.operator: db 0
 
+; Строки
 msg_result:     db 'Result: ', 0
 str_minus:      db '-', 0
 msg_calc_usage: db '[?] Usage: calc <num1> <+ - * /> <num2>', 0

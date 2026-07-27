@@ -2,6 +2,7 @@
 ; ø Copyright by @createrman-system + @dintslaych
 ; (12.07.26) v0.09
 ; ================
+; ❗️ Временно модуль не используется... (Кроме инициализации)
 
 ; Порты конфигурации PCI
 PCI_CONFIG_ADDRESS  equ 0x0CF8

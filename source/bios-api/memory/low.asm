@@ -1,40 +1,43 @@
 ; © Realix > Lower memory
-; (02.06.26) v0.05
+; (27.07.26) v0.1
 ; ================
 
-; Основные константы
-%include 'shared/config.asm'
-
-; > Получение кол-ва свободной "нижней" памяти
+; > Получение кол-ва доступной "нижней" памяти
 ; Вывод:
-;  - ax: Кол-во свободной памяти (КБ)
-;  - CF (Carry Flag): 0 — успех, 1 — ошибка
+;  - ax: Кол-во доступной "нижней" памяти (КБ)
+;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка)
 get_lower_memory:
-    clc
     int 12h
+
+    ; Проверка: Размер доступной "нижней" памяти != 0
+    test ax, ax
+    jnz .done
+
+.fail:
+    stc
     ret
 
-; > Вывод кол-ва "нижней" памяти в текстовом режиме
+.done:
+    clc
+    ret
+
+; > Вывод кол-ва доступной "нижней" памяти в текстовом режиме
 ; ❗️ Зависимости: kernel16/print.asm
 show_lower_memory:
     push si
     push ax
-    push es
 
-    ; Настраиваем сегмент `es` под PCINFO
-    xor ax, ax
-    mov es, ax
-
-    ; Выводим информацию о кол-ве "нижней" памяти
+    ; Выводим эту информацию о "нижней" памяти
     mov si, str_low_ram
     call print
-    mov ax, word [es:PCINFO_ADDR]
+
+    call get_lower_memory
     call print_dec16
+
     mov si, str_kb_w_max
     call print
 
 .done:
-    pop es
     pop ax
     pop si
     ret

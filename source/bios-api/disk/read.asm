@@ -1,5 +1,5 @@
 ; © Realix > Disk Read
-; (13.06.26) v0.06
+; (27.07.26) v0.1
 ; ================
 ; ❗️ Зависимости: error_handler (внешний обработчик)
 
@@ -7,16 +7,19 @@
 %include "bios-api/disk/init.asm"
 
 ; > Чтение секторов с диска
+; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
 ; Параметры:
 ;  - ax: LBA
 ;  - cl: кол-во секторов для чтения (до 128)
-;  - dl: номер диска
 ;  - es:bx: адрес памяти для записи данных
 disk_read:
     push cx
     push dx
     push di
     push ax
+
+    ; Номер текущего диска для BIOS
+    mov dl, [disk_current_drive]
 
     push cx          ; *Сохраняем кол-во секторов (cl)
     call .lba_to_chs
@@ -31,7 +34,7 @@ disk_read:
     int 0x13
     jnc .done
 
-    ; Ошибка, => Сбрасываем контроллер диска
+    ; Если "Ошибка", сбрасываем контроллер диска
     popa
     call disk_reset
 
@@ -76,8 +79,8 @@ disk_read:
     mov cx, dx           ; Сохраняем номер сектора (cx)
 
     ; Вычисление номеров:
-    ; - ax (Цилиндр) = (LBA / SPT) / Heads
-    ; - dx (Голова)  = (LBA / SPT) % Heads
+    ; > ax (Цилиндр) = (LBA / SPT) / Heads
+    ; > dx (Голова)  = (LBA / SPT) % Heads
     xor dx, dx
     div word [disk_heads]
     mov dh, dl             ; Сохраняем номер головы (dh)
@@ -95,15 +98,15 @@ disk_read:
 
 
 ; > Сброс контроллера диска
-; Параметры:
-;  - dl: номер диска
+; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
 disk_reset:
-    ; Установка Carry Flag (Некоторые BIOS не устанавливают)
     pusha
-    stc
 
+    mov dl, [disk_current_drive]
+    
     ; Сброс контроллера диска
-    xor ax, ax
+    xor ax, ax  ; Функция BIOS: Сброс дискового контроллера
+    stc         ; Установка Carry Flag (Некоторые BIOS не устанавливают)
     int 0x13
     jc read_error
 

@@ -1,16 +1,19 @@
-// © Realix > PIT (Programmable Interval Timer)
-// (03.07.26) v0.08
+// © Realix > Driver: PIT (Programmable Interval Timer)
+// (27.07.26) v0.1
 // ================
 
 // Подключение функций
 use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering::Relaxed};
 use crate::drivers::vga;
-use crate::outb;
+use crate::utils::outb;
 
 // Порты PIT и базовая частота генератора PIT (Гц)
 const PIT_CHANNEL0: u16 = 0x40;
 const PIT_COMMAND: u16 = 0x43;
 const BASE_FREQUENCY: u32 = 1_193_182;
+
+// Нижний предел частоты (Делитель должен влезать в 16 бит)
+const MIN_FREQUENCY: u32 = 20;
 
 // > Command byte:
 // channel 0 (6-7) | low/high byte accessed (5-4)
@@ -24,7 +27,7 @@ static FREQUENCY: AtomicU32 = AtomicU32::new(0);
 /// Инициализация PIT на заданную частоту (Гц)
 pub fn init(frequency: u32) {
     // Проверка, что частота в нужном диапазоне
-    if frequency < 20 || frequency > BASE_FREQUENCY {
+    if !(MIN_FREQUENCY..=BASE_FREQUENCY).contains(&frequency) {
         vga::print_line("[!] PIT frequency isn't in valid range!", vga::Color::Red);
         panic!();
     }
@@ -62,7 +65,7 @@ pub fn get_uptime() -> u32 {
     if cur_frequency == 0 {
         return 0;
     }
-    return (TICKS.load(Relaxed) as u32) / cur_frequency;
+    (TICKS.load(Relaxed) as u32) / cur_frequency
 }
 
 /// Ждать `ms` миллисекунд
@@ -74,7 +77,7 @@ pub fn sleep(ms: u32) {
         return;
     }
 
-    let target: u64 = get_ticks() as u64 + (ms as u64 * frequency / 1000);
+    let target: u64 = get_ticks() as u64 + (ms as u64 * frequency / 1000u64);
 
     // Ожидаем, когда кол-во тиков достигнет нужное значение
     while (get_ticks() as u64) < target {

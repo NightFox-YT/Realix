@@ -1,6 +1,7 @@
-; © Realix > Print
-; (11.07.26) v0.09
+; © Realix > IO: Print
+; (27.07.26) v0.1
 ; ================
+; ❗️ В режиме PRINT_MINIMAL (Bootix) доступна только `print`
 
 ; > Вывод строки на экран (Текстовый режим)
 ; Параметры:
@@ -45,5 +46,5 @@ print_char:
     pop bx
     pop ax
     ret
-    
+
 %endif

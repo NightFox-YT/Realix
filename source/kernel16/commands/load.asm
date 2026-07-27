@@ -1,8 +1,8 @@
-; © Realix > Load Command
-; (16.07.26) v0.1
+; © Realix > Command: Load
+; (27.07.26) v0.1
 ; ================
 ; ❗️ Зависимости: bios-api/fat12/file_load.asm,
-;                 kernel16/io/print.asm, boot_drive_num (main.asm)
+;                 kernel16/io: print & print_reg
 
 ; Адрес назначения загружаемых файлов (свободная зона за регионом kernel16)
 FILE_DEST_SEGMENT equ 0x2000
@@ -23,9 +23,15 @@ cmd_load:
     call parse_and_load
     jc .fail
 
-    ; Логирование успеха
+    ; Логирование успеха с реальным адресом назначения
     mov si, msg_load_ok
     call print
+    mov ax, FILE_DEST_SEGMENT
+    call print_hex16
+    mov al, ':'
+    call print_char
+    mov ax, FILE_DEST_OFFSET
+    call print_hex16
     jmp .done
 
 ; Вывод сообщения (usage при пустом имени / ошибка file_load — адрес в si)
@@ -48,8 +54,8 @@ cmd_load:
 ;  - si: указатель на имя (до пробела или конца строки)
 ; Вывод:
 ;  - filename_83: буфер с именем (заглавные, паддинг пробелами)
-;  - CF: 0 (успех), 1 (некорректное имя)
 ;  - si: указывает за имя
+;  - CF (Carry Flag): 0 (Успех), 1 (Некорректное имя)
 format_83:
     push ax
     push cx
@@ -151,7 +157,7 @@ format_83:
 ;  - si: указатель на аргументы команды (после имени)
 ; Вывод:
 ;  - Файл загружен, размер в [file_size] (Если успех)
-;  - CF: 0 (Успех), 1 (Ошибка, si указывает на сообщение для печати)
+;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка, si - сообщение для печати)
 parse_and_load:
     ; Пропуск пробелов до аргумента
     call skip_spaces
@@ -166,7 +172,6 @@ parse_and_load:
     mov si, filename_83
     mov cx, FILE_DEST_SEGMENT
     mov bx, FILE_DEST_OFFSET
-    mov dl, [boot_drive_num]
     mov di, guard_kernel16
     call file_load          ; CF + si (сообщение) + [file_size]
     ret
@@ -181,4 +186,4 @@ filename_83: times 11 db ' '
 
 ; Сообщения
 msg_load_usage: db '[?] Usage: load <filename>', 0
-msg_load_ok:    db '[+] File loaded at 2000:0000', 0
+msg_load_ok:    db '[+] File loaded at ', 0
