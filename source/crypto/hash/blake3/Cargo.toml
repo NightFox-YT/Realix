@@ -1,0 +1,17 @@
+[package]
+name = "blake3"
+version = "0.1.0"
+edition = "2021"
+authors = ["Gleb Obitotsky <glebobitotsky@yandex.com>"]
+license = "GPL-3.0"
+repository = "https://github.com/NightFox-YT/Realix/tree/feature/crypto/source/crypto/hash/blake3"
+
+[features]
+default = []
+debug = []
+
+[dependencies]
+libc = { version = "0.2", default-features = false, features = ["core"] }
+
+[lib]
+crate-type = ["rlib", "staticlib"]
