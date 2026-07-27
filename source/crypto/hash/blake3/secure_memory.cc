@@ -2,8 +2,6 @@
 // Use of this source code is governed by a GNU GPL V3 license.
 //
 // Author: Gleb Obitotsky <glebobitotsky@yandex.com>
-//
-// Реализация всех режимов обнуления: Fast, Balanced, Military, Universal.
 
 #include "secure_memory.h"
 #include "secure_memory_arch.h"
@@ -15,12 +13,10 @@ namespace blake3 {
 using internal::kCacheLineSize;
 using internal::kWordSize;
 using internal::GetRandomPattern;
+using internal::TimingDelay;
 
 namespace internal {
 
-// -----------------------------------------------------------------------------
-// Пустышка для выравнивания времени
-// -----------------------------------------------------------------------------
 static BLAKE3_FORCE_INLINE void TimingDummy(size_t /*len*/) {
   BLAKE3_COMPILER_BARRIER();
 }
@@ -72,7 +68,7 @@ void ZeroMemoryBalancedImpl(void* BLAKE3_RESTRICT ptr, size_t len) {
 // -----------------------------------------------------------------------------
 BLAKE3_NO_INLINE
 void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
-  internal::TimingDelay(len);
+  TimingDelay(len);
 
   volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
   volatile uint64_t* p64 = reinterpret_cast<volatile uint64_t*>(p);
@@ -89,12 +85,12 @@ void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
   }
 #endif
 
-  // Проход 1: 0x00 (non‑temporal)
-#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+  // Проход 1: 0x00 (non‑temporal, если доступно)
+#if defined(BLAKE3_HAVE_MOVNTI) && (defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86))
   for (size_t w = 0; w < words; ++w) {
     __asm__ volatile("movnti %1, (%0)" : : "r"(&p64[w]), "r"(pattern1) : "memory");
   }
-#elif defined(BLAKE3_ARCH_ARM64) && defined(BLAKE3_HAVE_STNP)
+#elif defined(BLAKE3_HAVE_STNP) && defined(BLAKE3_ARCH_ARM64)
   for (size_t w = 0; w < words; ++w) {
     __asm__ volatile("stnp %x1, %x1, [%0]" : : "r"(&p64[w]), "r"(pattern1) : "memory");
   }
@@ -106,21 +102,21 @@ void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
   for (size_t b = 0; b < bytes; ++b) {
     p[words * kWordSize + b] = static_cast<uint8_t>(pattern1);
   }
-#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+
+  // Барьер записи
+#if defined(BLAKE3_HAVE_MOVNTI) && (defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86))
   __asm__ volatile("sfence" ::: "memory");
-#elif defined(BLAKE3_ARCH_ARM64)
+#elif defined(BLAKE3_HAVE_STNP) && defined(BLAKE3_ARCH_ARM64)
   __asm__ volatile("dsb st" ::: "memory");
-#else
-  BLAKE3_MEMORY_BARRIER();
 #endif
   BLAKE3_COMPILER_BARRIER();
 
   // Проход 2: pattern2 (non‑temporal)
-#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+#if defined(BLAKE3_HAVE_MOVNTI) && (defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86))
   for (size_t w = 0; w < words; ++w) {
     __asm__ volatile("movnti %1, (%0)" : : "r"(&p64[w]), "r"(pattern2) : "memory");
   }
-#elif defined(BLAKE3_ARCH_ARM64) && defined(BLAKE3_HAVE_STNP)
+#elif defined(BLAKE3_HAVE_STNP) && defined(BLAKE3_ARCH_ARM64)
   for (size_t w = 0; w < words; ++w) {
     __asm__ volatile("stnp %x1, %x1, [%0]" : : "r"(&p64[w]), "r"(pattern2) : "memory");
   }
@@ -132,16 +128,15 @@ void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
   for (size_t b = 0; b < bytes; ++b) {
     p[words * kWordSize + b] = static_cast<uint8_t>(pattern2);
   }
-#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+
+#if defined(BLAKE3_HAVE_MOVNTI) && (defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86))
   __asm__ volatile("sfence" ::: "memory");
-#elif defined(BLAKE3_ARCH_ARM64)
+#elif defined(BLAKE3_HAVE_STNP) && defined(BLAKE3_ARCH_ARM64)
   __asm__ volatile("dsb st" ::: "memory");
-#else
-  BLAKE3_MEMORY_BARRIER();
 #endif
   BLAKE3_COMPILER_BARRIER();
 
-  // Финальный проход с нулями (обычная запись)
+  // Финальный проход нулями (обычная запись)
   for (size_t w = 0; w < words; ++w) {
     p64[w] = 0;
   }
@@ -151,8 +146,8 @@ void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
   BLAKE3_MEMORY_BARRIER();
   BLAKE3_COMPILER_BARRIER();
 
-  // Кэш-флаш (если длина >= кэш-линии)
-  if (len >= kCacheLineSize) {
+  // Кэш‑флаш (если включён и длина >= кэш‑линии)
+  if (config::kEnableCacheFlush && len >= kCacheLineSize) {
 #if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
     #ifdef BLAKE3_HAVE_CLFLUSHOPT
       for (size_t i = 0; i < len; i += kCacheLineSize) {
@@ -329,7 +324,7 @@ void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
 // -----------------------------------------------------------------------------
 BLAKE3_NO_INLINE
 void ZeroMemoryUniversalImpl(void* ptr, size_t len) {
-  internal::TimingDelay(len);
+  TimingDelay(len);
 
   if (BLAKE3_UNLIKELY(len == 0 || ptr == nullptr)) return;
 
@@ -351,11 +346,11 @@ void ZeroMemoryUniversalImpl(void* ptr, size_t len) {
   for (int pass = 0; pass < kPasses; ++pass) {
     uint64_t pattern = (pass == 0) ? pattern1 : ((pass == 1) ? pattern2 : pattern3);
 
-#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+#if defined(BLAKE3_HAVE_MOVNTI) && (defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86))
     for (size_t w = 0; w < words; ++w) {
       __asm__ volatile("movnti %1, (%0)" : : "r"(&p64[w]), "r"(pattern) : "memory");
     }
-#elif defined(BLAKE3_ARCH_ARM64) && defined(BLAKE3_HAVE_STNP)
+#elif defined(BLAKE3_HAVE_STNP) && defined(BLAKE3_ARCH_ARM64)
     for (size_t w = 0; w < words; ++w) {
       __asm__ volatile("stnp %x1, %x1, [%0]" : : "r"(&p64[w]), "r"(pattern) : "memory");
     }
@@ -369,17 +364,15 @@ void ZeroMemoryUniversalImpl(void* ptr, size_t len) {
       p[words * kWordSize + b] = static_cast<uint8_t>(pattern);
     }
 
-#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+#if defined(BLAKE3_HAVE_MOVNTI) && (defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86))
     __asm__ volatile("sfence" ::: "memory");
-#elif defined(BLAKE3_ARCH_ARM64)
+#elif defined(BLAKE3_HAVE_STNP) && defined(BLAKE3_ARCH_ARM64)
     __asm__ volatile("dsb st" ::: "memory");
-#else
-    BLAKE3_MEMORY_BARRIER();
 #endif
     BLAKE3_COMPILER_BARRIER();
   }
 
-  // Финальный проход с нулями
+  // Финальный проход нулями
   for (size_t w = 0; w < words; ++w) {
     p64[w] = 0;
   }
@@ -389,7 +382,7 @@ void ZeroMemoryUniversalImpl(void* ptr, size_t len) {
   BLAKE3_MEMORY_BARRIER();
   BLAKE3_COMPILER_BARRIER();
 
-  // Кэш-флаш (если включён и длина >= кэш-линии)
+  // Кэш‑флаш
   if (config::kEnableCacheFlush && len >= kCacheLineSize) {
 #if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
     #ifdef BLAKE3_HAVE_CLFLUSHOPT
@@ -422,7 +415,7 @@ void ZeroMemoryUniversalImpl(void* ptr, size_t len) {
 #endif
   }
 
-  // Очистка регистров (если включена)
+  // Очистка регистров
   if (config::kClearRegisters) {
 #if defined(BLAKE3_ARCH_X86_64)
     __asm__ volatile(

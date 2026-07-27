@@ -4,8 +4,6 @@
 // Author: Gleb Obitotsky <glebobitotsky@yandex.com>
 //
 // Архитектурно-зависимые макросы, константы и генератор энтропии.
-// Инструкции RDRAND и CLFLUSHOPT отключены по умолчанию для максимальной совместимости.
-// Включите их при необходимости флагами -DBLAKE3_ENABLE_RDRAND и -DBLAKE3_ENABLE_CLFLUSHOPT.
 
 #ifndef BLAKE3_SECURE_MEMORY_ARCH_H_
 #define BLAKE3_SECURE_MEMORY_ARCH_H_
@@ -14,7 +12,7 @@
 #include <stdint.h>
 
 // -----------------------------------------------------------------------------
-// Определение архитектуры
+// Автоматическое определение архитектуры
 // -----------------------------------------------------------------------------
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -22,15 +20,19 @@
   #define BLAKE3_CACHE_LINE_SIZE 64
   #define BLAKE3_WORD_SIZE 8
   #define BLAKE3_HAVE_MOVNTI 1
-  // RDRAND и CLFLUSHOPT включаются только если определены соответствующие макросы
-  #ifdef BLAKE3_ENABLE_RDRAND
-    #define BLAKE3_HAVE_RDRAND 1
+  #if !defined(BLAKE3_DISABLE_CLFLUSH) && !defined(BLAKE3_HAVE_CLFLUSH)
+    #define BLAKE3_HAVE_CLFLUSH 1
   #endif
-  #ifdef BLAKE3_ENABLE_CLFLUSHOPT
-    #define BLAKE3_HAVE_CLFLUSHOPT 1
+  #if !defined(BLAKE3_DISABLE_CLFLUSHOPT) && !defined(BLAKE3_HAVE_CLFLUSHOPT)
+    #if defined(__clflushopt__) || (defined(__INTEL_COMPILER) && __INTEL_COMPILER >= 1500)
+      #define BLAKE3_HAVE_CLFLUSHOPT 1
+    #endif
   #endif
-  // CLFLUSH всегда доступен как fallback
-  #define BLAKE3_HAVE_CLFLUSH 1
+  #if !defined(BLAKE3_DISABLE_RDRAND) && !defined(BLAKE3_HAVE_RDRAND)
+    #if defined(__RDRND__) || defined(__x86_64__)
+      #define BLAKE3_HAVE_RDRAND 1
+    #endif
+  #endif
   #if defined(__AVX2__)
     #define BLAKE3_HAVE_AVX2 1
   #endif
@@ -39,10 +41,14 @@
   #define BLAKE3_CACHE_LINE_SIZE 64
   #define BLAKE3_WORD_SIZE 4
   #define BLAKE3_HAVE_MOVNTI 1
-  #ifdef BLAKE3_ENABLE_RDRAND
-    #define BLAKE3_HAVE_RDRAND 1
+  #if !defined(BLAKE3_DISABLE_CLFLUSH) && !defined(BLAKE3_HAVE_CLFLUSH)
+    #define BLAKE3_HAVE_CLFLUSH 1
   #endif
-  #define BLAKE3_HAVE_CLFLUSH 1
+  #if !defined(BLAKE3_DISABLE_RDRAND) && !defined(BLAKE3_HAVE_RDRAND)
+    #if defined(__RDRND__)
+      #define BLAKE3_HAVE_RDRAND 1
+    #endif
+  #endif
 #elif defined(__aarch64__) || defined(_M_ARM64)
   #define BLAKE3_ARCH_ARM64 1
   #define BLAKE3_CACHE_LINE_SIZE 64
@@ -50,8 +56,10 @@
   #define BLAKE3_HAVE_STNP 1
   #define BLAKE3_HAVE_DC_CVAC 1
   #define BLAKE3_HAVE_CYCLE_COUNTER 1
-  #ifdef BLAKE3_ENABLE_RNDR
-    #define BLAKE3_HAVE_RNDR 1
+  #if !defined(BLAKE3_DISABLE_RNDR) && !defined(BLAKE3_HAVE_RNDR)
+    #if defined(__ARM_FEATURE_RNG)
+      #define BLAKE3_HAVE_RNDR 1
+    #endif
   #endif
   #ifdef __ARM_NEON
     #define BLAKE3_HAVE_NEON 1
@@ -73,17 +81,13 @@
   #define BLAKE3_CACHE_LINE_SIZE 128
   #define BLAKE3_WORD_SIZE 8
   #define BLAKE3_HAVE_DCBF 1
-  #ifdef BLAKE3_ENABLE_DARN
+  #if !defined(BLAKE3_DISABLE_DARN) && !defined(BLAKE3_HAVE_DARN)
     #define BLAKE3_HAVE_DARN 1
   #endif
 #elif defined(__mips__)
   #define BLAKE3_ARCH_MIPS 1
   #define BLAKE3_CACHE_LINE_SIZE 32
   #define BLAKE3_WORD_SIZE 4
-#elif defined(__sparc__)
-  #define BLAKE3_ARCH_SPARC 1
-  #define BLAKE3_CACHE_LINE_SIZE 64
-  #define BLAKE3_WORD_SIZE 8
 #else
   #define BLAKE3_ARCH_GENERIC 1
   #define BLAKE3_CACHE_LINE_SIZE 64
@@ -105,10 +109,16 @@
   #define BLAKE3_UNLIKELY(x) __builtin_expect(!!(x), 0)
   #define BLAKE3_COMPILER_BARRIER() __asm__ volatile("" ::: "memory")
   #define BLAKE3_MEMORY_BARRIER() __sync_synchronize()
-  #define BLAKE3_READ_BARRIER() __asm__ volatile("lfence" ::: "memory")
-  #define BLAKE3_CPU_PAUSE() __asm__ volatile("pause")
-  #define BLAKE3_ISB() __asm__ volatile("isb" ::: "memory")
-  #define BLAKE3_DSB() __asm__ volatile("dsb sy" ::: "memory")
+  #if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+    #define BLAKE3_READ_BARRIER() __asm__ volatile("lfence" ::: "memory")
+    #define BLAKE3_CPU_PAUSE() __asm__ volatile("pause")
+  #elif defined(BLAKE3_ARCH_ARM64) || defined(BLAKE3_ARCH_ARM32)
+    #define BLAKE3_READ_BARRIER() __asm__ volatile("isb" ::: "memory")
+    #define BLAKE3_CPU_PAUSE() __asm__ volatile("yield")
+  #else
+    #define BLAKE3_READ_BARRIER() BLAKE3_COMPILER_BARRIER()
+    #define BLAKE3_CPU_PAUSE() BLAKE3_COMPILER_BARRIER()
+  #endif
   #ifdef BLAKE3_HAVE_RDRAND
     #define BLAKE3_RDRAND(dest) \
       do { unsigned int __tmp; __asm__ volatile("rdrand %0" : "=r"(__tmp) : : "cc"); dest = __tmp; } while(0)
@@ -155,10 +165,9 @@ namespace internal {
 static constexpr size_t kCacheLineSize = BLAKE3_CACHE_LINE_SIZE;
 static constexpr size_t kWordSize = BLAKE3_WORD_SIZE;
 
-// Получение энтропии
+// Получение аппаратной случайности
 static BLAKE3_FORCE_INLINE uint64_t HardwareRandom() {
   uint64_t val = 0;
-
 #if defined(BLAKE3_HAVE_RDRAND)
   uint32_t lo, hi;
   int ok1, ok2;
@@ -185,6 +194,7 @@ static BLAKE3_FORCE_INLINE uint64_t HardwareRandom() {
   if (ok) val = tmp;
 #endif
 
+  // Если аппаратный RNG не удался, используем таймер
   if (val == 0) {
 #if defined(__x86_64__) || defined(__i386__)
     uint32_t lo, hi;
@@ -202,7 +212,6 @@ static BLAKE3_FORCE_INLINE uint64_t HardwareRandom() {
   return val;
 }
 
-// Функция смешивания (SplitMix64)
 static BLAKE3_FORCE_INLINE uint64_t MixEntropy(uint64_t x) {
   uint64_t z = (x + 0x9E3779B97F4A7C15ULL);
   z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
@@ -216,11 +225,6 @@ static BLAKE3_FORCE_INLINE void InitEntropy() {
   if (entropy_state == 0) {
     uint64_t entropy = HardwareRandom();
     entropy ^= reinterpret_cast<uint64_t>(&entropy_state);
-#if defined(__x86_64__) || defined(__i386__)
-    uint32_t lo, hi;
-    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
-    entropy ^= ((uint64_t)hi << 32) | lo;
-#endif
     entropy_state = MixEntropy(entropy);
   }
 }
@@ -235,7 +239,6 @@ static BLAKE3_FORCE_INLINE uint64_t GetRandomPattern() {
   return x * 0x2545F4914F6CDD1DULL;
 }
 
-// Выравнивающая задержка для малых размеров
 static BLAKE3_FORCE_INLINE void TimingDelay(size_t len) {
   if (len >= 512) return;
   volatile size_t dummy = 32;
