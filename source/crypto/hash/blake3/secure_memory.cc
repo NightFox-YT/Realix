@@ -3,7 +3,7 @@
 //
 // Author: Gleb Obitotsky <glebobitotsky@yandex.com>
 //
-// Реализация функций обнуления.
+// Реализация всех режимов обнуления: Fast, Balanced, Military, Universal.
 
 #include "secure_memory.h"
 #include "secure_memory_arch.h"
@@ -14,38 +14,12 @@ namespace blake3 {
 
 using internal::kCacheLineSize;
 using internal::kWordSize;
+using internal::GetRandomPattern;
 
 namespace internal {
 
 // -----------------------------------------------------------------------------
-// Генератор псевдослучайных чисел
-// -----------------------------------------------------------------------------
-static BLAKE3_FORCE_INLINE uint64_t GetRandomPattern() {
-  static volatile uint64_t seed = 0;
-  if (seed == 0) {
-    uint64_t entropy = GetEntropy();
-    entropy ^= reinterpret_cast<uint64_t>(&GetRandomPattern);
-    #if defined(__x86_64__) && defined(__GNUC__)
-      uint64_t tsc;
-      __asm__ volatile("rdtsc" : "=A"(tsc));
-      entropy ^= tsc;
-    #endif
-    uint64_t z = (entropy + 0x9E3779B97F4A7C15ULL);
-    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
-    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-    z = z ^ (z >> 31);
-    seed = z;
-  }
-  uint64_t x = seed;
-  x ^= x >> 12;
-  x ^= x << 25;
-  x ^= x >> 27;
-  seed = x;
-  return x * 0x2545F4914F6CDD1DULL;
-}
-
-// -----------------------------------------------------------------------------
-// TimingDummy
+// Пустышка для выравнивания времени
 // -----------------------------------------------------------------------------
 static BLAKE3_FORCE_INLINE void TimingDummy(size_t /*len*/) {
   BLAKE3_COMPILER_BARRIER();
@@ -98,6 +72,8 @@ void ZeroMemoryBalancedImpl(void* BLAKE3_RESTRICT ptr, size_t len) {
 // -----------------------------------------------------------------------------
 BLAKE3_NO_INLINE
 void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
+  internal::TimingDelay(len);
+
   volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
   volatile uint64_t* p64 = reinterpret_cast<volatile uint64_t*>(p);
 
@@ -108,13 +84,13 @@ void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
   uint64_t pattern2 = 0xFFFFFFFFFFFFFFFFULL;
 
 #ifdef BLAKE3_SECURE_ZERO_RANDOM_PATTERNS
-  if (config::kUseRandomPatterns) {
+  if (config::kUseRandomPattern) {
     pattern2 = GetRandomPattern();
   }
 #endif
 
-  // Проход 1: 0x00
-#if defined(BLAKE3_ARCH_X86_64) && defined(BLAKE3_HAVE_MOVNTI)
+  // Проход 1: 0x00 (non‑temporal)
+#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
   for (size_t w = 0; w < words; ++w) {
     __asm__ volatile("movnti %1, (%0)" : : "r"(&p64[w]), "r"(pattern1) : "memory");
   }
@@ -130,15 +106,17 @@ void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
   for (size_t b = 0; b < bytes; ++b) {
     p[words * kWordSize + b] = static_cast<uint8_t>(pattern1);
   }
-#if defined(BLAKE3_ARCH_X86_64)
+#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
   __asm__ volatile("sfence" ::: "memory");
 #elif defined(BLAKE3_ARCH_ARM64)
   __asm__ volatile("dsb st" ::: "memory");
+#else
+  BLAKE3_MEMORY_BARRIER();
 #endif
   BLAKE3_COMPILER_BARRIER();
 
-  // Проход 2: pattern2
-#if defined(BLAKE3_ARCH_X86_64) && defined(BLAKE3_HAVE_MOVNTI)
+  // Проход 2: pattern2 (non‑temporal)
+#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
   for (size_t w = 0; w < words; ++w) {
     __asm__ volatile("movnti %1, (%0)" : : "r"(&p64[w]), "r"(pattern2) : "memory");
   }
@@ -154,12 +132,252 @@ void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
   for (size_t b = 0; b < bytes; ++b) {
     p[words * kWordSize + b] = static_cast<uint8_t>(pattern2);
   }
-#if defined(BLAKE3_ARCH_X86_64)
+#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
   __asm__ volatile("sfence" ::: "memory");
 #elif defined(BLAKE3_ARCH_ARM64)
   __asm__ volatile("dsb st" ::: "memory");
+#else
+  BLAKE3_MEMORY_BARRIER();
 #endif
   BLAKE3_COMPILER_BARRIER();
+
+  // Финальный проход с нулями (обычная запись)
+  for (size_t w = 0; w < words; ++w) {
+    p64[w] = 0;
+  }
+  for (size_t b = 0; b < bytes; ++b) {
+    p[words * kWordSize + b] = 0;
+  }
+  BLAKE3_MEMORY_BARRIER();
+  BLAKE3_COMPILER_BARRIER();
+
+  // Кэш-флаш (если длина >= кэш-линии)
+  if (len >= kCacheLineSize) {
+#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+    #ifdef BLAKE3_HAVE_CLFLUSHOPT
+      for (size_t i = 0; i < len; i += kCacheLineSize) {
+        __asm__ volatile("clflushopt (%0)" : : "r"(p + i) : "memory");
+      }
+    #elif defined(BLAKE3_HAVE_CLFLUSH)
+      for (size_t i = 0; i < len; i += kCacheLineSize) {
+        __asm__ volatile("clflush (%0)" : : "r"(p + i) : "memory");
+      }
+    #endif
+    __asm__ volatile("sfence" ::: "memory");
+#elif defined(BLAKE3_ARCH_ARM64) && defined(BLAKE3_HAVE_DC_CVAC)
+    for (size_t i = 0; i < len; i += kCacheLineSize) {
+      __asm__ volatile("dc cvac, %0" : : "r"(p + i) : "memory");
+    }
+    __asm__ volatile("dsb sy" ::: "memory");
+#elif defined(BLAKE3_ARCH_ARM32) && defined(BLAKE3_HAVE_DC_CVAC)
+    for (size_t i = 0; i < len; i += kCacheLineSize) {
+      __asm__ volatile("mcr p15, 0, %0, c7, c14, 1" : : "r"(p + i) : "memory");
+    }
+    __asm__ volatile("dsb" ::: "memory");
+#elif defined(BLAKE3_ARCH_PPC) && defined(BLAKE3_HAVE_DCBF)
+    for (size_t i = 0; i < len; i += kCacheLineSize) {
+      __asm__ volatile("dcbf %y0" : : "Z"(*(char*)(p + i)) : "memory");
+    }
+    __asm__ volatile("sync" ::: "memory");
+#elif defined(BLAKE3_ARCH_RISCV)
+    BLAKE3_MEMORY_BARRIER();
+#endif
+  }
+
+  // Очистка регистров (если включена)
+  if (config::kClearRegisters) {
+#if defined(BLAKE3_ARCH_X86_64)
+    __asm__ volatile(
+        "xor %%eax, %%eax\n\t"
+        "xor %%ebx, %%ebx\n\t"
+        "xor %%ecx, %%ecx\n\t"
+        "xor %%edx, %%edx\n\t"
+        "xor %%esi, %%esi\n\t"
+        "xor %%edi, %%edi\n\t"
+        "xor %%r8d, %%r8d\n\t"
+        "xor %%r9d, %%r9d\n\t"
+        "xor %%r10d, %%r10d\n\t"
+        "xor %%r11d, %%r11d\n\t"
+        "xor %%r12d, %%r12d\n\t"
+        "xor %%r13d, %%r13d\n\t"
+        "xor %%r14d, %%r14d\n\t"
+        "xor %%r15d, %%r15d\n\t"
+        ::: "eax", "ebx", "ecx", "edx", "esi", "edi",
+             "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+             "memory"
+    );
+#elif defined(BLAKE3_ARCH_X86)
+    __asm__ volatile(
+        "xor %%eax, %%eax\n\t"
+        "xor %%ebx, %%ebx\n\t"
+        "xor %%ecx, %%ecx\n\t"
+        "xor %%edx, %%edx\n\t"
+        "xor %%esi, %%esi\n\t"
+        "xor %%edi, %%edi\n\t"
+        ::: "eax", "ebx", "ecx", "edx", "esi", "edi", "memory"
+    );
+#elif defined(BLAKE3_ARCH_ARM64)
+    __asm__ volatile(
+        "mov x0, #0\n\t"
+        "mov x1, #0\n\t"
+        "mov x2, #0\n\t"
+        "mov x3, #0\n\t"
+        "mov x4, #0\n\t"
+        "mov x5, #0\n\t"
+        "mov x6, #0\n\t"
+        "mov x7, #0\n\t"
+        "mov x8, #0\n\t"
+        "mov x9, #0\n\t"
+        "mov x10, #0\n\t"
+        "mov x11, #0\n\t"
+        "mov x12, #0\n\t"
+        "mov x13, #0\n\t"
+        "mov x14, #0\n\t"
+        "mov x15, #0\n\t"
+        "mov x16, #0\n\t"
+        "mov x17, #0\n\t"
+        "mov x18, #0\n\t"
+        "mov x19, #0\n\t"
+        "mov x20, #0\n\t"
+        "mov x21, #0\n\t"
+        "mov x22, #0\n\t"
+        "mov x23, #0\n\t"
+        "mov x24, #0\n\t"
+        "mov x25, #0\n\t"
+        "mov x26, #0\n\t"
+        "mov x27, #0\n\t"
+        "mov x28, #0\n\t"
+        "mov x29, #0\n\t"
+        "mov x30, #0\n\t"
+        ::: "x0","x1","x2","x3","x4","x5","x6","x7","x8","x9",
+             "x10","x11","x12","x13","x14","x15","x16","x17","x18",
+             "x19","x20","x21","x22","x23","x24","x25","x26","x27",
+             "x28","x29","x30","memory"
+    );
+#elif defined(BLAKE3_ARCH_ARM32)
+    __asm__ volatile(
+        "mov r0, #0\n\t"
+        "mov r1, #0\n\t"
+        "mov r2, #0\n\t"
+        "mov r3, #0\n\t"
+        "mov r4, #0\n\t"
+        "mov r5, #0\n\t"
+        "mov r6, #0\n\t"
+        "mov r7, #0\n\t"
+        "mov r8, #0\n\t"
+        "mov r9, #0\n\t"
+        "mov r10, #0\n\t"
+        "mov r11, #0\n\t"
+        "mov r12, #0\n\t"
+        ::: "r0","r1","r2","r3","r4","r5","r6","r7","r8","r9","r10","r11","r12","memory"
+    );
+#elif defined(BLAKE3_ARCH_RISCV)
+    __asm__ volatile(
+        "li x1, 0\n\t"
+        "li x2, 0\n\t"
+        "li x3, 0\n\t"
+        "li x4, 0\n\t"
+        "li x5, 0\n\t"
+        "li x6, 0\n\t"
+        "li x7, 0\n\t"
+        "li x8, 0\n\t"
+        "li x9, 0\n\t"
+        "li x10, 0\n\t"
+        "li x11, 0\n\t"
+        "li x12, 0\n\t"
+        "li x13, 0\n\t"
+        "li x14, 0\n\t"
+        "li x15, 0\n\t"
+        "li x16, 0\n\t"
+        "li x17, 0\n\t"
+        "li x18, 0\n\t"
+        "li x19, 0\n\t"
+        "li x20, 0\n\t"
+        "li x21, 0\n\t"
+        "li x22, 0\n\t"
+        "li x23, 0\n\t"
+        "li x24, 0\n\t"
+        "li x25, 0\n\t"
+        "li x26, 0\n\t"
+        "li x27, 0\n\t"
+        "li x28, 0\n\t"
+        "li x29, 0\n\t"
+        "li x30, 0\n\t"
+        "li x31, 0\n\t"
+        ::: "x1","x2","x3","x4","x5","x6","x7","x8","x9",
+             "x10","x11","x12","x13","x14","x15","x16","x17","x18",
+             "x19","x20","x21","x22","x23","x24","x25","x26","x27",
+             "x28","x29","x30","x31","memory"
+    );
+#endif
+  }
+
+  // Случайная задержка для больших размеров
+#ifdef BLAKE3_SECURE_ZERO_RANDOM_PATTERNS
+  if (config::kUseRandomPattern && len >= 512) {
+    volatile size_t delay = GetRandomPattern() & 0x3F;
+    while (delay--) {
+      BLAKE3_CPU_PAUSE();
+      BLAKE3_COMPILER_BARRIER();
+    }
+  }
+#endif
+}
+
+// -----------------------------------------------------------------------------
+// Universal
+// -----------------------------------------------------------------------------
+BLAKE3_NO_INLINE
+void ZeroMemoryUniversalImpl(void* ptr, size_t len) {
+  internal::TimingDelay(len);
+
+  if (BLAKE3_UNLIKELY(len == 0 || ptr == nullptr)) return;
+
+  volatile uint8_t* p = static_cast<volatile uint8_t*>(ptr);
+  volatile uint64_t* p64 = reinterpret_cast<volatile uint64_t*>(p);
+
+  const size_t words = len / kWordSize;
+  const size_t bytes = len % kWordSize;
+
+  BLAKE3_READ_BARRIER();
+  BLAKE3_COMPILER_BARRIER();
+
+  uint64_t pattern1 = 0x0000000000000000ULL;
+  uint64_t pattern2 = 0xFFFFFFFFFFFFFFFFULL;
+  uint64_t pattern3 = config::kUseRandomPattern ? GetRandomPattern() : 0xAAAAAAAAAAAAAAAAULL;
+
+  const int kPasses = config::kZeroPasses;
+
+  for (int pass = 0; pass < kPasses; ++pass) {
+    uint64_t pattern = (pass == 0) ? pattern1 : ((pass == 1) ? pattern2 : pattern3);
+
+#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+    for (size_t w = 0; w < words; ++w) {
+      __asm__ volatile("movnti %1, (%0)" : : "r"(&p64[w]), "r"(pattern) : "memory");
+    }
+#elif defined(BLAKE3_ARCH_ARM64) && defined(BLAKE3_HAVE_STNP)
+    for (size_t w = 0; w < words; ++w) {
+      __asm__ volatile("stnp %x1, %x1, [%0]" : : "r"(&p64[w]), "r"(pattern) : "memory");
+    }
+#else
+    for (size_t w = 0; w < words; ++w) {
+      p64[w] = pattern;
+    }
+#endif
+
+    for (size_t b = 0; b < bytes; ++b) {
+      p[words * kWordSize + b] = static_cast<uint8_t>(pattern);
+    }
+
+#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
+    __asm__ volatile("sfence" ::: "memory");
+#elif defined(BLAKE3_ARCH_ARM64)
+    __asm__ volatile("dsb st" ::: "memory");
+#else
+    BLAKE3_MEMORY_BARRIER();
+#endif
+    BLAKE3_COMPILER_BARRIER();
+  }
 
   // Финальный проход с нулями
   for (size_t w = 0; w < words; ++w) {
@@ -171,98 +389,178 @@ void ZeroMemoryMilitaryImpl(void* ptr, size_t len) {
   BLAKE3_MEMORY_BARRIER();
   BLAKE3_COMPILER_BARRIER();
 
-  // Кэш-флаш выполняем только если длина >= кэш-линии
-  if (len >= kCacheLineSize) {
-#if defined(BLAKE3_ARCH_X86_64)
+  // Кэш-флаш (если включён и длина >= кэш-линии)
+  if (config::kEnableCacheFlush && len >= kCacheLineSize) {
+#if defined(BLAKE3_ARCH_X86_64) || defined(BLAKE3_ARCH_X86)
     #ifdef BLAKE3_HAVE_CLFLUSHOPT
       for (size_t i = 0; i < len; i += kCacheLineSize) {
         __asm__ volatile("clflushopt (%0)" : : "r"(p + i) : "memory");
       }
-    #else
+    #elif defined(BLAKE3_HAVE_CLFLUSH)
       for (size_t i = 0; i < len; i += kCacheLineSize) {
         __asm__ volatile("clflush (%0)" : : "r"(p + i) : "memory");
       }
     #endif
     __asm__ volatile("sfence" ::: "memory");
-#elif defined(BLAKE3_ARCH_ARM64)
+#elif defined(BLAKE3_ARCH_ARM64) && defined(BLAKE3_HAVE_DC_CVAC)
     for (size_t i = 0; i < len; i += kCacheLineSize) {
       __asm__ volatile("dc cvac, %0" : : "r"(p + i) : "memory");
     }
     __asm__ volatile("dsb sy" ::: "memory");
+#elif defined(BLAKE3_ARCH_ARM32) && defined(BLAKE3_HAVE_DC_CVAC)
+    for (size_t i = 0; i < len; i += kCacheLineSize) {
+      __asm__ volatile("mcr p15, 0, %0, c7, c14, 1" : : "r"(p + i) : "memory");
+    }
+    __asm__ volatile("dsb" ::: "memory");
+#elif defined(BLAKE3_ARCH_PPC) && defined(BLAKE3_HAVE_DCBF)
+    for (size_t i = 0; i < len; i += kCacheLineSize) {
+      __asm__ volatile("dcbf %y0" : : "Z"(*(char*)(p + i)) : "memory");
+    }
+    __asm__ volatile("sync" ::: "memory");
+#elif defined(BLAKE3_ARCH_RISCV)
+    BLAKE3_MEMORY_BARRIER();
 #endif
   }
 
-  // Очистка регистров
+  // Очистка регистров (если включена)
+  if (config::kClearRegisters) {
 #if defined(BLAKE3_ARCH_X86_64)
-  __asm__ volatile(
-      "xor %%rax, %%rax\n\t"
-      "xor %%rcx, %%rcx\n\t"
-      "xor %%rdx, %%rdx\n\t"
-      "xor %%rbx, %%rbx\n\t"
-      "xor %%rsi, %%rsi\n\t"
-      "xor %%rdi, %%rdi\n\t"
-      "xor %%r8, %%r8\n\t"
-      "xor %%r9, %%r9\n\t"
-      "xor %%r10, %%r10\n\t"
-      "xor %%r11, %%r11\n\t"
-      "xor %%r12, %%r12\n\t"
-      "xor %%r13, %%r13\n\t"
-      "xor %%r14, %%r14\n\t"
-      "xor %%r15, %%r15\n\t"
-      ::: "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
-           "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
-           "memory"
-  );
+    __asm__ volatile(
+        "xor %%eax, %%eax\n\t"
+        "xor %%ebx, %%ebx\n\t"
+        "xor %%ecx, %%ecx\n\t"
+        "xor %%edx, %%edx\n\t"
+        "xor %%esi, %%esi\n\t"
+        "xor %%edi, %%edi\n\t"
+        "xor %%r8d, %%r8d\n\t"
+        "xor %%r9d, %%r9d\n\t"
+        "xor %%r10d, %%r10d\n\t"
+        "xor %%r11d, %%r11d\n\t"
+        "xor %%r12d, %%r12d\n\t"
+        "xor %%r13d, %%r13d\n\t"
+        "xor %%r14d, %%r14d\n\t"
+        "xor %%r15d, %%r15d\n\t"
+        ::: "eax", "ebx", "ecx", "edx", "esi", "edi",
+             "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15",
+             "memory"
+    );
+#elif defined(BLAKE3_ARCH_X86)
+    __asm__ volatile(
+        "xor %%eax, %%eax\n\t"
+        "xor %%ebx, %%ebx\n\t"
+        "xor %%ecx, %%ecx\n\t"
+        "xor %%edx, %%edx\n\t"
+        "xor %%esi, %%esi\n\t"
+        "xor %%edi, %%edi\n\t"
+        ::: "eax", "ebx", "ecx", "edx", "esi", "edi", "memory"
+    );
 #elif defined(BLAKE3_ARCH_ARM64)
-  __asm__ volatile(
-      "mov x0, #0\n\t"
-      "mov x1, #0\n\t"
-      "mov x2, #0\n\t"
-      "mov x3, #0\n\t"
-      "mov x4, #0\n\t"
-      "mov x5, #0\n\t"
-      "mov x6, #0\n\t"
-      "mov x7, #0\n\t"
-      "mov x8, #0\n\t"
-      "mov x9, #0\n\t"
-      "mov x10, #0\n\t"
-      "mov x11, #0\n\t"
-      "mov x12, #0\n\t"
-      "mov x13, #0\n\t"
-      "mov x14, #0\n\t"
-      "mov x15, #0\n\t"
-      "mov x16, #0\n\t"
-      "mov x17, #0\n\t"
-      "mov x18, #0\n\t"
-      "mov x19, #0\n\t"
-      "mov x20, #0\n\t"
-      "mov x21, #0\n\t"
-      "mov x22, #0\n\t"
-      "mov x23, #0\n\t"
-      "mov x24, #0\n\t"
-      "mov x25, #0\n\t"
-      "mov x26, #0\n\t"
-      "mov x27, #0\n\t"
-      "mov x28, #0\n\t"
-      "mov x29, #0\n\t"
-      "mov x30, #0\n\t"
-      ::: "x0","x1","x2","x3","x4","x5","x6","x7","x8","x9",
-           "x10","x11","x12","x13","x14","x15","x16","x17","x18",
-           "x19","x20","x21","x22","x23","x24","x25","x26","x27",
-           "x28","x29","x30","memory"
-  );
+    __asm__ volatile(
+        "mov x0, #0\n\t"
+        "mov x1, #0\n\t"
+        "mov x2, #0\n\t"
+        "mov x3, #0\n\t"
+        "mov x4, #0\n\t"
+        "mov x5, #0\n\t"
+        "mov x6, #0\n\t"
+        "mov x7, #0\n\t"
+        "mov x8, #0\n\t"
+        "mov x9, #0\n\t"
+        "mov x10, #0\n\t"
+        "mov x11, #0\n\t"
+        "mov x12, #0\n\t"
+        "mov x13, #0\n\t"
+        "mov x14, #0\n\t"
+        "mov x15, #0\n\t"
+        "mov x16, #0\n\t"
+        "mov x17, #0\n\t"
+        "mov x18, #0\n\t"
+        "mov x19, #0\n\t"
+        "mov x20, #0\n\t"
+        "mov x21, #0\n\t"
+        "mov x22, #0\n\t"
+        "mov x23, #0\n\t"
+        "mov x24, #0\n\t"
+        "mov x25, #0\n\t"
+        "mov x26, #0\n\t"
+        "mov x27, #0\n\t"
+        "mov x28, #0\n\t"
+        "mov x29, #0\n\t"
+        "mov x30, #0\n\t"
+        ::: "x0","x1","x2","x3","x4","x5","x6","x7","x8","x9",
+             "x10","x11","x12","x13","x14","x15","x16","x17","x18",
+             "x19","x20","x21","x22","x23","x24","x25","x26","x27",
+             "x28","x29","x30","memory"
+    );
+#elif defined(BLAKE3_ARCH_ARM32)
+    __asm__ volatile(
+        "mov r0, #0\n\t"
+        "mov r1, #0\n\t"
+        "mov r2, #0\n\t"
+        "mov r3, #0\n\t"
+        "mov r4, #0\n\t"
+        "mov r5, #0\n\t"
+        "mov r6, #0\n\t"
+        "mov r7, #0\n\t"
+        "mov r8, #0\n\t"
+        "mov r9, #0\n\t"
+        "mov r10, #0\n\t"
+        "mov r11, #0\n\t"
+        "mov r12, #0\n\t"
+        ::: "r0","r1","r2","r3","r4","r5","r6","r7","r8","r9","r10","r11","r12","memory"
+    );
+#elif defined(BLAKE3_ARCH_RISCV)
+    __asm__ volatile(
+        "li x1, 0\n\t"
+        "li x2, 0\n\t"
+        "li x3, 0\n\t"
+        "li x4, 0\n\t"
+        "li x5, 0\n\t"
+        "li x6, 0\n\t"
+        "li x7, 0\n\t"
+        "li x8, 0\n\t"
+        "li x9, 0\n\t"
+        "li x10, 0\n\t"
+        "li x11, 0\n\t"
+        "li x12, 0\n\t"
+        "li x13, 0\n\t"
+        "li x14, 0\n\t"
+        "li x15, 0\n\t"
+        "li x16, 0\n\t"
+        "li x17, 0\n\t"
+        "li x18, 0\n\t"
+        "li x19, 0\n\t"
+        "li x20, 0\n\t"
+        "li x21, 0\n\t"
+        "li x22, 0\n\t"
+        "li x23, 0\n\t"
+        "li x24, 0\n\t"
+        "li x25, 0\n\t"
+        "li x26, 0\n\t"
+        "li x27, 0\n\t"
+        "li x28, 0\n\t"
+        "li x29, 0\n\t"
+        "li x30, 0\n\t"
+        "li x31, 0\n\t"
+        ::: "x1","x2","x3","x4","x5","x6","x7","x8","x9",
+             "x10","x11","x12","x13","x14","x15","x16","x17","x18",
+             "x19","x20","x21","x22","x23","x24","x25","x26","x27",
+             "x28","x29","x30","x31","memory"
+    );
 #endif
+  }
 
-  // Случайная задержка только для больших размеров
-#ifdef BLAKE3_SECURE_ZERO_RANDOM_PATTERNS
-  if (config::kUseRandomPatterns && len >= 512) {
+  // Случайная задержка
+  if (config::kEnableRandomDelay && len >= 512) {
     volatile size_t delay = GetRandomPattern() & 0x3F;
     while (delay--) {
       BLAKE3_CPU_PAUSE();
       BLAKE3_COMPILER_BARRIER();
     }
   }
-#endif
+
+  BLAKE3_MEMORY_BARRIER();
+  BLAKE3_COMPILER_BARRIER();
 }
 
 }  // namespace internal
@@ -284,6 +582,11 @@ void SecureZeroMemoryBalanced(void* ptr, size_t len) {
 void SecureZeroMemoryMilitary(void* ptr, size_t len) {
   internal::TimingDummy(len);
   internal::ZeroMemoryMilitaryImpl(ptr, len);
+}
+
+void SecureZeroMemoryUniversal(void* ptr, size_t len) {
+  internal::TimingDummy(len);
+  internal::ZeroMemoryUniversalImpl(ptr, len);
 }
 
 // -----------------------------------------------------------------------------

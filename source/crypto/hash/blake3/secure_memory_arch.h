@@ -3,7 +3,9 @@
 //
 // Author: Gleb Obitotsky <glebobitotsky@yandex.com>
 //
-// Архитектурно-зависимые макросы, константы и встроенные функции.
+// Архитектурно-зависимые макросы, константы и генератор энтропии.
+// Инструкции RDRAND и CLFLUSHOPT отключены по умолчанию для максимальной совместимости.
+// Включите их при необходимости флагами -DBLAKE3_ENABLE_RDRAND и -DBLAKE3_ENABLE_CLFLUSHOPT.
 
 #ifndef BLAKE3_SECURE_MEMORY_ARCH_H_
 #define BLAKE3_SECURE_MEMORY_ARCH_H_
@@ -20,31 +22,67 @@
   #define BLAKE3_CACHE_LINE_SIZE 64
   #define BLAKE3_WORD_SIZE 8
   #define BLAKE3_HAVE_MOVNTI 1
-  #if defined(__clang__) || defined(__GNUC__)
-    #if defined(__clflushopt__) || (defined(__INTEL_COMPILER) && __INTEL_COMPILER >= 1500)
-      #define BLAKE3_HAVE_CLFLUSHOPT 1
-    #endif
-  #endif
-  #if defined(__RDRND__) || defined(__x86_64__)
+  // RDRAND и CLFLUSHOPT включаются только если определены соответствующие макросы
+  #ifdef BLAKE3_ENABLE_RDRAND
     #define BLAKE3_HAVE_RDRAND 1
   #endif
+  #ifdef BLAKE3_ENABLE_CLFLUSHOPT
+    #define BLAKE3_HAVE_CLFLUSHOPT 1
+  #endif
+  // CLFLUSH всегда доступен как fallback
+  #define BLAKE3_HAVE_CLFLUSH 1
+  #if defined(__AVX2__)
+    #define BLAKE3_HAVE_AVX2 1
+  #endif
+#elif defined(__i386__) || defined(_M_IX86)
+  #define BLAKE3_ARCH_X86 1
+  #define BLAKE3_CACHE_LINE_SIZE 64
+  #define BLAKE3_WORD_SIZE 4
+  #define BLAKE3_HAVE_MOVNTI 1
+  #ifdef BLAKE3_ENABLE_RDRAND
+    #define BLAKE3_HAVE_RDRAND 1
+  #endif
+  #define BLAKE3_HAVE_CLFLUSH 1
 #elif defined(__aarch64__) || defined(_M_ARM64)
   #define BLAKE3_ARCH_ARM64 1
   #define BLAKE3_CACHE_LINE_SIZE 64
   #define BLAKE3_WORD_SIZE 8
   #define BLAKE3_HAVE_STNP 1
+  #define BLAKE3_HAVE_DC_CVAC 1
   #define BLAKE3_HAVE_CYCLE_COUNTER 1
+  #ifdef BLAKE3_ENABLE_RNDR
+    #define BLAKE3_HAVE_RNDR 1
+  #endif
+  #ifdef __ARM_NEON
+    #define BLAKE3_HAVE_NEON 1
+  #endif
 #elif defined(__arm__) || defined(_M_ARM)
   #define BLAKE3_ARCH_ARM32 1
   #define BLAKE3_CACHE_LINE_SIZE 32
   #define BLAKE3_WORD_SIZE 4
+  #define BLAKE3_HAVE_DC_CVAC 1
 #elif defined(__riscv)
   #define BLAKE3_ARCH_RISCV 1
   #define BLAKE3_CACHE_LINE_SIZE 64
   #define BLAKE3_WORD_SIZE 8
-#elif defined(__powerpc__)
+  #ifdef __riscv_zkr
+    #define BLAKE3_HAVE_RISC_V_RND 1
+  #endif
+#elif defined(__powerpc__) || defined(__ppc__)
   #define BLAKE3_ARCH_PPC 1
   #define BLAKE3_CACHE_LINE_SIZE 128
+  #define BLAKE3_WORD_SIZE 8
+  #define BLAKE3_HAVE_DCBF 1
+  #ifdef BLAKE3_ENABLE_DARN
+    #define BLAKE3_HAVE_DARN 1
+  #endif
+#elif defined(__mips__)
+  #define BLAKE3_ARCH_MIPS 1
+  #define BLAKE3_CACHE_LINE_SIZE 32
+  #define BLAKE3_WORD_SIZE 4
+#elif defined(__sparc__)
+  #define BLAKE3_ARCH_SPARC 1
+  #define BLAKE3_CACHE_LINE_SIZE 64
   #define BLAKE3_WORD_SIZE 8
 #else
   #define BLAKE3_ARCH_GENERIC 1
@@ -69,6 +107,8 @@
   #define BLAKE3_MEMORY_BARRIER() __sync_synchronize()
   #define BLAKE3_READ_BARRIER() __asm__ volatile("lfence" ::: "memory")
   #define BLAKE3_CPU_PAUSE() __asm__ volatile("pause")
+  #define BLAKE3_ISB() __asm__ volatile("isb" ::: "memory")
+  #define BLAKE3_DSB() __asm__ volatile("dsb sy" ::: "memory")
   #ifdef BLAKE3_HAVE_RDRAND
     #define BLAKE3_RDRAND(dest) \
       do { unsigned int __tmp; __asm__ volatile("rdrand %0" : "=r"(__tmp) : : "cc"); dest = __tmp; } while(0)
@@ -106,40 +146,103 @@
 #endif
 
 // -----------------------------------------------------------------------------
-// Вспомогательные константы
+// Генератор энтропии
 // -----------------------------------------------------------------------------
 
 namespace blake3 {
 namespace internal {
 
-constexpr size_t kCacheLineSize = BLAKE3_CACHE_LINE_SIZE;
-constexpr size_t kWordSize = BLAKE3_WORD_SIZE;
-constexpr size_t kMinAlignment = 16;
+static constexpr size_t kCacheLineSize = BLAKE3_CACHE_LINE_SIZE;
+static constexpr size_t kWordSize = BLAKE3_WORD_SIZE;
 
-// Функция для получения энтропии из аппаратного счётчика или RDRAND.
-static BLAKE3_FORCE_INLINE uint64_t GetEntropy() {
-  uint64_t entropy = 0;
+// Получение энтропии
+static BLAKE3_FORCE_INLINE uint64_t HardwareRandom() {
+  uint64_t val = 0;
+
 #if defined(BLAKE3_HAVE_RDRAND)
-  // Используем RDRAND для получения случайного числа.
-  uint32_t rnd1, rnd2;
-  BLAKE3_RDRAND(rnd1);
-  BLAKE3_RDRAND(rnd2);
-  entropy = ((uint64_t)rnd1 << 32) | rnd2;
-#elif defined(BLAKE3_HAVE_CYCLE_COUNTER)
-  // ARM64: читаем счётчик циклов.
-  uint64_t cnt;
-  __asm__ volatile("mrs %0, cntvct_el0" : "=r"(cnt));
-  entropy = cnt;
-#elif defined(__x86_64__) && defined(__GNUC__)
-  // RDTSC как запасной вариант.
   uint32_t lo, hi;
-  __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
-  entropy = ((uint64_t)hi << 32) | lo;
-#else
-  volatile uint64_t stack_var = 0;
-  entropy = reinterpret_cast<uint64_t>(&stack_var) ^ static_cast<uint64_t>(__LINE__);
+  int ok1, ok2;
+  __asm__ volatile("rdrand %0\n\t" "setc %1" : "=r"(lo), "=qm"(ok1) : : "cc");
+  __asm__ volatile("rdrand %0\n\t" "setc %1" : "=r"(hi), "=qm"(ok2) : : "cc");
+  if (ok1 && ok2) val = ((uint64_t)hi << 32) | lo;
+#elif defined(BLAKE3_HAVE_RNDR)
+  uint64_t tmp;
+  int ok;
+  __asm__ volatile("mrs %0, s3_3_c2_c4_0\n\t" "mov %1, #0\n\t" "tst %0, #1\n\t" "csel %1, %1, #1, ne\n\t"
+                   : "=r"(tmp), "=r"(ok) : : "cc");
+  if (ok) val = tmp;
+#elif defined(BLAKE3_HAVE_RISC_V_RND)
+  uint64_t tmp;
+  int ok;
+  __asm__ volatile("pollentropy %0\n\t" "andi %1, %0, 1\n\t" "srli %0, %0, 1\n\t"
+                   : "=r"(tmp), "=r"(ok) : : "cc");
+  if (ok) val = tmp;
+#elif defined(BLAKE3_HAVE_DARN)
+  uint64_t tmp;
+  int ok;
+  __asm__ volatile("darn %0, 0\n\t" "cntlzd %1, %0\n\t" "cmpdi %1, 64\n\t" "crandc %1, %1, %1\n\t"
+                   : "=r"(tmp), "=r"(ok) : : "cc");
+  if (ok) val = tmp;
 #endif
-  return entropy;
+
+  if (val == 0) {
+#if defined(__x86_64__) || defined(__i386__)
+    uint32_t lo, hi;
+    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    val = ((uint64_t)hi << 32) | lo;
+#elif defined(__aarch64__)
+    uint64_t cnt;
+    __asm__ volatile("mrs %0, cntvct_el0" : "=r"(cnt));
+    val = cnt;
+#else
+    volatile uint64_t stack = 0;
+    val = reinterpret_cast<uint64_t>(&stack) ^ (uint64_t)__LINE__;
+#endif
+  }
+  return val;
+}
+
+// Функция смешивания (SplitMix64)
+static BLAKE3_FORCE_INLINE uint64_t MixEntropy(uint64_t x) {
+  uint64_t z = (x + 0x9E3779B97F4A7C15ULL);
+  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+  z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+  return z ^ (z >> 31);
+}
+
+static uint64_t entropy_state = 0;
+
+static BLAKE3_FORCE_INLINE void InitEntropy() {
+  if (entropy_state == 0) {
+    uint64_t entropy = HardwareRandom();
+    entropy ^= reinterpret_cast<uint64_t>(&entropy_state);
+#if defined(__x86_64__) || defined(__i386__)
+    uint32_t lo, hi;
+    __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
+    entropy ^= ((uint64_t)hi << 32) | lo;
+#endif
+    entropy_state = MixEntropy(entropy);
+  }
+}
+
+static BLAKE3_FORCE_INLINE uint64_t GetRandomPattern() {
+  InitEntropy();
+  uint64_t x = entropy_state;
+  x ^= x >> 12;
+  x ^= x << 25;
+  x ^= x >> 27;
+  entropy_state = x;
+  return x * 0x2545F4914F6CDD1DULL;
+}
+
+// Выравнивающая задержка для малых размеров
+static BLAKE3_FORCE_INLINE void TimingDelay(size_t len) {
+  if (len >= 512) return;
+  volatile size_t dummy = 32;
+  while (dummy--) {
+    BLAKE3_CPU_PAUSE();
+    BLAKE3_COMPILER_BARRIER();
+  }
 }
 
 }  // namespace internal
