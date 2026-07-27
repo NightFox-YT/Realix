@@ -1,9 +1,7 @@
 ; © Realix > VGA driver
-; (13.06.26) v0.06
+; (27.07.26) v0.1
 ; ================
-
-; Основные константы
-%include 'shared/config.asm'
+; ❗️ Временно модуль не используется...
 
 ; Константы экрана VGA
 VGA_WIDTH   equ 320
@@ -11,7 +9,7 @@ VGA_HEIGHT  equ 200
 VGA_SEGMENT equ 0xA000
 
 ; > Инициализация видеорежима 13h (320x200, 256 цветов)
-vga_video_mode:
+vga_enable_video_mode:
     push ax
 
     ; Установка режима (ah = 0, al = 13h)
@@ -22,7 +20,7 @@ vga_video_mode:
     ret
 
 ; > Включение текстового режима (80x25)
-vga_text_mode:
+vga_enable_text_mode:
     push ax
 
     ; Установка режима (ah = 0, al = 03h)
@@ -35,12 +33,12 @@ vga_text_mode:
 ; > Очистка экрана выбранным цветом
 ; Параметры:
 ;  - al: цвет очистки (0 - черный)
-vga_clear:
+vga_fill:
     push cx
     push es
     push di
 
-    ; Настройка видеосегмента
+    ; Настройка видеосегмента (es:di)
     mov cx, VGA_SEGMENT
     mov es, cx
     xor di, di
@@ -71,17 +69,18 @@ vga_set_pixel:
     cmp ax, VGA_HEIGHT
     jae .done           ; Если Y >= 200, выходим
 
-    ; Вычисление адреса пикселя: di = Y * 320 + X
-    push dx
+    ; Вычисление адреса пикселя
+    ; > di = Y * 320 + X (ax - Y, bx - X)
+    push dx            ; *Сохраняем цвет пикселя
     mov cx, VGA_WIDTH
     mul cx
     add ax, bx
     mov di, ax
 
-    ; Запись в видеопамять
+    ; Запись в видеопамять (es:di)
     mov cx, VGA_SEGMENT
     mov es, cx
-    pop dx
+    pop dx           ; *Восстанавливаем цвет пикселя
     mov [es:di], dl
 
 .done:
@@ -97,7 +96,7 @@ vga_set_pixel:
 ;  - bx, ax: X, Y (0-319, 0-199)
 ; Вывод:
 ;  - dl: цвет найденного пикселя
-;  - CF (Carry Flag): 0 - успех, 1 - ошибка
+;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка)
 vga_get_pixel:
     push ax
     push cx
@@ -110,26 +109,25 @@ vga_get_pixel:
     cmp ax, VGA_HEIGHT
     jae .fail           ; Если Y >= 200, выходим
 
-    ; Вычисляем адрес искомого пикселя: di = Y * 320 + X
+    ; Вычисляем адрес искомого пикселя
+    ; > di = Y * 320 + X (ax - Y, bx - X)
     mov cx, VGA_WIDTH
     mul cx
     add ax, bx
     mov di, ax
 
-    ; Чтение из видеопамяти
+    ; Чтение из видеопамяти (es:di)
     mov cx, VGA_SEGMENT
     mov es, cx
     mov dl, [es:di]
-    mov [.pixel], dl
 
     clc
     jmp .done
 
 ; Выход за границы экрана
 .fail:
-    ; Сброс dl и установка CF (Carry Flag)
-    stc
     xor dl, dl
+    stc
 
 .done:
     pop es
@@ -137,8 +135,6 @@ vga_get_pixel:
     pop cx
     pop ax
     ret
-
-.pixel: db 0
 
 
 ; > Отрисовка горизонтальной линии
@@ -195,12 +191,12 @@ vga_draw_rect:
 
 .loop:
     ; Рисуем горизонтальную строку прямоугольника
-    ; (dx сохраняем, т.к. используем как цвет)
+    ; (dx - сохраняем цвет пикселя)
     push dx
     mov dx, si
     call vga_draw_hline
 
-    ; Переход на след строку
+    ; Переход на след. строку прямоугольника
     inc ax
     pop dx
     cmp ax, dx

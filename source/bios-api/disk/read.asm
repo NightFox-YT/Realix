@@ -1,5 +1,5 @@
 ; © Realix > Disk Read
-; (13.06.26) v0.06
+; (27.07.26) v0.1
 ; ================
 ; ❗️ Зависимости: error_handler (внешний обработчик)
 
@@ -31,7 +31,7 @@ disk_read:
     int 0x13
     jnc .done
 
-    ; Ошибка, => Сбрасываем контроллер диска
+    ; Если "Ошибка", сбрасываем контроллер диска
     popa
     call disk_reset
 
@@ -76,8 +76,8 @@ disk_read:
     mov cx, dx           ; Сохраняем номер сектора (cx)
 
     ; Вычисление номеров:
-    ; - ax (Цилиндр) = (LBA / SPT) / Heads
-    ; - dx (Голова)  = (LBA / SPT) % Heads
+    ; > ax (Цилиндр) = (LBA / SPT) / Heads
+    ; > dx (Голова)  = (LBA / SPT) % Heads
     xor dx, dx
     div word [disk_heads]
     mov dh, dl             ; Сохраняем номер головы (dh)
@@ -98,12 +98,11 @@ disk_read:
 ; Параметры:
 ;  - dl: номер диска
 disk_reset:
-    ; Установка Carry Flag (Некоторые BIOS не устанавливают)
     pusha
-    stc
 
     ; Сброс контроллера диска
-    xor ax, ax
+    xor ax, ax  ; Функция BIOS: Сброс дискового контроллера
+    stc         ; Установка Carry Flag (Некоторые BIOS не устанавливают)
     int 0x13
     jc read_error
 

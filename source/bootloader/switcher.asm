@@ -1,8 +1,8 @@
 ; © Realix > Switcher CPU modes
 ; (21.06.26) v0.07
 ; ================
-; ❗️ Не standalone: Подключается из initrix.asm (%include).
-;    Требует: print, print_new_line (io), file_load (fat12), boot_drive_num
+; ❗️ Не standalone: Подключается из initrix.asm (%include) и требует boot_drive_num
+; ❗️ Зависимости: kernel16/io: print & print_new_line; bios-api/fat12/file_load
 
 ; Настройка компиляции
 bits 16
@@ -29,13 +29,14 @@ boot_switcher:
     ; Нажали что-то другое - возвращаемся в цикл
     jmp .wait_key
 
+
 ; > Ветка Real Mode (16 bit)
 .load_kernel16:
     call print_new_line
     mov si, msg_loading_16
     call print
 
-    ; Чтение файла ядра с диска
+    ; Чтение файла 16-битного ядра с диска
     mov si, kernel16_filename
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
@@ -71,22 +72,22 @@ boot_switcher:
     ; Динамически вычисляем физический адрес GDT перед загрузкой
     xor eax, eax
     mov ax, ds
-    shl eax, 4                     ; Преобразуем `ds` в линейный адрес (сегмент * 16)
+    shl eax, 4                     ; Преобразуем ds в линейный адрес (сегмент * 16)
     add eax, gdt_start             ; Прибавляем смещение таблицы GDT
     mov [gdt_descriptor + 2], eax  ; Записываем получившийся адрес в дескриптор таблицы
 
-    ; Динамически вычисляем физический адрес pmode_entry
+    ; Динамически вычисляем физический адрес `pmode_entry`
     xor eax, eax
     mov ax, ds
-    shl eax, 4                      ; Преобразуем `ds` в линейный адрес (сегмент * 16)
+    shl eax, 4                      ; Преобразуем ds в линейный адрес (сегмент * 16)
     add eax, pmode_entry            ; Прибавляем смещение метки `pmode_entry`
-    mov [pmode_target_offset], eax  ; Записываем адрес в структуру памяти для дальнего перехода
+    mov [pmode_target_offset], eax  ; Записываем адрес в структуру памяти для перехода
 
     ; Включаем A20 (С отключением прерываний)
     cli
     in al, 0x92   ; Читаем состояние системного порта 0x92
-    and al, 0xFE  ; Сбрасываем 0-й бит (бит аппаратного сброса), чтобы случайно не перезагрузиться
-    or al, 2      ; Устанавливаем бит 1 - Fast A20 gate (10b)
+    and al, 0xFE  ; Сбрасываем 0-й бит "аппаратного сброса", чтобы случайно не перезагрузиться
+    or al, 2      ; Устанавливаем 1-ый бит "Fast A20 gate"
     out 0x92, al  ; Отправляем обратно в порт
 
     ; Загружаем GDT
@@ -97,7 +98,7 @@ boot_switcher:
     or eax, 0x00000001
     mov cr0, eax
 
-    ; Выполняем 32-битный дальний прыжок через структуру в памяти.
+    ; Выполняем 32-битный дальний прыжок через структуру в памяти
     jmp dword far [pmode_target]
 
 
@@ -159,7 +160,7 @@ pmode_entry:
     mov eax, KERNEL32_PHYS_ADDR
     jmp eax
 
-    ; Остановка CPU (Если ядро Rust вернулось)
+    ; Остановка CPU (Если ядро Rust вернуло управление)
     cli
     hlt
     jmp $
@@ -169,7 +170,7 @@ bits 16
 
 str_choose_mode:
     db '[+] Select OS Mode:', ENTER
-    db '  [1] 16-bit Real Mode', ENTER
+    db '  [1] 16-bit Real Mode (NASM)', ENTER
     db '  [2] 32-bit Protected Mode (Rust)', ENTER, 0
 
 msg_loading_16: db '[+] Loading 16-bit kernel.', ENTER, 0

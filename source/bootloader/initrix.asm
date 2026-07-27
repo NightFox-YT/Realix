@@ -1,5 +1,5 @@
 ; © Realix > Initrix (Stage 2)
-; (19.07.26) v0.1
+; (27.07.26) v0.1
 ; ================
 ; ❗️ Загружается Bootix по адресу INITRIX_LOAD_SEGMENT:0, номер диска в dl
 
@@ -11,35 +11,39 @@ org 0x0
 %include 'shared/config.asm'
 
 main:
-    ; Сохраняем номер диска, переданного из bootix
+    ; Сохраняем номер диска, переданного из Bootix
     mov [boot_drive_num], dl
 
     ; Инициализация драйверов
     call disk_init
+    jc disk_init_error
     call fat12_init
 
     mov si, msg_init
     call print
 
-    ; Получение объёма доступной "нижней" памяти (до 640 КБ, INT 12h)
+    ; Сброс дополнительного сегмента
+    xor ax, ax
+    mov es, ax
+
+    ; Получение объёма доступной "нижней" памяти (до 640 КБ)
     call get_lower_memory
     jc lower_memory_error
     mov [low_memory_kb], ax
 
-    ; Получение карты памяти (E820 | INT 15h, с сбросом доп. сегмента)
-    xor cx, cx
-    mov es, cx
-    mov di, PCINFO_ADDR + 5
+    ; Получение карты памяти (int 0x15 | E820, *Доп. сегмент)
+    mov di, PCINFO_ADDR + PCINFO_MAP
     call get_memory_map
     jc memory_map_error
 
-    ; Экспорт собранных данных (*Доп. сегмент 0x0)
+    ; Экспорт собранных данных (*Доп. сегмент)
     mov ax, [low_memory_kb]
     mov dl, [boot_drive_num]
-    mov word [es:PCINFO_ADDR], ax      ; Размер "нижней" памяти (КБ)
-    mov byte [es:PCINFO_ADDR + 2], dl  ; Номер загрузочного диска
-    mov word [es:PCINFO_ADDR + 3], bp  ; Кол-во записей в карте памяти
+    mov word [es:PCINFO_ADDR + PCINFO_LOW_MEM], ax  ; Размер "нижней" памяти (КБ)
+    mov byte [es:PCINFO_ADDR + PCINFO_DRIVE], dl    ; Номер загрузочного диска
+    mov word [es:PCINFO_ADDR + PCINFO_ENTRIES], bp  ; Кол-во записей в карте памяти
 
+    ; Вывод заголовка Initrix
     call cmd_cls
     mov si, str_title
     call print
@@ -69,12 +73,20 @@ main:
     ; Переходим в след. модуль
     jmp boot_switcher
 
+
+; > Ошибка 4
 lower_memory_error:
     mov si, err_get_lower_memory
     jmp error_handler
 
+; > Ошибка 5
 memory_map_error:
     mov si, err_get_memory_map
+    jmp error_handler
+
+; > Ошибка 6
+disk_init_error:
+    mov si, err_disk_init
     jmp error_handler
 
 ; > Обработчик ошибок
@@ -103,13 +115,15 @@ error_handler:
 %include 'bootloader/switcher.asm'
 
 ; Сообщения и строки
-msg_init: db '[+] Initializing...', ENTER, 0
-
-err_get_memory_map:   db '[!] Get memory map failed (int 15h)!', 0
-err_get_lower_memory: db '[!] Get lower memory failed (int 12h)!', 0
+msg_init:             db '[+] Initializing...', ENTER, 0
+err_get_lower_memory: db '[!] E4: Get lower memory failed (int 12h)!', 0
+err_get_memory_map:   db '[!] E5: Get memory map failed (int 15h)!', 0
 
 ; Предупреждения
 msg_warn_no_nic: db '[!] Network card RTL8139 not found, networking disabled.', ENTER, 0
+
+; Сообщения об ошибках
+err_disk_init: db '[!] E6: Disk init failed!', ENTER, 0
 
 str_title:
     db '     Realix ', OS_VERSION, ENTER

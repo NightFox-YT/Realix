@@ -2,6 +2,7 @@
 ; ø Copyright Gleb Obitotsky <https://github.com/oxxx1mif>
 ; (18.06.26) v0.07
 ; ================
+; ❗️ Временно модуль не используется...
 
 ; Экспорт функций наружу
 global arch_has_rdrand

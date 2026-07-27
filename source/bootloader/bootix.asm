@@ -3,7 +3,6 @@
 ; ================
 ; ❗️ Зависимости: kernel16/io/print.asm (в режиме PRINT_MINIMAL),
 ;                 bios-api/disk/read.asm
-;
 ; ❗️ Свой минимальный обход FAT12 вместо bios-api/fat12,
 ;   чтобы стадия 1 влезла в 512 байт (Дублирование намеренное).
 
@@ -104,7 +103,7 @@ main:
     call disk_read
 
     ; Подготовка к поиску файла
-    xor bx, bx      ; Кол-во пройденных записей корневого каталога
+    xor bx, bx               ; Кол-во пройденных записей корневого каталога
     mov di, FAT_BUFFER_ADDR  ; Адрес текущей записи корневого каталога
 
 .search_initrix:
@@ -125,7 +124,7 @@ main:
     cmp bx, [bpb_dir_entries]
     jb .search_initrix        ; Если не вышли за предел, продолжаем поиск
 
-    ; Выход за предел, => файла второго этапа загрузчика нет
+    ; Если "Выход за предел", файла второго этапа загрузчика нет
     mov si, err_initrix_not_found
     jmp error_handler
 
@@ -141,7 +140,7 @@ main:
     mov bx, FAT_BUFFER_ADDR         ; Адрес записи
     call disk_read
 
-    ; Установка сегмента и смещения для чтения initrix
+    ; Установка сегмента и смещения для чтения Initrix
     mov bx, INITRIX_LOAD_SEGMENT
     mov es, bx
     mov bx, INITRIX_LOAD_OFFSET
@@ -163,7 +162,7 @@ main:
     mov dl, [ebr_drive_number]
     call disk_read
 
-    ; Увеличиваем адрес смещения initrix на кол-во прочитанных байт
+    ; Увеличиваем адрес смещения Initrix на кол-во прочитанных байт
     xor ah, ah
     mov al, [bpb_sectors_per_cluster]
     mul word [bpb_bytes_per_sector]
@@ -213,13 +212,13 @@ main:
     jmp .load_initrix_loop
 
 .read_initrix_finish:
-    ; Настройка сегментных регистров под initrix
+    ; Настройка сегментных регистров под Initrix
     mov ax, INITRIX_LOAD_SEGMENT
     mov ds, ax
     mov es, ax
     mov dl, [ebr_drive_number]
 
-    ; Переход к initrix
+    ; Переход к Initrix
     jmp INITRIX_LOAD_SEGMENT:INITRIX_LOAD_OFFSET
 
 
