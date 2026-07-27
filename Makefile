@@ -1,67 +1,71 @@
-# © Realix > Makefile: Main (NASM)
-# (21.06.26) v0.07
+# © Realix > Makefile: Main
+# (27.07.26) v0.1
 # ================
 
 # Конфигурация
-ASM = nasm
-ASMFLAGS = -f bin -i $(SRC_DIR)
-SRC_DIR = source
-BUILD_DIR = build
+SRC_DIR   := source
+BUILD_DIR := build
 
-.PHONY: all floppy bootix initrix kernel16 kernel32 clean always run
+# Каталоги подпроектов
+BOOTLOADER_DIR := $(SRC_DIR)/bootloader
+KERNEL16_DIR   := $(SRC_DIR)/kernel16
+KERNEL32_DIR   := $(SRC_DIR)/kernel32
+
+# Параметры, передаваемые в дочерние Makefile
+SUBMAKE_VARS := BUILD_DIR=$(abspath $(BUILD_DIR)) SRC_DIR=$(abspath $(SRC_DIR))
+
+# Образ диска и его содержимое
+IMAGE        := $(BUILD_DIR)/realix.img
+BOOTIX_BIN   := $(BUILD_DIR)/bootix.bin
+INITRIX_BIN  := $(BUILD_DIR)/initrix.bin
+KERNEL16_BIN := $(BUILD_DIR)/kernel16.bin
+KERNEL32_BIN := $(BUILD_DIR)/kernel32.bin
+
+.PHONY: all floppy bootloader bootix initrix kernel16 kernel32 run clean
 
 # Запуск по умолчанию
 all: floppy
 
 
-# Сборка образа диска (floppy)
-floppy: $(BUILD_DIR)/realix.img
+# Сборка образа диска (floppy 1.44 МБ)
+floppy: $(IMAGE)
 
-$(BUILD_DIR)/realix.img: bootix initrix kernel16 kernel32 always
-	dd if=/dev/zero of=$(BUILD_DIR)/realix.img bs=512 count=2880
-	mformat -i $(BUILD_DIR)/realix.img -f 1440 ::
-	dd if=$(BUILD_DIR)/bootix.bin of=$(BUILD_DIR)/realix.img conv=notrunc
-	mcopy -i $(BUILD_DIR)/realix.img $(BUILD_DIR)/initrix.bin "::initrix.bin"
-	mcopy -i $(BUILD_DIR)/realix.img $(BUILD_DIR)/kernel16.bin "::kernel16.bin"
-	mcopy -i $(BUILD_DIR)/realix.img $(BUILD_DIR)/kernel32.bin "::kernel32.bin"
-
-
-# Сборка загрузчика (bin)
-bootix: $(BUILD_DIR)/bootix.bin
-
-$(BUILD_DIR)/bootix.bin:
-	$(ASM) $(ASMFLAGS) $(SRC_DIR)/bootloader/bootix.asm -o $(BUILD_DIR)/bootix.bin
+$(IMAGE): bootloader kernel16 kernel32
+	dd if=/dev/zero of=$(IMAGE) bs=512 count=2880
+	mformat -i $(IMAGE) -f 1440 ::
+	dd if=$(BOOTIX_BIN) of=$(IMAGE) conv=notrunc
+	mcopy -i $(IMAGE) $(INITRIX_BIN) "::initrix.bin"
+	mcopy -i $(IMAGE) $(KERNEL16_BIN) "::kernel16.bin"
+	mcopy -i $(IMAGE) $(KERNEL32_BIN) "::kernel32.bin"
 
 
-# Сборка инициализатора (bin)
-initrix: $(BUILD_DIR)/initrix.bin
+# Сборка загрузчика: Bootix (Stage 1) + Initrix (Stage 2)
+bootloader:
+	$(MAKE) -C $(BOOTLOADER_DIR) $(SUBMAKE_VARS)
 
-$(BUILD_DIR)/initrix.bin:
-	$(ASM) $(ASMFLAGS) $(SRC_DIR)/bootloader/initrix.asm -o $(BUILD_DIR)/initrix.bin
+# Сборка отдельных стадий загрузчика
+bootix initrix:
+	$(MAKE) -C $(BOOTLOADER_DIR) $(SUBMAKE_VARS) $@
 
 
 # Сборка 16-битного ядра (NASM + C в будущем)
-kernel16: always
-	$(MAKE) -C $(SRC_DIR)/kernel16 BUILD_DIR=$(abspath $(BUILD_DIR)) SRC_DIR=$(abspath $(SRC_DIR))
+kernel16:
+	$(MAKE) -C $(KERNEL16_DIR) $(SUBMAKE_VARS)
 
 
 # Сборка 32-битного ядра (Rust)
-kernel32: always
-	$(MAKE) -C $(SRC_DIR)/kernel32 BUILD_DIR=$(abspath $(BUILD_DIR))
+kernel32:
+	$(MAKE) -C $(KERNEL32_DIR) BUILD_DIR=$(abspath $(BUILD_DIR))
 
 
 # Запуск собранного образа диска
 run: floppy
-	qemu-system-x86_64 -drive file=$(BUILD_DIR)/realix.img,format=raw,if=floppy
-
-
-# Подготовка к сборке
-always:
-	mkdir -p $(BUILD_DIR)
+	qemu-system-x86_64 -drive file=$(IMAGE),format=raw,if=floppy
 
 
 # Очистка
 clean:
-	$(MAKE) -C $(SRC_DIR)/kernel16 BUILD_DIR=$(abspath $(BUILD_DIR)) clean
-	$(MAKE) -C $(SRC_DIR)/kernel32 BUILD_DIR=$(abspath $(BUILD_DIR)) clean
-	rm -rf $(BUILD_DIR)/*
+	$(MAKE) -C $(BOOTLOADER_DIR) $(SUBMAKE_VARS) clean
+	$(MAKE) -C $(KERNEL16_DIR) $(SUBMAKE_VARS) clean
+	$(MAKE) -C $(KERNEL32_DIR) BUILD_DIR=$(abspath $(BUILD_DIR)) clean
+	rm -rf $(BUILD_DIR)
