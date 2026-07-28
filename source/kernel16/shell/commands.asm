@@ -1,6 +1,6 @@
 ; © Realix > Shell: Commands
 ; ø Вдохновлено @nyxmalware
-; (27.07.26) v0.1
+; (28.07.26) v0.11
 ; ================
 ; ❗️ Зависимости: bios-api/memory, kernel16/io, kernel16/shell/parse
 ; TODO:
@@ -34,6 +34,10 @@ cmd_table:
     dw .str_load,     cmd_load
     dw .str_type,     cmd_type
     dw .str_hexdump,  cmd_hexdump
+    dw .str_regs,     cmd_regs
+    dw .str_time,     cmd_time
+    dw .str_date,     cmd_date
+    dw .str_vga,      cmd_vga
     dw 0
 
 .str_help:     db 'help', 0
@@ -58,6 +62,10 @@ cmd_table:
 .str_ls:       db 'ls', 0
 .str_type:     db 'type', 0
 .str_hexdump:  db 'hexdump', 0
+.str_regs:     db 'regs', 0
+.str_time:     db 'time', 0
+.str_date:     db 'date', 0
+.str_vga:      db 'vga', 0
 
 ; > Исполнитель команд
 ; Параметры:
@@ -273,6 +281,15 @@ cmd_about:
 
 ; > Команда шестнадцатеричного дампа файла
 %include "kernel16/commands/hexdump.asm"
+
+; > Команда вывода снимка регистров
+%include "kernel16/commands/regs.asm"
+
+; > Команды вывода времени и даты (RTC)
+%include "kernel16/commands/rtc.asm"
+
+; > Команда демонстрации графического режима
+%include "kernel16/commands/vga.asm"
 
 ; > Команда помощи
 %include "kernel16/commands/help.asm"

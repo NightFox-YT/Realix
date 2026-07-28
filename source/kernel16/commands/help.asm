@@ -1,5 +1,5 @@
 ; © Realix > Command: Help
-; (17.07.26) v0.1
+; (28.07.26) v0.11
 ; ================
 ; ❗️ Зависимости: kernel16/io/print.asm
 
@@ -28,8 +28,10 @@ msg_help:
     db '> calc <a> <+ - * /> <b> - Calculator > ls          - List root directory', ENTER
     db '> hex <num>  - <num> to hexadecimal   > load <f>    - Load file into RAM', ENTER
     db '> fib <0-24> - Nth Fibonacci number   > type <f>    - Print file as text', ENTER
-    db '                                      > hexdump <f> - Hex dump of file',
+    db '                                      > hexdump <f> - Hex dump of file', ENTER
     db ENTER
-    db '[Power]', ENTER
-    db '> reboot   - Reboot PC', ENTER
-    db '> shutdown - Power off PC', 0
+    db '[System]                               [Power]', ENTER
+    db '> regs - Show CPU registers snapshot  > reboot   - Reboot PC', ENTER
+    db '> time - Show RTC time                > shutdown - Power off PC', ENTER
+    db '> date - Show RTC date', ENTER
+    db '> vga  - VGA 320x200 graphics demo', 0
