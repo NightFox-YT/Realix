@@ -72,17 +72,17 @@ main:
     jmp boot_switcher
 
 
-; > Ошибка 4
+; > Ошибка 5
 lower_memory_error:
     mov si, err_get_lower_memory
     jmp error_handler
 
-; > Ошибка 5
+; > Ошибка 6
 memory_map_error:
     mov si, err_get_memory_map
     jmp error_handler
 
-; > Ошибка 6
+; > Ошибка 7
 disk_init_error:
     mov si, err_disk_init
     jmp error_handler
@@ -114,14 +114,14 @@ error_handler:
 
 ; Сообщения и строки
 msg_init:             db '[+] Initializing...', ENTER, 0
-err_get_lower_memory: db '[!] E4: Get lower memory failed (int 12h)!', 0
-err_get_memory_map:   db '[!] E5: Get memory map failed (int 15h)!', 0
+err_get_lower_memory: db '[!] E5: Get lower memory failed (int 12h)!', 0
+err_get_memory_map:   db '[!] E6: Get memory map failed (int 15h)!', 0
 
 ; Предупреждения
 msg_warn_no_nic: db '[!] Network card RTL8139 not found, networking disabled.', ENTER, 0
 
 ; Сообщения об ошибках
-err_disk_init: db '[!] E6: Disk init failed!', ENTER, 0
+err_disk_init: db '[!] E7: Disk init failed!', ENTER, 0
 
 str_title:
     db '     Realix ', OS_VERSION, ENTER

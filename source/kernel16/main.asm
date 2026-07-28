@@ -1,5 +1,5 @@
 ; © Realix > Kernel16: Main
-; (27.07.26) v0.1
+; (28.07.26) v0.11
 ; ================
 ; ❗️ Загружается Switcher по адресу KERNEL_LOAD_SEGMENT:0, номер диска в dl
 
@@ -46,7 +46,7 @@ main:
     hlt
     jmp $
 
-; > Ошибка 6
+; > Ошибка 7
 disk_init_error:
     mov si, err_disk_init
     jmp error_handler
@@ -74,6 +74,7 @@ error_handler:
 %include 'bios-api/memory/low.asm'
 %include 'bios-api/disk/read.asm'
 %include 'bios-api/fat12/file_load.asm'
+%include 'bios-api/video/vga.asm'
 
 ; Сообщения и строки
 msg_start_kernel: db '[+] Starting kernel16.', ENTER, 0
@@ -82,4 +83,4 @@ cli_title:        db 'Welcome to Realix (Real Mode with NASM kernel)...', ENTER,
 cli_hint:         db "Type 'help' for list of commands.", ENTER, ENTER, 0
 
 ; Сообщения об ошибках
-err_disk_init: db '[!] E6: Disk init failed!', ENTER, 0
+err_disk_init: db '[!] E7: Disk init failed!', ENTER, 0

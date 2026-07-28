@@ -211,7 +211,7 @@ cmd_shutdown:
     jmp $
 
 .error:
-    ; Ошибка 7: Не удалось выключить ПК
+    ; Ошибка 8: Не удалось выключить ПК
     mov si, err_shutdown
     call print
 
@@ -368,7 +368,7 @@ require_arg:
 
 ; Сообщения об ошибках
 err_unknown_cmd: db "[!] Unknown command. Type 'help' for list of commands.", 0
-err_shutdown:    db '[!] E7: PC shutdown failed! (No APM)', 0
+err_shutdown:    db '[!] E8: PC shutdown failed! (No APM)', 0
 
 ; Сообщения
 msg_about:
