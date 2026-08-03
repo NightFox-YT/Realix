@@ -3,6 +3,7 @@
 ; (28.07.26) v0.11
 ; ================
 ; ❗️ Зависимости: bios-api/memory, kernel16/io, kernel16/shell/parse
+;                 kernel16/debug/panic.asm
 ; TODO:
 ;  - Возвращение carry_flag при ошибке
 ;  - В shutdown полагаться не только на APM
@@ -38,6 +39,9 @@ cmd_table:
     dw .str_time,     cmd_time
     dw .str_date,     cmd_date
     dw .str_vga,      cmd_vga
+    dw .str_key,      cmd_key
+    dw .str_screen,   cmd_screen
+    dw .str_panic,    cmd_panic
     dw 0
 
 .str_help:     db 'help', 0
@@ -66,6 +70,9 @@ cmd_table:
 .str_time:     db 'time', 0
 .str_date:     db 'date', 0
 .str_vga:      db 'vga', 0
+.str_key:      db 'key', 0
+.str_screen:   db 'screen', 0
+.str_panic:    db 'panic', 0
 
 ; > Исполнитель команд
 ; Параметры:
@@ -258,6 +265,11 @@ cmd_about:
     pop si
     ret
 
+; > Команда самостоятельного вызова паники
+cmd_panic:
+    call debug_panic_manual
+    ret
+
 ; > Команда очистки экрана
 %include "kernel16/commands/cls.asm"
 
@@ -271,25 +283,31 @@ cmd_about:
 %include "kernel16/commands/calc.asm"
 
 ; > Команда загрузки файла с диска
-%include "kernel16/commands/load.asm"
+%include "kernel16/commands/file-system/load.asm"
 
 ; > Команда вывода списка файлов
-%include "kernel16/commands/ls.asm"
+%include "kernel16/commands/file-system/ls.asm"
 
 ; > Команда печати файла как текста
-%include "kernel16/commands/type.asm"
+%include "kernel16/commands/file-system/type.asm"
 
 ; > Команда шестнадцатеричного дампа файла
-%include "kernel16/commands/hexdump.asm"
+%include "kernel16/commands/file-system/hexdump.asm"
 
 ; > Команда вывода снимка регистров
-%include "kernel16/commands/regs.asm"
+%include "kernel16/commands/debug/regs.asm"
 
 ; > Команды вывода времени и даты (RTC)
 %include "kernel16/commands/rtc.asm"
 
 ; > Команда демонстрации графического режима
 %include "kernel16/commands/vga.asm"
+
+; > Команды для вывода ascii/scancode клавиши
+%include "kernel16/commands/debug/key.asm"
+
+; > Команды для вывода информации о видеорежиме
+%include "kernel16/commands/debug/screen.asm"
 
 ; > Команда помощи
 %include "kernel16/commands/help.asm"

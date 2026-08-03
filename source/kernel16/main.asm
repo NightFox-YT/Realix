@@ -18,6 +18,9 @@ kernel_start:
     jc disk_init_error
     call fat12_init
 
+    ; Инициализация IVT обработчиков
+    call install_exception_handlers
+
     ; "Запуск ядра" && "Нажмите, чтобы продолжить"
     mov si, msg_start_kernel
     call print
@@ -75,6 +78,7 @@ error_handler:
 %include 'bios-api/disk/read.asm'
 %include 'bios-api/fat12/file_load.asm'
 %include 'bios-api/video/vga.asm'
+%include 'kernel16/debug/panic.asm'
 
 ; Сообщения и строки
 msg_start_kernel: db '[+] Starting kernel16.', ENTER, 0

@@ -7,6 +7,7 @@
 ; Параметры:
 ;  - ax: значение
 print_dec16:
+    push ax
     push bx
     push cx
     push dx
@@ -32,6 +33,7 @@ print_dec16:
     loop .print_loop
 
 .done:
+    pop ax
     pop dx
     pop cx
     pop bx
