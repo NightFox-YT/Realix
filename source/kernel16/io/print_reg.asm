@@ -33,10 +33,10 @@ print_dec16:
     loop .print_loop
 
 .done:
-    pop ax
     pop dx
     pop cx
     pop bx
+    pop ax
     ret
 
 ; > Вывод значения ax в шестнадцатеричном виде на экран (Текстовый режим)
