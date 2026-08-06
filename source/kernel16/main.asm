@@ -1,5 +1,5 @@
 ; © Realix > Kernel16: Main
-; (28.07.26) v0.11
+; (06.08.26) v0.11
 ; ================
 ; ❗️ Загружается Switcher по адресу KERNEL_LOAD_SEGMENT:0, номер диска в dl
 
@@ -20,6 +20,12 @@ kernel_start:
 
     ; Инициализация IVT обработчиков
     call install_exception_handlers
+
+    ; Получаем начальное значение тиков после загрузки (в cx:dx)
+    mov ah, 00h
+    int 0x1A
+    mov [init_tick_high], cx
+    mov [init_tick_low], dx
 
     ; "Запуск ядра" && "Нажмите, чтобы продолжить"
     mov si, msg_start_kernel
@@ -77,7 +83,7 @@ error_handler:
 %include 'bios-api/memory/low.asm'
 %include 'bios-api/disk/read.asm'
 %include 'bios-api/fat12/file_load.asm'
-%include 'bios-api/video/vga.asm'
+%include 'bios-api/vga.asm'
 %include 'kernel16/debug/panic.asm'
 
 ; Сообщения и строки
@@ -88,3 +94,7 @@ cli_hint:         db "Type 'help' for list of commands.", ENTER, ENTER, 0
 
 ; Сообщения об ошибках
 err_disk_init: db '[!] E7: Disk init failed!', ENTER, 0
+
+; Переменные
+init_tick_high: dw 0
+init_tick_low:  dw 0

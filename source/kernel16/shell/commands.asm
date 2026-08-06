@@ -1,6 +1,6 @@
 ; © Realix > Shell: Commands
 ; ø Вдохновлено @nyxmalware
-; (28.07.26) v0.11
+; (06.08.26) v0.11
 ; ================
 ; ❗️ Зависимости: bios-api/memory, kernel16/io, kernel16/shell/parse
 ;                 kernel16/debug/panic.asm

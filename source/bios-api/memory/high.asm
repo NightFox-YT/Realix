@@ -1,5 +1,5 @@
 ; © Realix > High memory (Memory Map)
-; (27.07.26) v0.1
+; (05.08.26) v0.11
 ; ================
 
 ; Основные константы
@@ -121,7 +121,7 @@ show_map_entries_cnt:
 ; Параметры:
 ;  - es:di: Указатель на `PCINFO`
 ; Вывод:
-;  - ax: Число свободной памяти (МБ), насыщается на 65535 при переполнении
+;  - eax: Число свободной памяти (До 2 ^ 32 МБ или до 4096 ТБ)
 get_usable_memory:
     push ebx
     push ecx
@@ -167,17 +167,15 @@ get_usable_memory:
     shrd ebx, edx, 20  ; Сдвигаем ebx на 20 бит, заполняя верх ebx из edx
     shr edx, 20        ; Сдвигаем edx на 20 бит
 
-    ; Если результат не влезает в ax, насыщаем значение вместо переполнения
+    ; Если результат не влезает (Вдруг >4096 ТБ...), насыщаем значение
     test edx, edx
     jnz .saturate
-    cmp ebx, 0xFFFF
-    ja .saturate
 
-    mov ax, bx
+    mov eax, ebx
     jmp .done
 
 .saturate:
-    mov ax, 0xFFFF
+    mov eax, 0xFFFFFFFF
 
 .done:
     pop si
@@ -204,7 +202,7 @@ show_usable_memory:
     ; (ax содержит нужное число после `call get_usable_memory`)
     mov si, str_usable_ram
     call print
-    call print_dec16
+    call print_dec32
     mov si, str_mb
     call print
 
