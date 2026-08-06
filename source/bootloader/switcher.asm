@@ -45,7 +45,7 @@ boot_switcher:
     mov ah, 00h
     int 0x1A
     mov ax, dx
-    sub ax, [last_tick_low]
+    sub ax, word [last_tick_low]
 
     ; Если прошла 1 сек. (~18 тиков), обновляем таймер
     cmp ax, 18

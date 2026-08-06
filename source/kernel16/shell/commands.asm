@@ -40,8 +40,9 @@ cmd_table:
     dw .str_date,     cmd_date
     dw .str_vga,      cmd_vga
     dw .str_key,      cmd_key
-    dw .str_screen,   cmd_screen
+    dw .str_sysinfo,  cmd_sysinfo
     dw .str_panic,    cmd_panic
+    dw .str_uptime,   cmd_uptime
     dw 0
 
 .str_help:     db 'help', 0
@@ -71,8 +72,9 @@ cmd_table:
 .str_date:     db 'date', 0
 .str_vga:      db 'vga', 0
 .str_key:      db 'key', 0
-.str_screen:   db 'screen', 0
+.str_sysinfo:  db 'sysinfo', 0
 .str_panic:    db 'panic', 0
+.str_uptime:   db 'uptime', 0
 
 ; > Исполнитель команд
 ; Параметры:
@@ -271,7 +273,7 @@ cmd_panic:
     ret
 
 ; > Команда очистки экрана
-%include "kernel16/commands/cls.asm"
+%include "kernel16/commands/base/cls.asm"
 
 ; > Команды для работы с текстом
 %include "kernel16/commands/text.asm"
@@ -306,11 +308,14 @@ cmd_panic:
 ; > Команды для вывода ascii/scancode клавиши
 %include "kernel16/commands/debug/key.asm"
 
-; > Команды для вывода информации о видеорежиме
-%include "kernel16/commands/debug/screen.asm"
+; > Команды для вывода системной информации
+%include "kernel16/commands/debug/sysinfo.asm"
+
+; > Команды для вывода аптайма
+%include "kernel16/commands/debug/uptime.asm"
 
 ; > Команда помощи
-%include "kernel16/commands/help.asm"
+%include "kernel16/commands/base/help.asm"
 
 ; > Перевод символа al в верхний регистр (a-z -> A-Z, иначе без изменений)
 ; Параметры & Вывод:
