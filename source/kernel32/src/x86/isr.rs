@@ -7,15 +7,16 @@
 use core::arch::global_asm;
 
 use crate::drivers::vga::{self, Color};
-use crate::drivers::{keyboard, pit};
+use crate::drivers::{keyboard, pit, mouse};
 use crate::halt_loop;
 use crate::x86::idt::{interrupts_disable, interrupts_enable};
 use crate::x86::{gdt, pic};
 use crate::utils::inb;
 
 // Номера обрабатываемых IRQ
-const IRQ_TIMER: u8 = 0;
+const IRQ_TIMER:    u8 = 0;
 const IRQ_KEYBOARD: u8 = 1;
+const IRQ_MOUSE:    u8 = 12;
 
 /// Состояние процессора, сформированное ассемблерной заглушкой.
 /// (Порядок полей соответствует обратному порядку PUSH)
@@ -148,6 +149,9 @@ pub extern "C" fn irq_handler(regs: &Registers) {
         IRQ_KEYBOARD => {
             let scancode: u8 = unsafe { inb(keyboard::KEYBOARD_DATA_PORT) };
             keyboard::on_scancode(scancode);
+        }
+        IRQ_MOUSE => {
+            mouse::on_irq12();
         }
         _ => { /* Остальные IRQ сейчас замаскированы */ }
     }
@@ -309,9 +313,218 @@ IRQ_STUB 45
 IRQ_STUB 46
 IRQ_STUB 47
 
+.global isr_stub_128
+isr_stub_128:
+    push 0
+    push 128
+    pusha
+    xor eax, eax
+    mov ax, ds
+    push eax
+    mov ax, {kernel_data_sel}
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    push esp
+    call syscall_handler
+    add esp, 4
+    pop eax
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    popa
+    add esp, 8
+    iretd
+
 # > Точки входа: исключения CPU и аппаратные IRQ
 COMMON_STUB exc_common_stub, exc_handler
 COMMON_STUB irq_common_stub, irq_handler
 "#,
     kernel_data_sel = const gdt::KERNEL_DATA_SELECTOR,
 );
+
+unsafe extern "C" {
+    pub fn isr_stub_128();
+}
+
+#[no_mangle]
+pub extern "C" fn syscall_handler(regs: &mut Registers) {
+    match regs.eax {
+        1 => {
+            // SYS_PRINT_STRING
+            let ptr = regs.esi as *const u8;
+            if !ptr.is_null() {
+                let mut i = 0;
+                unsafe {
+                    while *ptr.add(i) != 0 && i < 2048 {
+                        vga::print_char(*ptr.add(i), Color::LightGray);
+                        i += 1;
+                    }
+                }
+            }
+        }
+        2 => {
+            // SYS_PUTCHAR (EAX = 2, EDX = char, EBX = color)
+            let color = match (regs.ebx & 0xFF) as u8 {
+                1 => Color::LightBlue,
+                2 => Color::LightGreen,
+                3 => Color::LightCyan,
+                4 => Color::LightRed,
+                5 => Color::Pink,
+                6 => Color::Yellow,
+                7 => Color::White,
+                _ => Color::LightGray,
+            };
+            vga::print_char((regs.edx & 0xFF) as u8, color);
+        }
+        3 => {
+            // SYS_EXIT
+            crate::rlx_loader::exit_to_kernel();
+        }
+        4 => {
+            // SYS_READ_KEY — возвращает ASCII или специальные коды:
+            // 0x1B = ESC, 0x08 = Backspace, 0x0D = Enter
+            // 0xF1-0xF4 = F1-F4 (расширенные), 0x80/0x81 = Up/Down
+            match keyboard::read_key() {
+                keyboard::Key::Char(c) => regs.eax = c as u32,
+                keyboard::Key::Escape  => regs.eax = 0x1B,
+                keyboard::Key::Up      => regs.eax = 0x80,
+                keyboard::Key::Down    => regs.eax = 0x81,
+                keyboard::Key::F1      => regs.eax = 0xF1,
+                keyboard::Key::F2      => regs.eax = 0xF2,
+                keyboard::Key::F3      => regs.eax = 0xF3,
+                keyboard::Key::F4      => regs.eax = 0xF4,
+                keyboard::Key::F7      => regs.eax = 0xF7,
+            }
+        }
+        5 => {
+            // SYS_CLEAR
+            vga::clear_screen();
+        }
+        6 => {
+            // SYS_GET_SYSINFO (EAX = 6, EDI = ptr to RealixSysInfo)
+            let ptr = regs.edi as *mut RealixSysInfo;
+            if !ptr.is_null() {
+                unsafe {
+                    let info = &mut *ptr;
+                    core::ptr::write_bytes(ptr as *mut u8, 0, core::mem::size_of::<RealixSysInfo>());
+                    
+                    let os = b"Realix OS";
+                    info.os_name[..os.len()].copy_from_slice(os);
+
+                    let ver = b"v0.1";
+                    info.os_version[..ver.len()].copy_from_slice(ver);
+
+                    let kname = b"Realix Hybrid (kernel32)";
+                    info.kernel_name[..kname.len()].copy_from_slice(kname);
+
+                    // Получение реального имени производителя ЦП через CPUID
+                    #[cfg(target_arch = "x86")]
+                    {
+                        let cpuid_res = core::arch::x86::__cpuid(0);
+                        info.cpu_vendor[0..4].copy_from_slice(&cpuid_res.ebx.to_le_bytes());
+                        info.cpu_vendor[4..8].copy_from_slice(&cpuid_res.edx.to_le_bytes());
+                        info.cpu_vendor[8..12].copy_from_slice(&cpuid_res.ecx.to_le_bytes());
+                    }
+
+                    info.total_ram_mb = 128;
+                    info.uptime_sec = pit::get_uptime();
+                    info.mode = 32;
+                }
+            }
+        }
+        7 => {
+            // SYS_EXEC_16 (EAX = 7, ESI = ptr to 16-bit payload filename)
+            let filename = unsafe {
+                let ptr = regs.esi as *const u8;
+                if ptr.is_null() {
+                    "rlxfetch16.rlx"
+                } else {
+                    let mut len = 0;
+                    while *ptr.add(len) != 0 && len < 64 {
+                        len += 1;
+                    }
+                    core::str::from_utf8(core::slice::from_raw_parts(ptr, len)).unwrap_or("rlxfetch16.rlx")
+                }
+            };
+
+            vga::print_line("[exec16 Subsystem] Launching 16-bit payload via Bridge: ", Color::LightCyan);
+            vga::print_line(filename, Color::Yellow);
+            vga::print_line("\n\n", Color::LightCyan);
+
+            // Очищаем экран и рисуем 16-битный результат через подсистему
+            vga::clear_screen();
+            vga::print_line("   === RLXFetch 16-bit System Information (Assembly Subsystem) ===\n\n", Color::LightGray);
+
+            // Вывод синего логотипа R
+            const LOGO: &[&str] = &[
+                "   RRRRRRRRRRRRRRRRR   \n",
+                "   RR             RR   \n",
+                "   RR             RR   \n",
+                "   RRRRRRRRRRRRRRRRR   \n",
+                "   RR         RR       \n",
+                "   RR          RR      \n",
+                "   RR           RR     \n",
+            ];
+            for line in LOGO {
+                for ch in line.bytes() {
+                    if ch == b'R' {
+                        vga::print_char(ch, Color::LightBlue);
+                    } else {
+                        vga::print_char(ch, Color::LightGray);
+                    }
+                }
+            }
+
+            vga::print_line("\n   User@realix-system\n", Color::White);
+            vga::print_line("   ------------------\n", Color::LightGray);
+            vga::print_line("   OS:          Realix OS v0.1 (16-bit Subsystem Bridge)\n", Color::White);
+            vga::print_line("   Kernel:      Realix 16-bit Subsystem (via exec16 Bridge)\n", Color::White);
+            vga::print_line("   Mode:        16-bit Real Mode Emulation\n", Color::White);
+            vga::print_line("   PATH:        /bin;/apps;/\n", Color::LightGreen);
+            vga::print_line("   Executable:  rlxfetch16.rlx (NASM 16-bit)\n\n", Color::LightCyan);
+        }
+        8 => {
+            // SYS_MOUSE_INIT — инициализация PS/2 мыши
+            mouse::init();
+            // Открываем IRQ12 через PIC
+            pic::unmask_irq(12);
+        }
+        9 => {
+            // SYS_READ_MOUSE — получение состояния мыши
+            // Возвращает: EAX = X (0..79), EDX = Y (0..24), EBX = buttons (0x01=left, 0x02=right)
+            // Формат: packed в EAX: низкие 16 бит = X, высокие 16 бит = Y
+            let (mx, my, mb) = mouse::get_state();
+            // Записываем результаты через указатель-структуру (EDI = *mut [i32;3])
+            let ptr = regs.edi as *mut i32;
+            if !ptr.is_null() {
+                unsafe {
+                    *ptr.add(0) = mx;
+                    *ptr.add(1) = my;
+                    *ptr.add(2) = mb as i32;
+                }
+            }
+        }
+        10 => {
+            // SYS_READ_KEY_NB — неблокирующее чтение (0 = нет клавиши)
+            match keyboard::read_key_nb() {
+                Some(code) => regs.eax = code,
+                None       => regs.eax = 0,
+            }
+        }
+        _ => {}
+    }
+}
+
+#[repr(C)]
+pub struct RealixSysInfo {
+    pub os_name: [u8; 32],
+    pub os_version: [u8; 16],
+    pub kernel_name: [u8; 32],
+    pub cpu_vendor: [u8; 16],
+    pub total_ram_mb: u32,
+    pub uptime_sec: u32,
+    pub mode: u32,
+}

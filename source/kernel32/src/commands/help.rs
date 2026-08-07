@@ -14,6 +14,8 @@ pub fn show() {
     vga::print_line("> echo [t]  - Print text to console\n", Color::LightGray);
     vga::print_line("> uptime    - Show uptime (seconds)\n", Color::LightGray);
     vga::print_line("> meminfo   - Show memory information\n", Color::LightGray);
+    vga::print_line("  [Applications & Ring 3]\n", Color::Cyan);
+    vga::print_line("> exec <f>  - Run .RLX application in Ring 3\n", Color::LightGray);
     vga::print_line("  [Fun]\n", Color::Cyan);
     vga::print_line("> matrix    - Show matrix rain\n", Color::LightGray);
     vga::print_line("  [Power]\n", Color::Cyan);

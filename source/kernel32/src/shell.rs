@@ -16,6 +16,28 @@ const HISTORY_SIZE: usize = 16;
 const HISTORY_SLOT_SIZE: usize = INPUT_MAX + 1;
 const PROMPT: &str = "Realix >> ";
 
+// Глобальная переменная окружения PATH
+static mut PATH_ENV: [u8; 64] = [0u8; 64];
+
+fn get_path_env() -> &'static str {
+    unsafe {
+        let ptr = &raw const PATH_ENV as *const u8;
+        let slice = core::slice::from_raw_parts(ptr, 64);
+        let end = slice.iter().position(|&b| b == 0 || b == b' ').unwrap_or(64);
+        core::str::from_utf8(&slice[..end]).unwrap_or("/bin;/apps")
+    }
+}
+
+fn set_path_env(new_path: &str) {
+    unsafe {
+        let ptr = &raw mut PATH_ENV as *mut u8;
+        core::ptr::write_bytes(ptr, 0, 64);
+        let bytes = new_path.as_bytes();
+        let len = bytes.len().min(63);
+        core::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, len);
+    }
+}
+
 // История команд (Кольцевой буфер)
 struct History {
     data: [[u8; HISTORY_SLOT_SIZE]; HISTORY_SIZE],
@@ -109,21 +131,43 @@ fn execute(input: &str) {
             vga::new_line();
         }
         "meminfo" => { commands::meminfo::show(); }
+        "exec" | "run" => { commands::exec::run(args); }
         "matrix" => {
             vga::print_line("Entering Matrix... (Press any key to exit)\n", Color::Green);
             commands::matrix::run();
         }
-        "nova" => {
-            unsafe { commands::nova_ai::BC(args); }
+        "set" | "env" | "export" => {
+            let args_trimmed = args.trim();
+            if args_trimmed.is_empty() {
+                vga::print_line("Environment Variables:\n", Color::Cyan);
+                vga::print_line("  PATH=", Color::LightGreen);
+                vga::print_line(get_path_env(), Color::White);
+                vga::print_line("\n", Color::White);
+            } else if let Some(eq_idx) = args_trimmed.find('=') {
+                let (var, val) = args_trimmed.split_at(eq_idx);
+                let val = &val[1..];
+                if var.trim().eq_ignore_ascii_case("PATH") {
+                    set_path_env(val.trim());
+                    vga::print_line("[ENV] Updated PATH=", Color::LightGreen);
+                    vga::print_line(get_path_env(), Color::White);
+                    vga::print_line("\n", Color::White);
+                }
+            }
         }
         _ => {
-            vga::print_line("[!] Unknown command. Type 'help' for list of commands.\n", Color::Red);
+            // Динамический резолвер команды через переменную PATH и список бинарников
+            if !commands::exec::find_and_run(name) {
+                vga::print_line("[!] Unknown command: '", Color::Red);
+                vga::print_line(name, Color::Red);
+                vga::print_line("'. Type 'help' or 'set' for environment info.\n", Color::Red);
+            }
         }
     }
 }
 
 /// CLI: Основной цикл
 pub fn run() {
+    set_path_env("/bin;/apps;/");
     vga::print_line("Type 'help' for list of commands.\n\n", Color::LightGray);
     let mut history: History = History::new();
 

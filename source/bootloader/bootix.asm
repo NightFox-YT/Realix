@@ -3,8 +3,8 @@
 ; ================
 ; ❗️ Зависимости: kernel16/io/print.asm (в режиме PRINT_MINIMAL),
 ;                 bios-api/disk/read.asm
-; ❗️ Свой мин. обход FAT12 вместо bios-api/fat12, чтобы
-;    1-ая стадия влезла в 512 байт (Дублирование намеренное).
+; ❗️ Свой минимальный обход FAT12 вместо bios-api/fat12,
+;   чтобы стадия 1 влезла в 512 байт (Дублирование намеренное).
 
 ; Настройка компиляции
 bits 16
@@ -69,7 +69,8 @@ main:
 
     ; Вычисление LBA корневого каталога
     ; > LBA = fats * sectors_per_fat + reserved
-    movzx ax, byte [bpb_fat_count]
+    xor ah, ah
+    mov al, [bpb_fat_count]
     mul word [bpb_sectors_per_fat]
     add ax, [bpb_reserved_sectors]
 
@@ -150,7 +151,8 @@ main:
     ; Вычисление LBA кластера
     ; > LBA = (initrix_cluster - 2) * sectors_per_cluster + data_lba
     sub ax, 2
-    movzx cx, byte [bpb_sectors_per_cluster]
+    xor ch, ch
+    mov cl, [bpb_sectors_per_cluster]
     mul cx
     add ax, [data_lba]
 
@@ -158,7 +160,8 @@ main:
     call disk_read
 
     ; Увеличиваем адрес смещения Initrix на кол-во прочитанных байт
-    movzx ax, byte [bpb_sectors_per_cluster]
+    xor ah, ah
+    mov al, [bpb_sectors_per_cluster]
     mul word [bpb_bytes_per_sector]
     add bx, ax
     jnc .load_initrix_continue
@@ -175,7 +178,7 @@ main:
     pop ax     ; *Восстанавливаем номер кластера
     mov cx, 3
     mul cx
-    dec cx     ; cx -= 1 (3 -> 2, т.к. mul не трогает cx)
+    mov cx, 2
     div cx
 
     ; Считывание записи из таблицы FAT
@@ -218,7 +221,7 @@ main:
     jmp INITRIX_LOAD_SEGMENT:INITRIX_LOAD_OFFSET
 
 
-; > Обработчик критических ошибок (типо имитация синего экрана)
+; > Обработчик ошибок
 ; Параметры:
 ;  - si: сообщение об ошибке
 error_handler:
