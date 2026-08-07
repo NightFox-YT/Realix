@@ -21,6 +21,7 @@ cmd_table:
     dw .str_meminfo,  cmd_meminfo
     dw .str_echo,     cmd_echo
     dw .str_calc,     cmd_calc
+    dw .str_exec,     cmd_exec16
     dw .str_beep,     print_beep_char
     dw .str_about,    cmd_about
     dw .str_reverse,  cmd_reverse
@@ -75,6 +76,7 @@ cmd_table:
 .str_sysinfo:  db 'sysinfo', 0
 .str_panic:    db 'panic', 0
 .str_uptime:   db 'uptime', 0
+.str_exec:     db 'exec', 0
 
 ; > Исполнитель команд
 ; Параметры:
@@ -286,6 +288,9 @@ cmd_panic:
 
 ; > Команда загрузки файла с диска
 %include "kernel16/commands/file-system/load.asm"
+
+; > Команда загрузки RLX приложения с диска
+%include "kernel16/commands/file-system/exec.asm"
 
 ; > Команда вывода списка файлов
 %include "kernel16/commands/file-system/ls.asm"

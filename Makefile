@@ -5,6 +5,7 @@
 # Конфигурация
 SRC_DIR   := source
 BUILD_DIR := build
+APPS_DIR  := apps
 
 # Каталоги подпроектов
 BOOTLOADER_DIR := $(SRC_DIR)/bootloader
@@ -20,8 +21,14 @@ BOOTIX_BIN   := $(BUILD_DIR)/bootix.bin
 INITRIX_BIN  := $(BUILD_DIR)/initrix.bin
 KERNEL16_BIN := $(BUILD_DIR)/kernel16.bin
 KERNEL32_BIN := $(BUILD_DIR)/kernel32.bin
+APPS_SRC     := $(shell find $(APPS_DIR) -name '*.asm')
+APPS_OBJS    := $(patsubst $(APPS_DIR)/%.asm,$(BUILD_DIR)/%.rlx,$(APPS_SRC))
 
-.PHONY: all floppy bootloader bootix initrix kernel16 kernel32 run clean
+# Компилятор и флаги для приложений на NASM
+ASM      := nasm
+ASMFLAGS := -f bin -i $(SRC_DIR)
+
+.PHONY: all floppy bootloader bootix initrix kernel16 kernel32 apps16 run clean
 
 # Запуск по умолчанию
 all: floppy
@@ -30,13 +37,14 @@ all: floppy
 # Сборка образа диска (floppy 1.44 МБ)
 floppy: $(IMAGE)
 
-$(IMAGE): bootloader kernel16 kernel32
+$(IMAGE): bootloader kernel16 kernel32 apps16
 	dd if=/dev/zero of=$(IMAGE) bs=512 count=2880
 	mformat -i $(IMAGE) -f 1440 ::
 	dd if=$(BOOTIX_BIN) of=$(IMAGE) conv=notrunc
 	mcopy -i $(IMAGE) $(INITRIX_BIN) "::initrix.bin"
 	mcopy -i $(IMAGE) $(KERNEL16_BIN) "::kernel16.bin"
 	mcopy -i $(IMAGE) $(KERNEL32_BIN) "::kernel32.bin"
+	mcopy -i $(IMAGE) $(APPS_OBJS) "::"
 
 
 # Сборка загрузчика: Bootix (Stage 1) + Initrix (Stage 2)
@@ -55,7 +63,14 @@ kernel16:
 
 # Сборка 32-битного ядра (Rust)
 kernel32:
-	$(MAKE) -C $(KERNEL32_DIR) BUILD_DIR=$(abspath $(BUILD_DIR))
+	$(MAKE) -C $(KERNEL32_DIR) $(SUBMAKE_VARS)
+
+
+# Сборка 16-битных пользовательских приложений
+apps16: $(APPS_OBJS)
+
+$(BUILD_DIR)/%.rlx: $(APPS_DIR)/%.asm
+	$(ASM) $(ASMFLAGS) $< -o $@
 
 
 # Запуск (без NOVA)

@@ -20,6 +20,7 @@ kernel_start:
 
     ; Инициализация IVT обработчиков
     call install_exception_handlers
+    call syscall16_init
 
     ; Получаем начальное значение тиков после загрузки (в cx:dx)
     mov ah, 00h
@@ -85,6 +86,7 @@ error_handler:
 %include 'bios-api/fat12/file_load.asm'
 %include 'bios-api/vga.asm'
 %include 'kernel16/debug/panic.asm'
+%include 'kernel16/syscall.asm'
 
 ; Сообщения и строки
 msg_start_kernel: db '[+] Starting kernel16.', ENTER, 0

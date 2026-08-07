@@ -16,7 +16,7 @@ cmd_help:
 ; > Сообщение
 msg_help:
     db 'Commands:', ENTER
-    db '[Base]                                 [Text]', ENTER
+    db '  [Base]                               [Text]', ENTER
     db '> help      - Show this manual        > len <t>        - Length of <t>', ENTER
     db '> clear/cls - Clear screen            > upper <t>      - <t> to upper case', ENTER
     db '> echo <t>  - Print <t> to console    > lower <t>      - <t> to lower case', ENTER
@@ -26,15 +26,16 @@ msg_help:
     db '> uptime    - Show uptime (seconds)', ENTER
     db '> sysinfo   - System information', ENTER
     db ENTER
-    db '[Numbers]                              [Fat12]', ENTER
-    db '> calc <a> <+ - * /> <b> - Calculator > ls          - List root directory', ENTER
-    db '> hex <num>  - <num> to hexadecimal   > load <f>    - Load file into RAM', ENTER
-    db '> fib <0-24> - Nth Fibonacci number   > type <f>    - Print file as text', ENTER
-    db '                                      > hexdump <f> - Hex dump of file', ENTER
+    db '  [System]                              [Fat12]', ENTER
+    db '> regs  - Show CPU registers snapshot > ls          - List root directory', ENTER
+    db '> time  - Show RTC time               > load <f>    - Load file into RAM', ENTER
+    db '> date  - Show RTC date               > type <f>    - Print file as text', ENTER
+    db '> vga   - VGA 320x200 graphics demo   > hexdump <f> - Hex dump of file', ENTER
+    db '> panic - Show panic screen and halt  > exec <f>    - Run RLX application', ENTER
     db ENTER
-    db '[System]                               [Power]', ENTER
-    db '> regs  - Show CPU registers snapshot > reboot   - Reboot PC', ENTER
-    db '> time  - Show RTC time               > shutdown - Power off PC', ENTER
-    db '> date  - Show RTC date', ENTER
-    db '> vga   - VGA 320x200 graphics demo    [Tools]', ENTER
-    db '> panic - Show panic screen and halt  > key - Show pressed key codes', 0
+    db '  [Numbers]                             [Power]', ENTER
+    db '> calc <a> <+ - * /> <b> - Calculator > reboot   - Reboot PC', ENTER
+    db '> hex <num>  - <num> to hexadecimal   > shutdown - Power off PC', ENTER
+    db '> fib <0-24> - Nth Fibonacci number', ENTER
+    db '  [Tools]', ENTER
+    db '> key - Show pressed key codes', 0
