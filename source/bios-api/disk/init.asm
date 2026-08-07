@@ -12,25 +12,18 @@
 ; Вывод:
 ;  - cx: sectors_per_track
 ;  - dh: heads
-;  - dl: num of hard hisk drives
 ;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка чтения)
 ;  - Заполняет переменные disk_current_drive, disk_spt и disk_heads
 disk_init:
     push ax
-    push bx
-    push di
 
     ; Запоминаем номер диска до вызова BIOS
     mov [disk_current_drive], dl
 
-    ; Считывание параметров диска (С защитой от бага на некоторых BIOS)
+    ; Считывание параметров диска
     push es
-    xor di, di
-    mov es, di
-
     mov ah, 8h
     int 0x13
-    
     pop es
     jc .done  ; Выходим из функции (Ошибка)
 
@@ -47,8 +40,6 @@ disk_init:
     mov [disk_spt], cx
 
 .done:
-    pop di
-    pop bx
     pop ax
     ret
 

@@ -1,5 +1,5 @@
 ; © Realix > Kernel16: Main
-; (06.08.26) v0.11
+; (27.07.26) v0.1
 ; ================
 ; ❗️ Загружается Switcher по адресу KERNEL_LOAD_SEGMENT:0, номер диска в dl
 
@@ -17,15 +17,7 @@ kernel_start:
     call disk_init
     jc disk_init_error
     call fat12_init
-
-    ; Инициализация IVT обработчиков
-    call install_exception_handlers
-
-    ; Получаем начальное значение тиков после загрузки (в cx:dx)
-    mov ah, 00h
-    int 0x1A
-    mov [init_tick_high], cx
-    mov [init_tick_low], dx
+    call syscall16_init
 
     ; "Запуск ядра" && "Нажмите, чтобы продолжить"
     mov si, msg_start_kernel
@@ -55,7 +47,7 @@ main:
     hlt
     jmp $
 
-; > Ошибка 7
+; > Ошибка 6
 disk_init_error:
     mov si, err_disk_init
     jmp error_handler
@@ -74,17 +66,17 @@ error_handler:
     jmp 0xFFFF:0
 
 ; Подключение модулей
-%include 'kernel16/io/print.asm'
-%include 'kernel16/io/print_ctrl.asm'
-%include 'kernel16/io/print_reg.asm'
-%include 'kernel16/shell/cli.asm'
-%include 'kernel16/shell/commands.asm'
 %include 'bios-api/memory/high.asm'
 %include 'bios-api/memory/low.asm'
 %include 'bios-api/disk/read.asm'
 %include 'bios-api/fat12/file_load.asm'
-%include 'bios-api/vga.asm'
-%include 'kernel16/debug/panic.asm'
+%include 'kernel16/io/print.asm'
+%include 'kernel16/io/print_ctrl.asm'
+%include 'kernel16/io/print_reg.asm'
+%include 'kernel16/syscall.asm'
+%include 'kernel16/rlx_loader.asm'
+%include 'kernel16/shell/cli.asm'
+%include 'kernel16/shell/commands.asm'
 
 ; Сообщения и строки
 msg_start_kernel: db '[+] Starting kernel16.', ENTER, 0
@@ -93,8 +85,4 @@ cli_title:        db 'Welcome to Realix (Real Mode with NASM kernel)...', ENTER,
 cli_hint:         db "Type 'help' for list of commands.", ENTER, ENTER, 0
 
 ; Сообщения об ошибках
-err_disk_init: db '[!] E7: Disk init failed!', ENTER, 0
-
-; Переменные
-init_tick_high: dw 0
-init_tick_low:  dw 0
+err_disk_init: db '[!] E6: Disk init failed!', ENTER, 0

@@ -10,6 +10,7 @@ use crate::x86::{gdt, isr, pic};
 // Константы
 const IDT_SIZE: usize = 256;
 const IDT_GATE_32BIT: u8 = 0x8E;
+const IDT_GATE_32BIT_USER: u8 = 0xEE;
 
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
@@ -122,7 +123,13 @@ fn set_handlers(idt_addr: &mut [InterruptDescriptor; IDT_SIZE]) {
     set!(45, isr::irq_stub_45 as *const ());
     set!(46, isr::irq_stub_46 as *const ());
     set!(47, isr::irq_stub_47 as *const ());
-    // ... (Остальные обработчики)
+
+    // Установка обработчика системного вызова INT 0x80 (Ring 3 User Mode allowed)
+    idt_addr[128].set_handler(
+        isr::isr_stub_128 as *const () as u32,
+        gdt::KERNEL_CODE_SELECTOR,
+        IDT_GATE_32BIT_USER,
+    );
 }
 
 /// Разрешение аппаратных прерываний (sti)

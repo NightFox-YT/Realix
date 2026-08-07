@@ -12,6 +12,7 @@ mod drivers;
 mod x86;
 mod shell;
 mod utils;
+pub mod rlx_loader;
 
 // Подключение функций
 use core::arch::{asm, naked_asm};
@@ -108,12 +109,6 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     vga::print_line(
         "Welcome to Realix (Protected Mode with Rust kernel)...\n",
         vga::Color::Cyan,
-    );
-
-    // ! Вывод заметки о экспериментальной функции NovaAI
-    vga::print_line(
-        "Integration with NovaAI (type 'nova -a' to chat)\n",
-        vga::Color::LightCyan,
     );
 
     shell::run();

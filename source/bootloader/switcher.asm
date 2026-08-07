@@ -1,5 +1,5 @@
 ; © Realix > Switcher CPU modes
-; (06.08.26) v0.11
+; (21.06.26) v0.07
 ; ================
 ; ❗️ Не standalone: Подключается из initrix.asm (%include)
 ; ❗️ Зависимости: kernel16/io: print & print_new_line; bios-api/fat12/file_load
@@ -12,95 +12,26 @@ bits 16
 
 
 boot_switcher:
-    mov si, msg_choose_mode
+    mov si, str_choose_mode
     call print
 
-    ; Выключаем курсор на время выбора режима
-    mov ah, 01h
-    mov cx, 2607h
-    int 0x10
-
-    ; Получаем текущую строку, где будет таймер (в dh)
-    mov ah, 03h
-    xor bx, bx
-    int 0x10
-    mov [.timer_cursor_y], dh
-
-    ; Получаем начальное значение тиков (в cx:dx)
-    mov ah, 00h
-    int 0x1A
-    mov [last_tick_low], dx
-
-    ; Вывод сообщения о таймере
-    mov si, msg_timer
-    call print
-
-.menu_loop:
-    ; Проверка нажатия клавиши (из буфера)
-    mov ah, 1h
-    int 0x16
-    jnz .key_pressed
-
-    ; Получаем текущее кол-во тиков и считаем сколько прошло
-    mov ah, 00h
-    int 0x1A
-    mov ax, dx
-    sub ax, word [last_tick_low]
-
-    ; Если прошла 1 сек. (~18 тиков), обновляем таймер
-    cmp ax, 18
-    jae .update_timer
-
-    ; Ждём след. прерывание для продолжения
-    hlt
-    jmp .menu_loop
-
-.update_timer:
-    ; Обновляем наши внутренние счётчики
-    add word [last_tick_low], 18
-    sub byte [remaining_sec], 1
-
-    ; Ставим курсор на место числа
-    ; (36 просто посчитано, хардкод о ма гад)
-    mov ah, 02h
-    mov dh, [.timer_cursor_y]
-    mov dl, 36
-    int 0x10
-
-    ; Выводим сколько осталось секунд
-    movzx ax, byte [remaining_sec]
-    call print_byte
-
-    ; Проверяем наш счётчик
-    cmp byte [remaining_sec], 0
-    je load_kernel32
-
-    jmp .menu_loop
-
-.key_pressed:
-    ; Забираем клавишу из буфера
-    mov ah, 00h
+.wait_key:
+    ; Ожидание нажатия
+    mov ah, 0
     int 0x16
 
     ; Варианты выбора
     cmp al, '1'
-    je load_kernel16
+    je .load_kernel16
     cmp al, '2'
-    je load_kernel32
+    je .load_kernel32
 
-    jmp .menu_loop
-
-.timer_cursor_y: db 0
+    ; Нажали что-то другое - возвращаемся в цикл
+    jmp .wait_key
 
 
 ; > Ветка Real Mode (16 bit)
-load_kernel16:
-    ; Включаем курсор
-    mov ah, 01h
-    mov cx, 0607h
-    int 0x10
-
-    call print_new_line
+.load_kernel16:
     call print_new_line
     mov si, msg_loading_16
     call print
@@ -127,13 +58,7 @@ load_kernel16:
 
 
 ; > Ветка Protected Mode (32-bit)
-load_kernel32:
-    ; Включаем курсор
-    mov ah, 01h
-    mov cx, 0607h
-    int 0x10
-
-    call print_new_line
+.load_kernel32:
     call print_new_line
     mov si, msg_loading_32
     call print
@@ -245,18 +170,14 @@ pmode_entry:
 ; Сообщения и строки (16 бит для строковых данных)
 bits 16
 
-msg_choose_mode:
+str_choose_mode:
     db '[+] Select OS Mode:', ENTER
     db '  [1] 16-bit Real Mode (NASM)', ENTER
     db '  [2] 32-bit Protected Mode (Rust)', ENTER, 0
 
-msg_timer:      db '  (Auto: 32-bit will be selected in 10 seconds)', 0
 msg_loading_16: db '[+] Loading 16-bit kernel.', ENTER, 0
 msg_loading_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
 
 ; Переменные
 kernel16_filename: db 'KERNEL16BIN'
 kernel32_filename: db 'KERNEL32BIN'
-
-remaining_sec:  db 10
-last_tick_low:  dw 0

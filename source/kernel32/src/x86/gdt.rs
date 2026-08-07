@@ -6,10 +6,17 @@
 use core::mem::size_of;
 
 // Константы GDT
+#[allow(dead_code)]
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
+#[allow(dead_code)]
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
+#[allow(dead_code)]
+pub const USER_CODE_SELECTOR: u16 = 0x1B;
+#[allow(dead_code)]
+pub const USER_DATA_SELECTOR: u16 = 0x23;
+#[allow(dead_code)]
 pub const TSS_SELECTOR: u16 = 0x28;
-const GDT_SIZE: usize = 6;
+const GDT_SIZE: usize = 16;
 
 // Коснтанты флагов Access Byte
 #[allow(dead_code)]
@@ -219,3 +226,10 @@ pub fn init() {
 static mut GDT: [GdtDescriptor; GDT_SIZE] = [GdtDescriptor::null(); GDT_SIZE];
 static mut GDT_POINTER: GdtPointer = GdtPointer { limit: 0, base: 0 };
 static mut TSS: TaskStateSegment = TaskStateSegment::new();
+
+/// Установка адреса стека Ядра Ring 0 в TSS
+pub fn set_tss_esp0(esp0: u32) {
+    unsafe {
+        TSS.esp0 = esp0;
+    }
+}

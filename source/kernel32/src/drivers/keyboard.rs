@@ -19,7 +19,7 @@ static TAIL: AtomicUsize = AtomicUsize::new(0);
 
 /// Клавиша
 #[derive(Clone, Copy)]
-pub enum Key { Char(u8), Up, Down, Escape, F7 }
+pub enum Key { Char(u8), Up, Down, Escape, F1, F2, F3, F4, F7 }
 
 /// Перевод scancode в ASCII
 pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
@@ -51,7 +51,6 @@ pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
         0x2B => Some(b'\\'), 0x35 => Some(b'/'),
         0x33 => Some(b','),  0x34 => Some(b'.'),
         0x1A => Some(b'['),  0x1B => Some(b']'),
-        0x01 => Some(0x1B),   // ESC
         _ => None,
     }
 }
@@ -60,6 +59,10 @@ pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
 fn scancode_to_key(scancode: u8) -> Option<Key> {
     match scancode {
         0x01 => Some(Key::Escape),
+        0x3B => Some(Key::F1),
+        0x3C => Some(Key::F2),
+        0x3D => Some(Key::F3),
+        0x3E => Some(Key::F4),
         0x41 => Some(Key::F7),
 
         // Остальное: Символ из существующей таблицы (`scancode_to_ascii`)
@@ -107,6 +110,46 @@ fn is_queue_empty() -> bool {
     TAIL.load(Relaxed) == HEAD.load(Acquire)
 }
 
+
+/// Неблокирующее чтение клавиши — возвращает None если очередь пуста
+pub fn read_key_nb() -> Option<u32> {
+    static mut EXTENDED: bool = false;
+    loop {
+        match queue_pop() {
+            None => return None,
+            Some(scancode) => {
+                if scancode == PREFIX_EXTENDED_KEY {
+                    unsafe { EXTENDED = true; }
+                    continue;
+                }
+                if scancode & SCANCODE_RELEASE != 0 {
+                    unsafe { EXTENDED = false; }
+                    continue;
+                }
+                let key: Option<Key> = unsafe {
+                    if EXTENDED {
+                        EXTENDED = false;
+                        extended_to_key(scancode)
+                    } else {
+                        scancode_to_key(scancode)
+                    }
+                };
+                match key {
+                    Some(Key::Char(c)) => return Some(c as u32),
+                    Some(Key::Escape)  => return Some(0x1B),
+                    Some(Key::Up)      => return Some(0x80),
+                    Some(Key::Down)    => return Some(0x81),
+                    Some(Key::F1)      => return Some(0xF1),
+                    Some(Key::F2)      => return Some(0xF2),
+                    Some(Key::F3)      => return Some(0xF3),
+                    Some(Key::F4)      => return Some(0xF4),
+                    Some(Key::F7)      => return Some(0xF7),
+                    None => continue,
+                }
+            }
+        }
+    }
+}
 
 /// Чтение клавиши
 pub fn read_key() -> Key {

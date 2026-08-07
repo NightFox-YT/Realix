@@ -7,7 +7,7 @@
 %define CONFIG_ASM
 
 ; ! Не забывайте менять эту строку
-%define OS_VERSION 'v0.11'
+%define OS_VERSION 'v0.1'
 
 ; Управляющие символы и ASCII коды
 %define ENTER 0x0D, 0x0A

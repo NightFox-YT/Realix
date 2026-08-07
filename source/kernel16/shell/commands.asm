@@ -1,9 +1,8 @@
 ; © Realix > Shell: Commands
 ; ø Вдохновлено @nyxmalware
-; (06.08.26) v0.11
+; (27.07.26) v0.1
 ; ================
 ; ❗️ Зависимости: bios-api/memory, kernel16/io, kernel16/shell/parse
-;                 kernel16/debug/panic.asm
 ; TODO:
 ;  - Возвращение carry_flag при ошибке
 ;  - В shutdown полагаться не только на APM
@@ -35,46 +34,50 @@ cmd_table:
     dw .str_load,     cmd_load
     dw .str_type,     cmd_type
     dw .str_hexdump,  cmd_hexdump
-    dw .str_regs,     cmd_regs
-    dw .str_time,     cmd_time
-    dw .str_date,     cmd_date
-    dw .str_vga,      cmd_vga
-    dw .str_key,      cmd_key
-    dw .str_sysinfo,  cmd_sysinfo
-    dw .str_panic,    cmd_panic
-    dw .str_uptime,   cmd_uptime
+    dw .str_exec,     cmd_exec16
+    dw .str_run,      cmd_exec16
+    dw .str_app16,      cmd_exec_app16
+    dw .str_rlxfetch16, cmd_exec_rlxfetch16
     dw 0
 
-.str_help:     db 'help', 0
-.str_cls:      db 'cls', 0
-.str_clear:    db 'clear', 0
-.str_reboot:   db 'reboot', 0
-.str_shutdown: db 'shutdown', 0
-.str_meminfo:  db 'meminfo', 0
-.str_echo:     db 'echo', 0
-.str_calc:     db 'calc', 0
-.str_beep:     db 'beep', 0
-.str_about:    db 'about', 0
-.str_reverse:  db 'reverse', 0
-.str_len:      db 'len', 0
-.str_upper:    db 'upper', 0
-.str_lower:    db 'lower', 0
-.str_hex:      db 'hex', 0
-.str_ascii:    db 'ascii', 0
-.str_repeat:   db 'repeat', 0
-.str_fib:      db 'fib', 0
-.str_load:     db 'load', 0
-.str_ls:       db 'ls', 0
-.str_type:     db 'type', 0
-.str_hexdump:  db 'hexdump', 0
-.str_regs:     db 'regs', 0
-.str_time:     db 'time', 0
-.str_date:     db 'date', 0
-.str_vga:      db 'vga', 0
-.str_key:      db 'key', 0
-.str_sysinfo:  db 'sysinfo', 0
-.str_panic:    db 'panic', 0
-.str_uptime:   db 'uptime', 0
+.str_help:       db 'help', 0
+.str_cls:        db 'cls', 0
+.str_clear:      db 'clear', 0
+.str_reboot:     db 'reboot', 0
+.str_shutdown:   db 'shutdown', 0
+.str_meminfo:    db 'meminfo', 0
+.str_echo:       db 'echo', 0
+.str_calc:       db 'calc', 0
+.str_beep:       db 'beep', 0
+.str_about:      db 'about', 0
+.str_reverse:    db 'reverse', 0
+.str_len:        db 'len', 0
+.str_upper:      db 'upper', 0
+.str_lower:      db 'lower', 0
+.str_hex:        db 'hex', 0
+.str_ascii:      db 'ascii', 0
+.str_repeat:     db 'repeat', 0
+.str_fib:        db 'fib', 0
+.str_load:       db 'load', 0
+.str_ls:         db 'ls', 0
+.str_type:       db 'type', 0
+.str_hexdump:    db 'hexdump', 0
+.str_exec:       db 'exec', 0
+.str_run:        db 'run', 0
+.str_app16:      db 'app16', 0
+.str_rlxfetch16: db 'rlxfetch16', 0
+
+cmd_exec_app16:
+    mov si, .app16_name
+    call exec_rlx16
+    ret
+.app16_name: db 'app16.rlx', 0
+
+cmd_exec_rlxfetch16:
+    mov si, .fetch16_name
+    call exec_rlx16
+    ret
+.fetch16_name: db 'rlxfetch16.rlx', 0
 
 ; > Исполнитель команд
 ; Параметры:
@@ -228,7 +231,7 @@ cmd_shutdown:
     jmp $
 
 .error:
-    ; Ошибка 8: Не удалось выключить ПК
+    ; Ошибка 7: Не удалось выключить ПК
     mov si, err_shutdown
     call print
 
@@ -267,13 +270,8 @@ cmd_about:
     pop si
     ret
 
-; > Команда самостоятельного вызова паники
-cmd_panic:
-    call debug_panic_manual
-    ret
-
 ; > Команда очистки экрана
-%include "kernel16/commands/base/cls.asm"
+%include "kernel16/commands/cls.asm"
 
 ; > Команды для работы с текстом
 %include "kernel16/commands/text.asm"
@@ -285,37 +283,22 @@ cmd_panic:
 %include "kernel16/commands/calc.asm"
 
 ; > Команда загрузки файла с диска
-%include "kernel16/commands/file-system/load.asm"
+%include "kernel16/commands/load.asm"
 
 ; > Команда вывода списка файлов
-%include "kernel16/commands/file-system/ls.asm"
+%include "kernel16/commands/ls.asm"
 
 ; > Команда печати файла как текста
-%include "kernel16/commands/file-system/type.asm"
+%include "kernel16/commands/type.asm"
 
 ; > Команда шестнадцатеричного дампа файла
-%include "kernel16/commands/file-system/hexdump.asm"
+%include "kernel16/commands/hexdump.asm"
 
-; > Команда вывода снимка регистров
-%include "kernel16/commands/debug/regs.asm"
-
-; > Команды вывода времени и даты (RTC)
-%include "kernel16/commands/rtc.asm"
-
-; > Команда демонстрации графического режима
-%include "kernel16/commands/vga.asm"
-
-; > Команды для вывода ascii/scancode клавиши
-%include "kernel16/commands/debug/key.asm"
-
-; > Команды для вывода системной информации
-%include "kernel16/commands/debug/sysinfo.asm"
-
-; > Команды для вывода аптайма
-%include "kernel16/commands/debug/uptime.asm"
+; > Команда запуска RLX-приложений
+%include "kernel16/commands/exec.asm"
 
 ; > Команда помощи
-%include "kernel16/commands/base/help.asm"
+%include "kernel16/commands/help.asm"
 
 ; > Перевод символа al в верхний регистр (a-z -> A-Z, иначе без изменений)
 ; Параметры & Вывод:
@@ -408,7 +391,7 @@ require_arg:
 
 ; Сообщения об ошибках
 err_unknown_cmd: db "[!] Unknown command. Type 'help' for list of commands.", 0
-err_shutdown:    db '[!] E8: PC shutdown failed! (No APM)', 0
+err_shutdown:    db '[!] E7: PC shutdown failed! (No APM)', 0
 
 ; Сообщения
 msg_about:
