@@ -1,12 +1,14 @@
 ; © Realix > IO: Print number (dec / hex / bcd)
-; (27.07.26) v0.1
+; (06.08.26) v0.11
 ; ================
 ; ❗️ Зависимости: kernel16/io/print.asm
+
 
 ; > Вывод значения ax в десятичном виде на экран (Текстовый режим)
 ; Параметры:
 ;  - ax: значение
 print_dec16:
+    push ax
     push bx
     push cx
     push dx
@@ -35,7 +37,9 @@ print_dec16:
     pop dx
     pop cx
     pop bx
+    pop ax
     ret
+
 
 ; > Вывод значения ax в шестнадцатеричном виде на экран (Текстовый режим)
 ; Параметры:
@@ -62,6 +66,7 @@ print_hex16:
     pop ax
     ret
 
+
 ; > Вывод одной шестнадцатеричной цифры
 ; Параметры:
 ;  - al: значение (учитываются только младшие 4 бита)
@@ -84,6 +89,7 @@ print_hex_digit:
 .done:
     pop ax
     ret
+
 
 ; > Вывод значения al в шестнадцатеричном виде (2 цифры) + пробел
 ; (Полезно для дампов памяти: печатает байт и разделитель одним вызовом)
@@ -113,31 +119,67 @@ print_byte:
     pop ax
     ret
 
-; ! (Пока не используется — оставлено на будущее, раскомментировать при надобности)
 ; > Вывод BCD значения al на экран (Текстовый режим)
 ; Параметры:
 ;  - al: значение регистра
-; print_bcd2:
-;     push ax
-;     push bx
-;
-;     ; Сохранение байта числа al в bl
-;     mov bl, al
-;
-;     ; Старший ниббл -> младшие 4 бита со "страховкой"
-;     shr al, 4
-;     and al, 0x0F
-;
-;     add al, '0'      ; Цифра -> ASCII
-;     call print_char  ; Печать первой цифры
-;
-;     mov al, bl       ; Берём сохранённый байт заново
-;
-;     ; Младший ниббл -> младшие 4 бита
-;     and al, 0x0F
-;     add al, '0'      ; Цифра -> ASCII
-;     call print_char  ; Печать второй цифры
-;
-;     pop bx
-;     pop ax
-;     ret
+print_bcd2:
+    push ax
+    push bx
+
+    ; Сохранение байта числа al в bl
+    mov bl, al
+
+    ; Старший ниббл -> младшие 4 бита со "страховкой"
+    shr al, 4
+    and al, 0x0F
+
+    add al, '0'      ; Цифра -> ASCII
+    call print_char  ; Печать первой цифры
+
+    mov al, bl       ; Берём сохранённый байт заново
+
+    ; Младший ниббл -> младшие 4 бита
+    and al, 0x0F
+    add al, '0'      ; Цифра -> ASCII
+    call print_char  ; Печать второй цифры
+
+    pop bx
+    pop ax
+    ret
+
+
+; > Вывод значения eax в десятичном виде на экран (Текстовый режим)
+; Параметры:
+;  - eax: значение
+print_dec32:
+    push eax
+    push ebx
+    push edx
+    push cx
+
+    mov ebx, 10   ; Делитель (Для перевода в десятичный вид)
+    xor cx, cx    ; Счётчик цифр
+
+.next_digit:
+    xor edx, edx  ; Обнуление edx с ASCII символом
+    div ebx       ; eax - частное (edx - остаток: цифра)
+    add dl, '0'   ; Цифра -> ASCII
+    push dx       ; *Сохраняем цифру в стеке
+
+    ; Переход к след. цифре
+    inc cx
+    test eax, eax
+    jnz .next_digit
+
+.print_loop:
+    ; Достаём цифры из стека в обратном порядке
+    pop ax
+    call print_char
+    loop .print_loop
+
+.done:
+    pop cx
+    pop edx
+    pop ebx
+    pop eax
+    ret

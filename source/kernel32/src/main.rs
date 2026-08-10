@@ -9,23 +9,54 @@
 // Объявление модулей
 mod commands;
 mod drivers;
-mod x86;
+mod memory;
 mod shell;
 mod utils;
+mod x86;
 
 // Подключение функций
 use core::arch::{asm, naked_asm};
 use core::panic::PanicInfo;
 use drivers::{keyboard, pit, vga};
-use x86::{frame_allocator, gdt, idt, memory};
+use memory::{frame_allocator, pmm};
+use x86::{gdt, idt};
 
-/// Структура PCINFO, формируемая загрузчиком.
+use crate::memory::pmm::E820Entry;
+
+/// Максимум записей карты (Значение берёт E820_MAX_ENTRIES в high.asm)
+pub const E820_MAX_ENTRIES: usize = 64;
+pub const PCINFO_ADDR: usize = 0x4500;
+
+/// Структура PCINFO, формируемая загрузчиком
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
-struct PcInfo {
-    low_memory_amount: u16,
-    disk_num: u8,
-    memory_map: memory::E820Map,
+pub struct PcInfo {
+    pub low_memory_kb: u16,
+    pub boot_drive_num: u8,
+    pub mmap_count: u16,
+    pub memory_map: [pmm::E820Entry; E820_MAX_ENTRIES],
+}
+
+// Доступ-обёртка к элементам структуры
+impl PcInfo {
+    #[inline]
+    fn mmap_entry(&self, i: usize) -> E820Entry {
+        if i > E820_MAX_ENTRIES {
+            return pmm::E820Entry {
+                address: 0,
+                size: 0,
+                seg_type: 0,
+                attributes: 0,
+            };
+        }
+        unsafe { core::ptr::read_unaligned(core::ptr::addr_of!(self.memory_map[i as usize])) }
+    }
+}
+
+/// Предоставление доступа-обёртки к структуре PcInfo
+#[inline]
+unsafe fn pcinfo() -> &'static PcInfo {
+    &*(PCINFO_ADDR as *const PcInfo)
 }
 
 // Границы секции BSS (из linker.ld) для обнуления вручную
@@ -48,15 +79,12 @@ pub extern "C" fn _start() -> ! {
         "lea edi, [__bss_start]",
         "lea ecx, [__bss_end]",
         "sub ecx, edi",
-
         // Обнуляем BSS через eax
         "xor eax, eax",
         "rep stosb",
-
         // Передаём адрес PCINFO первым аргументом по cdecl
         "push ebx",
         "call kmain",
-
         // Защита на случай незапланированного возвращения из функции
         "2:",
         "cli",
@@ -75,15 +103,13 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     gdt::init();
     idt::init();
     pit::init(100);
+    pmm::init_kernel_page_allocator();
     idt::interrupts_enable();
 
     // Проверка указателя PCINFO
     if pcinfo_addr.is_null() {
         vga::clear_screen();
-        vga::print_line(
-            "[KERNEL PANIC] Invalid PCINFO address.\n",
-            vga::Color::Red,
-        );
+        vga::print_line("[KERNEL PANIC] Invalid PCINFO address.\n", vga::Color::Red);
         halt_loop();
     }
 
@@ -97,10 +123,7 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     vga::clear_screen();
     draw_logo(4, 2);
 
-    vga::print_line(
-        "   Press any key to continue...",
-        vga::Color::LightGray,
-    );
+    vga::print_line("   Press any key to continue...", vga::Color::LightGray);
     keyboard::read_key();
 
     // Вывод заголовка Shell с его бесконечной работой
@@ -108,6 +131,12 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     vga::print_line(
         "Welcome to Realix (Protected Mode with Rust kernel)...\n",
         vga::Color::Cyan,
+    );
+
+    // ! Вывод заметки о экспериментальной функции NovaAI
+    vga::print_line(
+        "Integration with NovaAI (type 'nova -a' to chat)\n",
+        vga::Color::LightCyan,
     );
 
     shell::run();
@@ -151,23 +180,24 @@ fn draw_logo(start_x: usize, start_y: usize) {
         for (row, line) in letter.iter().enumerate() {
             for (col, &pixel) in line.iter().enumerate() {
                 if pixel == 1 {
-                    vga::write_char_at(
-                        start_y + row, offset_x + col,
-                        0xDB, color,
-                    );
+                    vga::write_char_at(start_y + row, offset_x + col, 0xDB, color);
                 }
             }
         }
     }
 
-    for _ in 0..11 { vga::new_line(); }
+    for _ in 0..11 {
+        vga::new_line();
+    }
 }
 
 /// Бесконечная остановка процессора
 pub fn halt_loop() -> ! {
     idt::interrupts_disable();
     loop {
-        unsafe { asm!("hlt", options(nomem, nostack)); }
+        unsafe {
+            asm!("hlt", options(nomem, nostack));
+        }
     }
 }
 

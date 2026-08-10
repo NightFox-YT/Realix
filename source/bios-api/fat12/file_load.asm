@@ -1,5 +1,5 @@
 ; © Realix > FAT12: File Load
-; (27.07.26) v0.1
+; (28.07.26) v0.11
 ; ================
 ; ❗️ Зависимости: bios-api/disk/*, kernel16/io/print_ctrl.asm
 
@@ -8,6 +8,9 @@
 
 ; Основные константы
 %include 'shared/config.asm'
+
+; Предел длины цепочки кластеров (Aрхитектурный потолок FAT12)
+FAT12_MAX_CHAIN equ 4084
 
 ; > Загрузка файла с диска в память
 ; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
@@ -112,6 +115,9 @@ file_load:
     jmp .fail
 
 .read_fat:
+    ; Сброс счётчика пройденных кластеров (Защита от петли FAT)
+    mov word [chain_length], 0
+
     ; Читаем FAT в память
     mov ax, [reserved_sectors]
     mov cx, [sectors_per_fat]
@@ -191,6 +197,11 @@ file_load:
     mov si, err_bad_cluster
     jmp .fail
 
+; Ошибка 4: Цепочка кластеров повреждена (Петля или служебный кластер)
+.broken_chain:
+    mov si, err_broken_chain
+    jmp .fail
+
 ; Обработка следующего кластера
 .next_cluster:
     ; Проверка на конец файла
@@ -200,6 +211,15 @@ file_load:
     ; Проверка на Bad Cluster
     cmp ax, BAD_CLUSTER
     je .bad_cluster
+
+    ; Кластеры 0 и 1 служебные, их быть не может...
+    cmp ax, 2
+    jb .broken_chain
+
+    ; Ограничение длины цепочки (Вдруг поймали петлю)
+    inc word [chain_length]
+    cmp word [chain_length], FAT12_MAX_CHAIN
+    ja .broken_chain
 
     ; Обновляем номер текущего кластера, продолжая чтение
     mov [file_cluster], ax
@@ -274,11 +294,13 @@ dest_offset:        dw 0
 extra_table_offset: dw 0
 file_cluster:       dw 0
 file_size:          dd 0
+chain_length:       dw 0
 
 ; Сообщения об ошибках
-err_not_found:   db '[!] E1: File not found!', 0
-err_bad_cluster: db '[!] E2: Bad cluster found!', 0
-err_guard:       db '[!] E3: Destination overlaps a protected region!', 0
+err_not_found:    db '[!] E1: File not found!', 0
+err_bad_cluster:  db '[!] E2: Bad cluster found!', 0
+err_guard:        db '[!] E3: Destination overlaps a protected region!', 0
+err_broken_chain: db '[!] E4: Broken FAT chain!', 0
 
 ; Core-таблица защищённых регионов памяти: критичные регионы
 guard_core:

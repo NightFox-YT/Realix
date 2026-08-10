@@ -113,6 +113,9 @@ fn execute(input: &str) {
             vga::print_line("Entering Matrix... (Press any key to exit)\n", Color::Green);
             commands::matrix::run();
         }
+        "nova" => {
+            unsafe { commands::nova_ai::BC(args); }
+        }
         _ => {
             vga::print_line("[!] Unknown command. Type 'help' for list of commands.\n", Color::Red);
         }

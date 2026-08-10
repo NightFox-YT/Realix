@@ -1,4 +1,4 @@
-# ℹ️ Realix `v0.1`
+# ℹ️ Realix `v0.11`
 ![Status](https://img.shields.io/badge/status-latest-brightgreen)
 ![License](https://img.shields.io/github/license/NightFox-YT/Realix)
 ![Architecture](https://img.shields.io/badge/architecture-x86-blue)
@@ -9,31 +9,31 @@
 Realix is a **hybrid OS** for the x86 architecture. The bootloader and 16-bit kernel are written in x86 assembly (NASM), the 32-bit kernel is written in Rust (`no_std`).
 It supports a built-in boot switcher that lets you choose between a 16-bit Real Mode kernel for legacy compatibility and a 32-bit Protected Mode kernel for high performance.
 
-- **OS size:** `≈27.8 KB`
-- **Initial release:** `July 6, 2026`
+- **OS size:** `≈36.5 KB`
+- **Initial release:** `August 10, 2026`
 
 ## ✨ Key Features
-- BIOS-based bootloader: Bootix (stage 1, 512 bytes) + Initrix (stage 2)
+- BIOS-based bootloader: Bootix (stage 1, 512 bytes) + Initrix (stage 2) with 🆕 Auto-boot into the 32-bit kernel after a timeout
 - BIOS-API (for kernel16):
-   - VGA text mode (80×25) and video mode (320×200, 256 colors)
-   - Reads raw sectors from disk (INT 13h) with retries and controller reset
+   - VGA text mode (`80×25`) and video mode (`320×200, 256 colors`)
+   - Reads raw sectors from disk (`INT 13h`) with retries and controller reset
    - Read-only FAT12 filesystem support:
      - Loads second-stage bootloader
      - Loads files by filename
-     - 🆕 Protected memory regions: a file can never overwrite the IVT, bootloader or running kernel
-   - Detects available system memory (INT 12h, INT 15h E820)
+     - Protected memory regions: a file can never overwrite the IVT, bootloader or running kernel
+   - Detects available system memory (`int 12h, int 15h E820`)
 - Interactive CPU mode selector (`switcher.asm`)
 - Kernel16:
    - Command-line interface with history (Up and down arrows)
-     - `help`, `about`, `beep`, `meminfo`, `echo [t]`, `clear/cls`
-     - `calc` - Simple calculator (positive integers only)
-     - `hex`, `ascii`, `fib` - number utilities
-     - `len`, `upper`, `lower`, `reverse`, `repeat` - text utilities
-     - 🆕 `ls` - List the root directory
-     - 🆕 `load <f>` - Load a file from disk into RAM
-     - 🆕 `type <f>` - Print a file as text
-     - 🆕 `hexdump <f>` - Hex dump of a file
-     - `reboot`, `shutdown`
+   - 🆕 16-bit syscall interface (`int 0x80`) with an RLX executable loader — user-mode 16-bit apps live under apps/ and run via `exec`
+   - Commands (grouped by category):
+     - base: `help`, `clear/cls`, `echo [t]`, `about`, `beep`, `meminfo`, 🆕 `uptime`, 🆕 `sysinfo`
+     - numbers: `calc` (positive integers only), `hex`, `fib`
+     - text: `len`, `upper`, `lower`, `reverse`, `repeat`, `ascii`
+     - system: 🆕 `regs`, 🆕 `time`, 🆕 `date`, 🆕 `vga`, 🆕 `panic`
+     - power: `reboot`, `shutdown`
+     - fat12: `ls`, `load`, `type` (Print a file as text), `hexdump`, 🆕 `exec` (Run a 16-bit rlx app)
+   - 🆕 Panic and exception handlers with a diagnostic screen
    - Network interface card (NIC) driver
 - Kernel32:
    - VGA text mode (80×25)
@@ -46,19 +46,20 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
    - Advanced GDT with TSS
    - Advanced IDT with ISR (Exceptions, IRQ0 - PIT, IRQ1 - Keyboard)
    - PIC remap, spurious interrupt (IRQ7/IRQ15) detection
-   - 🆕 Frame allocator built from the E820 memory map passed by the bootloader
+   - Frame allocator built from the E820 memory map passed by the bootloader
+   - 🆕 NovaAI experiment: run a local Qwen 2.5 0.5B GGUF model from inside kernel32 via the new run-nova / run-nova-nokvm Make targets
 
-### ⏳ Upcoming Features (v0.11)
-- Bootloader: Auto-boot the 32-bit kernel after a timeout, error codes inside Bootix
-- BIOS-API: Disk geometry validation and BIOS quirk workarounds
-- Kernel16: `video_mode` command, 32-bit number output
+### ⏳ Upcoming Features (v0.12)
+- Kernel32: 32-bit RLX executable support (currently 16-bit apps only)
+- Kernel32: VMM module
+- Add new docs for kernel16 & kernel32.
 
 ### ❌ Current Limitations
-- No memory allocator
-- No standard executable support
+- No dynamic memory allocator
+- No 32-bit executable support (RLX loader is 16-bit only)
 - No write operations FAT12 support
 - No advanced networking stack
-- Disk access is CHS-only (no INT 13h extensions)
+- Disk access is CHS-only (no `int 13h` extensions)
 
 ## 📦 Hardware Requirements
 - **CPU:** x86 compatible (i386+ recommended)
@@ -71,6 +72,8 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
 ├─ .cargo/
 │  ├─ config.toml
 │  └─ i386.json
+├─ apps/
+│  └─ hello16.asm
 ├─ source/
 │  ├─ bios-api/
 │  │  ├─ disk/
@@ -82,8 +85,7 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
 │  │  ├─ memory/
 │  │  │  ├─ high.asm
 │  │  │  └─ low.asm
-│  │  └─ video/
-│  │     └─ vga.asm
+│  │  └─ vga.asm
 │  ├─ bootloader/
 │  │  ├─ bootix.asm
 │  │  ├─ initrix.asm
@@ -92,15 +94,27 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
 │  ├─ crypto/arch_entropy.asm
 │  ├─ kernel16/
 │  │  ├─ commands/
+│  │  │  ├─ base/
+│  │  │  │  ├─ cls.asm
+│  │  │  │  └─ help.asm
+│  │  │  ├─ debug/
+│  │  │  │  ├─ key.asm
+│  │  │  │  ├─ regs.asm
+│  │  │  │  ├─ sysinfo.asm
+│  │  │  │  └─ uptime.asm
+│  │  │  ├─ file-system/
+│  │  │  │  ├─ exec.asm
+│  │  │  │  ├─ hexdump.asm
+│  │  │  │  ├─ load.asm
+│  │  │  │  ├─ ls.asm
+│  │  │  │  └─ type.asm
 │  │  │  ├─ calc.asm
-│  │  │  ├─ cls.asm
-│  │  │  ├─ help.asm
-│  │  │  ├─ hexdump.asm
-│  │  │  ├─ load.asm
-│  │  │  ├─ ls.asm
 │  │  │  ├─ nums.asm
+│  │  │  ├─ rtc.asm
 │  │  │  ├─ text.asm
-│  │  │  └─ type.asm
+│  │  │  └─ vga.asm
+│  │  ├─ debug/
+│  │  │  └─ panic.asm
 │  │  ├─ io/
 │  │  │  ├─ print.asm
 │  │  │  ├─ print_ctrl.asm
@@ -110,8 +124,11 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
 │  │  │  ├─ commands.asm
 │  │  │  └─ parse.asm
 │  │  ├─ main.asm
+│  │  ├─ syscall.asm
 │  │  └─ Makefile
 │  ├─ kernel32/
+│  │  ├─ nova-models/
+│  │  │  └─ README.md
 │  │  ├─ src/
 │  │  │  ├─ commands/
 │  │  │  │  ├─ echo.rs
@@ -119,6 +136,7 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
 │  │  │  │  ├─ matrix.rs
 │  │  │  │  ├─ meminfo.rs
 │  │  │  │  ├─ mod.rs
+│  │  │  │  ├─ nova_ai.rs
 │  │  │  │  ├─ reboot.rs
 │  │  │  │  └─ shutdown.rs
 │  │  │  ├─ drivers/
@@ -126,8 +144,11 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
 │  │  │  │  ├─ mod.rs
 │  │  │  │  ├─ pit.rs
 │  │  │  │  └─ vga.rs
-│  │  │  ├─ x86/
+│  │  │  ├─ memory/
 │  │  │  │  ├─ frame_allocator.rs
+│  │  │  │  ├─ mod.rs
+│  │  │  │  └─ pmm.rs
+│  │  │  ├─ x86/
 │  │  │  │  ├─ gdt.rs
 │  │  │  │  ├─ idt.rs
 │  │  │  │  ├─ isr.rs
@@ -172,6 +193,9 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
 3. Build & Run via the `Makefile`
   - Only build OS image: `make`
   - Full cycle (build & run in QEMU): `make run`
+  - Run with the NovaAI model loaded (requires KVM): make run-nova
+  - Run with the NovaAI model without KVM (slow): make run-nova-nokvm
+  - Build only the sample 16-bit apps into .rlx: make apps16
 
 ### Windows
 > ⚠️ Native Windows builds are no longer supported as of `v0.03`.

@@ -8,3 +8,4 @@ pub mod matrix;
 pub mod meminfo;
 pub mod reboot;
 pub mod shutdown;
+pub mod nova_ai;

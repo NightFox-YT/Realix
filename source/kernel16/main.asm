@@ -1,5 +1,5 @@
 ; © Realix > Kernel16: Main
-; (27.07.26) v0.1
+; (06.08.26) v0.11
 ; ================
 ; ❗️ Загружается Switcher по адресу KERNEL_LOAD_SEGMENT:0, номер диска в dl
 
@@ -17,6 +17,16 @@ kernel_start:
     call disk_init
     jc disk_init_error
     call fat12_init
+
+    ; Инициализация IVT обработчиков
+    call install_exception_handlers
+    call syscall16_init
+
+    ; Получаем начальное значение тиков после загрузки (в cx:dx)
+    mov ah, 00h
+    int 0x1A
+    mov [init_tick_high], cx
+    mov [init_tick_low], dx
 
     ; "Запуск ядра" && "Нажмите, чтобы продолжить"
     mov si, msg_start_kernel
@@ -46,7 +56,7 @@ main:
     hlt
     jmp $
 
-; > Ошибка 6
+; > Ошибка 7
 disk_init_error:
     mov si, err_disk_init
     jmp error_handler
@@ -74,6 +84,9 @@ error_handler:
 %include 'bios-api/memory/low.asm'
 %include 'bios-api/disk/read.asm'
 %include 'bios-api/fat12/file_load.asm'
+%include 'bios-api/vga.asm'
+%include 'kernel16/debug/panic.asm'
+%include 'kernel16/syscall.asm'
 
 ; Сообщения и строки
 msg_start_kernel: db '[+] Starting kernel16.', ENTER, 0
@@ -82,4 +95,8 @@ cli_title:        db 'Welcome to Realix (Real Mode with NASM kernel)...', ENTER,
 cli_hint:         db "Type 'help' for list of commands.", ENTER, ENTER, 0
 
 ; Сообщения об ошибках
-err_disk_init: db '[!] E6: Disk init failed!', ENTER, 0
+err_disk_init: db '[!] E7: Disk init failed!', ENTER, 0
+
+; Переменные
+init_tick_high: dw 0
+init_tick_low:  dw 0
