@@ -6,7 +6,3 @@ pub mod gdt;
 pub mod idt;
 pub mod isr;
 pub mod pic;
-pub mod memory;
-
-#[allow(dead_code)]
-pub mod frame_allocator;

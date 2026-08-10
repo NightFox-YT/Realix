@@ -5,7 +5,8 @@
 
 // Подключение функций
 use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-use crate::x86::memory::E820Map;
+
+use crate::{E820_MAX_ENTRIES, memory::pmm};
 
 // Размер фрейма и границы адресного пространства
 const PAGE_SIZE: usize = 4096;                         // 4 КБ
@@ -34,16 +35,16 @@ fn bitmap() -> &'static mut [u8; BITMAP_SIZE] {
 }
 
 /// Инициализация аллокатора фреймов на основе карты памяти E820
-pub fn init(memory_map: &E820Map) {
+pub fn init(memory_map: &[pmm::E820Entry; E820_MAX_ENTRIES]) {
     // Очищаем битмап: Все фреймы помечаем как занятые
     bitmap().fill(0xFF);
 
     // Считываем кол-во записей от загрузчика, но оно может превышать ёмкость массива
-    let entry_count: usize = (memory_map.entry_count as usize).min(memory_map.map.len());
+    let entry_count: usize = memory_map.len() as usize;
 
     // Освобождаем фреймы по свободным регионам E820
     for i in 0..entry_count {
-        let entry = memory_map.map[i];
+        let entry = memory_map[i];
 
         // Пропускаем не свободные области памяти E820
         if entry.seg_type != E820_TYPE_FREE {

@@ -4,7 +4,7 @@
 
 // Подключение функций
 use crate::drivers::vga::{self, Color};
-use crate::x86::frame_allocator;
+use crate::memory::frame_allocator;
 use crate::utils;
 
 // Байт в мегабайте (для перевода объёма памяти)
