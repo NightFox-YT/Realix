@@ -140,8 +140,8 @@ impl PCIDevice {
     }
 }
 
-const PCI_CONFIG_ADDR: u16 = 0xCF8;
-const PCI_CONFIG_DATA: u16 = 0xCFC;
+const PCI_CONFIG_ADDR: u32 = 0xCF8;
+const PCI_CONFIG_DATA: u32 = 0xCFC;
 const PCI_WRITE_INFO_ON_VGA_SCREEN: u8 = 23;
 /* вывел в отдельную функцию потому что я не ИИ и мне впадлу писать одно и тоже два раза,
  не знаю зачем в си версии я делал по два раза
@@ -171,7 +171,7 @@ pub unsafe fn pci_read_config(bus: u8, slot: u8, func: u8, off: u8) -> u32
 
     utils::io_wait();
 
-    return utils::inl(PCI_CONFIG_DATA);
+    return utils::inl(PCI_CONFIG_DATA as u16);
 }
 
 /* Проверка на устройства */
@@ -182,19 +182,20 @@ pub unsafe fn pci_check_device(bus: u8, device: u8, flags: u8)
     if vendorid == 0xFFFF || vendorid == 0x0000 { return; }
 
     let reg3: u32 = pci_read_config(bus, device, 0, 0x0C);
-    let hedr_typo: u8 = (reg3 >> 16) & 0xFF; /* header type*/
+    let hedr_typo: u8 = ((reg3 >> 16) & 0xFF) as u8; /* header type*/
 
     let total_funcs: u8 = if (hedr_typo & 0x80) != 0 { 8 } else { 1 };
-    for function in 0..total_funcs {
+    for function in 0..total_funcs
+    {
         let curreg0: u32 = pci_read_config(bus, device, function, 0);
         let curven = (curreg0 & 0xFFFF) as u16;
-        let curdev: u16 = ((curreg0 >> 16) & 0xFFFF)) as u16;
+        let curdev: u16 = ((curreg0 >> 16) & 0xFFFF) as u16;
 
         if curven == 0xFFFF || curven == 0x0000 { continue; }
 
         let reg2: u32 = pci_read_config(bus, device, function, 0x08);
-        let base_class: u8 = (reg2 >> 24) & 0xFF;
-        let sub_class: u8 = (reg2 >> 16) & 0xFF;
+        let base_class: u8 = ((reg2 >> 24) & 0xFF) as u8;
+        let sub_class: u8 = ((reg2 >> 16) & 0xFF) as u8;
 
         let pci_dev = PCIDevice {
             bus,
