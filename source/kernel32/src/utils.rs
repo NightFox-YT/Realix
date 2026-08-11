@@ -75,6 +75,18 @@ pub unsafe fn outw(port: u16, value: u16) {
     );
 }
 
+
+#[inline(always)]
+pub unsafe fn outl(port: u32, value: u32) {
+    asm!(
+        "out dx, ax",
+        in("dx") port,
+        in("ax") value,
+        options(nostack, nomem, preserves_flags),
+    );
+}
+
+
 /// Чтение байта из I/O-порта
 #[inline(always)]
 pub unsafe fn inb(port: u16) -> u8 {
@@ -88,4 +100,9 @@ pub unsafe fn inb(port: u16) -> u8 {
     );
 
     value
+}
+
+#[inline(always)]
+pub unsafe fn io_wait() {
+    outb(0x80, 0);
 }
