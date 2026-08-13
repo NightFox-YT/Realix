@@ -1,13 +1,13 @@
 ; © Realix > Disk Read
-; (27.07.26) v0.1
+; (13.08.26) v0.12
 ; ================
 ; ❗️ Зависимости: error_handler (внешний обработчик)
 
-; ❗️ Требуется инициализация диска через `disk_init`
+; ❗️ Требуется инициализация диска через `bios_disk_init`
 %include "bios-api/disk/init.asm"
 
 ; > Чтение секторов с диска
-; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
+; ❗️ Номер диска берётся из `bios_disk_init/current_drive_num`
 ; Параметры:
 ;  - ax: LBA
 ;  - cl: кол-во секторов для чтения (до 128)
@@ -19,10 +19,10 @@ disk_read:
     push ax
 
     ; Номер текущего диска для BIOS
-    mov dl, [disk_current_drive]
+    mov dl, [current_drive_num]
 
     push cx          ; *Сохраняем кол-во секторов (cl)
-    call .lba_to_chs
+    call lba_to_chs
     pop ax           ; *Восстанавливаем кол-во секторов (cl > al)
 
     mov ah, 2h       ; Функция BIOS: Чтение секторов
@@ -62,27 +62,28 @@ disk_read:
 
 
 ; > Перевод LBA адреса в CHS адрес
+; ❗️ Геометрия диска берётся из `bios_disk_init`
 ; Параметры:
 ;  - ax: LBA
 ; Вывод:
 ;  - cx [bits 0-5]: сектор
 ;  - cx [bits 6-15]: цилиндр
 ;  - dh: номер головы
-.lba_to_chs:
+lba_to_chs:
     push ax
     push dx
 
     ; Вычисление номера сектора (LBA / SectorsPerTrack) + 1
     xor dx, dx
-    div word [disk_spt]  ; ax = LBA / SPT, dx = LBA % SPT
-    inc dx               ; Сектора в CHS нумеруются с 1
-    mov cx, dx           ; Сохраняем номер сектора (cx)
+    div word [curr_disk_spt]  ; ax = LBA / SPT, dx = LBA % SPT
+    inc dx                    ; Сектора в CHS нумеруются с 1
+    mov cx, dx                ; Сохраняем номер сектора (cx)
 
     ; Вычисление номеров:
     ; > ax (Цилиндр) = (LBA / SPT) / Heads
     ; > dx (Голова)  = (LBA / SPT) % Heads
     xor dx, dx
-    div word [disk_heads]
+    div word [curr_disk_heads]
     mov dh, dl             ; Сохраняем номер головы (dh)
 
     ; Упаковка цилиндра и сектора в cx для int 0x13
@@ -98,12 +99,11 @@ disk_read:
 
 
 ; > Сброс контроллера диска
-; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
+; Параметры:
+;  - dl: номер диска
 disk_reset:
     pusha
 
-    mov dl, [disk_current_drive]
-    
     ; Сброс контроллера диска
     xor ax, ax  ; Функция BIOS: Сброс дискового контроллера
     stc         ; Установка Carry Flag (Некоторые BIOS не устанавливают)
@@ -119,4 +119,4 @@ read_error:
     mov si, err_read_failed
     jmp error_handler
 
-err_read_failed: db '[!] Read failed!', 0
+err_read_failed: db '[#] Read failed!', 0

@@ -1,26 +1,38 @@
 ; © Realix > FAT12: File Load
-; (28.07.26) v0.11
+; (13.08.26) v0.12
 ; ================
-; ❗️ Зависимости: bios-api/disk/*, kernel16/io/print_ctrl.asm
+; ❗️ Зависимости: bios-api/disk/read, kernel16/io/print_ctrl.asm
 
 ; ❗️ Требуется инициализация FAT12 через `fat12_init`
-%include "bios-api/fat12/init.asm"
+%include "filesystem/fat12/init.asm"
 
 ; Основные константы
 %include 'shared/config.asm'
 
+; Настройка DiskAPI: Read (Если не настроен)
+%ifndef DISK_READ
+DISK_READ equ bios_disk_read
+%endif
+
 ; Предел длины цепочки кластеров (Aрхитектурный потолок FAT12)
 FAT12_MAX_CHAIN equ 4084
 
+; Смещения параметров внутри BPB
+BYTES_PER_SECTOR    equ 11
+SECTORS_PER_CLUSTER equ 13
+RESERVED_SECTORS    equ 14
+FAT_COUNT           equ 16
+DIR_ENTRIES         equ 17
+SECTORS_PER_FAT     equ 22
+
 ; > Загрузка файла с диска в память
-; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
 ; Параметры:
 ;  - si: смещение адреса имени файла (11 символов, формат 8.3)
 ;  - cx: сегмент назначения файла
 ;  - bx: смещение назначения файла
 ;  - di: адрес extra-таблицы защиты регионов памяти (0 - только core)
 ; Вывод:
-;  ! Входной si (имя файла) при возврате не сохраняется
+; ❗️ Входной si (имя файла) при возврате не сохраняется
 ;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка)
 ;  - si: смещение адреса сообщения об ошибке (0 - успех)
 file_load:
@@ -47,7 +59,7 @@ file_load:
     mov ax, [root_dir_lba]
     mov cx, [root_dir_size]
     mov bx, FAT_BUFFER_ADDR
-    call disk_read
+    call DISK_READ
 
     ; Подготовка к поиску файла в корневом каталоге
     xor bx, bx               ; Счётчик пройденных записей
@@ -68,7 +80,7 @@ file_load:
     ; Переход к следующей записи
     add di, 32             ; Увеличиваем смещение на размер записи (32 байта)
     inc bx                 ; Увеличиваем индекс записи
-    cmp bx, [dir_entries]
+    cmp bx, [es:BOOTIX_LOAD_OFFSET + DIR_ENTRIES] 
     jb .search             ; Если не вышли за предел, продолжаем поиск
 
     ; Ошибка 1: Вышли за предел, => указанного файла нет
@@ -119,10 +131,10 @@ file_load:
     mov word [chain_length], 0
 
     ; Читаем FAT в память
-    mov ax, [reserved_sectors]
-    mov cx, [sectors_per_fat]
+    mov ax, [es:BOOTIX_LOAD_OFFSET + RESERVED_SECTORS]
+    mov cx, [es:BOOTIX_LOAD_OFFSET + SECTORS_PER_FAT]
     mov bx, FAT_BUFFER_ADDR
-    call disk_read
+    call DISK_READ
 
     ; Установка сегмента и смещения для чтения файла
     mov bx, [dest_segment]
@@ -133,21 +145,21 @@ file_load:
 .load_loop:
     ; Вычисление LBA кластера
     ; > LBA = (file_cluster - 2) * sectors_per_cluster + data_lba
-    movzx cx, byte [sectors_per_cluster]
+    movzx cx, byte [es:BOOTIX_LOAD_OFFSET + SECTORS_PER_CLUSTER]
     mov ax, [file_cluster]
     sub ax, 2
     mul cx
     add ax, [data_lba]
 
     ; Чтение следующего кластера (cl содержит кол-во секторов)
-    call disk_read
+    call DISK_READ
 
     ; Индикатор прогресса чтения ("кубики")
     call print_square_char
 
     ; Увеличиваем адрес смещения назначения на кол-во прочитанных байт
-    movzx ax, byte [sectors_per_cluster]
-    mul word [bytes_per_sector]
+    movzx ax, byte [es:BOOTIX_LOAD_OFFSET + SECTORS_PER_CLUSTER]
+    mul word [es:BOOTIX_LOAD_OFFSET + BYTES_PER_SECTOR]
     add bx, ax
     jnc .load_loop_continue
 

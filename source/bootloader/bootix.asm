@@ -1,10 +1,8 @@
 ; © Realix > Bootix (Stage 1)
-; (14.06.26) v0.06
+; (13.08.26) v0.12
 ; ================
-; ❗️ Зависимости: kernel16/io/print.asm (в режиме PRINT_MINIMAL),
-;                 bios-api/disk/read.asm
-; ❗️ Свой мин. обход FAT12 вместо bios-api/fat12, чтобы
-;    1-ая стадия влезла в 512 байт (Дублирование намеренное).
+; ❗️ Зависимости: kernel16/io/print (в режиме PRINT_MINIMAL),
+;                  bios-api/disk/read, filesystem/fat12/initrix_load
 
 ; Настройка компиляции
 bits 16
@@ -13,8 +11,12 @@ org 0x7C00
 ; Основные константы
 %include 'shared/config.asm'
 
-; Настройка FAT12 (48 байт)
-jmp short start
+; Настройка DiskAPI
+DISK_INIT equ bios_disk_init
+DISK_READ equ bios_disk_read
+
+; Настройка заголовков FAT12 (48 байт)
+jmp short setup
 nop
 
 bpb_oem:                 db 'MSWIN4.1'  ; OEM (8 байт)
@@ -27,21 +29,22 @@ bpb_total_sectors:       dw 2880        ; Кол-во секторов (2880 * 5
 bpb_media_type:          db 0xF0        ; Тип диска (F0 - 3.5" floppy disk)
 bpb_sectors_per_fat:     dw 9           ; Секторов на FAT таблицу
 bpb_sectors_per_track:   dw 18          ; Секторов на дорожку
-bpb_heads:               dw 2           ; Кол-во голов
+bpb_heads:               dw 2           ; Кол-во голов на диске
 bpb_hidden_sectors:      dd 0           ; Кол-во скрытых секторов
-bpb_large_sectors:       dd 0           ; Кол-во секторов свыше 65535
+bpb_large_sectors:       dd 0           ; Кол-во секторов (если свыше 65535)
 
 ; Дополнительные параметры (extended boot record)
 ebr_drive_number: db 0                  ; Номер диска (0x00 floppy / 0x80 hdd)
-                  db 0                  ; Зарезервировано
-ebr_signature:    db 29h                ; Подпись (28h или 29h)
+                  db 0                  ; Зарезервировано (Флаги для Windows NT)
+ebr_signature:    db 29h                ; Подпись (28h / 29h)
 ebr_volume_id:    db 52h, 45h, 41h, 4Ch ; Серийный номер (Произвольный)
 ebr_volume_label: db 'Realix     '      ; Название тома (11 байт)
 ebr_system_id:    db 'FAT12   '         ; Тип файловой системы (8 байт)
 
 
-start:
-    ; Отключаем прерывания во время настройки
+; > Инициализация окружения
+setup:
+    ; Отключаем прерывания во время настройки стека и сегментов
     cli
 
     ; Настройка сегментных регистров (Напрямую настроить нельзя)
@@ -53,20 +56,31 @@ start:
     mov ss, ax
     mov sp, 0x7C00
 
+    ; Включаем прерывания после настройки стека и сегментов
+    sti
+
     ; Обновление номера диска (BIOS устанавливает его в dl)
     mov [ebr_drive_number], dl
 
-    ; Сброс сегмента кода `cs` дальним переходом с включением прерываний
-    sti
+    ; Сброс сегмента кода (cs) дальним переходом
     jmp 0:main
 
 
+; > Основной код
 main:
-    ; Инициализация драйвера диска
-    call disk_init
+    ; Инициализация драйвера диска (dl содержит номер диска)
+    call DISK_INIT
     mov [bpb_sectors_per_track], cx
     mov [bpb_heads], dh
 
+    ; Переход к загрузке файла (Через fall-through)
+    ; ...
+
+
+; > Загрузка 2-ого этапа загрузчика (Initrix.bin)
+; ❗️ Свой мин. обход FAT12 вместо filesystem/fat12/file_load,
+;    чтобы 1-ый этап влез в 512 байт (Дублирование намеренное)
+initrix_load:
     ; Вычисление LBA корневого каталога
     ; > LBA = fats * sectors_per_fat + reserved
     movzx ax, byte [bpb_fat_count]
@@ -218,7 +232,7 @@ main:
     jmp INITRIX_LOAD_SEGMENT:INITRIX_LOAD_OFFSET
 
 
-; > Обработчик критических ошибок (типо имитация синего экрана)
+; > Обработчик критических ошибок (Имитация синего экрана)
 ; Параметры:
 ;  - si: сообщение об ошибке
 error_handler:
@@ -237,7 +251,7 @@ error_handler:
 %include 'bios-api/disk/read.asm'
 
 ; Сообщения
-err_initrix_not_found: db '[!] No Initrix!', 0
+err_initrix_not_found: db '[#] No Initrix!', 0
 
 ; Переменные (Для чтения initrix)
 file_initrix_bin: db 'INITRIX BIN'
