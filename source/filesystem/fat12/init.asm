@@ -1,5 +1,5 @@
 ; © Realix > FAT12: Initialization
-; (27.07.26) v0.1
+; (13.08.26) v0.12
 ; ================
 ; ❗️ Требует запущенного Bootix с BPB по адресу 0x0:0x7C00
 
@@ -19,24 +19,23 @@ fat12_init:
     push dx
     push es
 
-    ; Читаем данные BPB из сектора Bootix
+    ; Чтение данных BPB из Bootix
     xor ax, ax
     mov es, ax
 
-    mov ax, [es:BOOTIX_LOAD_ADDR + 11]
+    mov ax, [es:BOOTIX_LOAD_OFFSET + 11]
     mov [bytes_per_sector], ax
-    mov al, [es:BOOTIX_LOAD_ADDR + 13]
+    mov al, [es:BOOTIX_LOAD_OFFSET + 13]
     mov [sectors_per_cluster], al
-    mov ax, [es:BOOTIX_LOAD_ADDR + 14]
+    mov ax, [es:BOOTIX_LOAD_OFFSET + 14]
     mov [reserved_sectors], ax
-    mov al, [es:BOOTIX_LOAD_ADDR + 16]
+    mov al, [es:BOOTIX_LOAD_OFFSET + 16]
     mov [fat_count], al
-    mov ax, [es:BOOTIX_LOAD_ADDR + 17]
+    mov ax, [es:BOOTIX_LOAD_OFFSET + 17]
     mov [dir_entries], ax
-    mov ax, [es:BOOTIX_LOAD_ADDR + 22]
+    mov ax, [es:BOOTIX_LOAD_OFFSET + 22]
     mov [sectors_per_fat], ax
 
-.calculations:
     ; Вычисление LBA корневого каталога
     ; > LBA = sectors_per_fat * fats + reserved
     mov ax, [sectors_per_fat]
@@ -54,10 +53,10 @@ fat12_init:
 
     ; Округление размера корневого каталога до целого вверх
     or dx, dx
-    jz .save_other_fat_params
+    jz .save_params
     inc ax
 
-.save_other_fat_params:
+.save_params:
     ; Обновление переменных
     mov [root_dir_size], ax
     add ax, [root_dir_lba]
@@ -76,7 +75,7 @@ root_dir_lba:  dw 0
 root_dir_size: dw 0
 data_lba:      dw 0
 
-; Переменные BPB
+; Переменные-копии BPB
 bytes_per_sector:    dw 0
 sectors_per_cluster: db 0
 reserved_sectors:    dw 0

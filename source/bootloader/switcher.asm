@@ -115,7 +115,7 @@ load_kernel16:
 
     ; Передача номера диска и собранной структуры данных в ядро
     ; (Читаем переменные Initrix до смены сегмента ds)
-    mov dl, [disk_current_drive]
+    mov dl, [curr_drive_num]
     mov di, PCINFO_ADDR
 
     ; Настройка сегментов под ядро

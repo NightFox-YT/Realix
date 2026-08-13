@@ -10,11 +10,15 @@ org 0x0
 ; Основные константы
 %include 'shared/config.asm'
 
+; Настройка DiskAPI
+%define DISK_INIT bios_disk_init
+%define DISK_READ bios_disk_read
+
 ; > Установка ядра
 kernel_start:
     ; Инициализация драйвера диска и fat12
-    ; (`disk_init` запоминает номер диска, переданный из Switcher в dl)
-    call disk_init
+    ; (`DISK_INIT` запоминает номер диска, переданный из Switcher в dl)
+    call DISK_INIT
     jc disk_init_error
     call fat12_init
 
@@ -83,7 +87,7 @@ error_handler:
 %include 'bios-api/memory/high.asm'
 %include 'bios-api/memory/low.asm'
 %include 'bios-api/disk/read.asm'
-%include 'bios-api/fat12/file_load.asm'
+%include 'filesystem/fat12/file_load.asm'
 %include 'bios-api/vga.asm'
 %include 'kernel16/debug/panic.asm'
 %include 'kernel16/syscall.asm'

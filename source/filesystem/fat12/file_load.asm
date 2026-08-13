@@ -1,26 +1,30 @@
 ; © Realix > FAT12: File Load
-; (28.07.26) v0.11
+; (13.08.26) v0.12
 ; ================
-; ❗️ Зависимости: bios-api/disk/*, kernel16/io/print_ctrl.asm
+; ❗️ Зависимости: bios-api/disk/read, kernel16/io/print_ctrl.asm
 
 ; ❗️ Требуется инициализация FAT12 через `fat12_init`
-%include "bios-api/fat12/init.asm"
+%include "filesystem/fat12/init.asm"
 
 ; Основные константы
 %include 'shared/config.asm'
+
+; Настройка DiskAPI: Read (Если не настроен)
+%ifndef DISK_READ
+%define DISK_READ bios_disk_read
+%endif
 
 ; Предел длины цепочки кластеров (Aрхитектурный потолок FAT12)
 FAT12_MAX_CHAIN equ 4084
 
 ; > Загрузка файла с диска в память
-; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
 ; Параметры:
 ;  - si: смещение адреса имени файла (11 символов, формат 8.3)
 ;  - cx: сегмент назначения файла
 ;  - bx: смещение назначения файла
 ;  - di: адрес extra-таблицы защиты регионов памяти (0 - только core)
 ; Вывод:
-;  ! Входной si (имя файла) при возврате не сохраняется
+; ❗️ Входной si (имя файла) при возврате не сохраняется
 ;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка)
 ;  - si: смещение адреса сообщения об ошибке (0 - успех)
 file_load:
@@ -47,7 +51,7 @@ file_load:
     mov ax, [root_dir_lba]
     mov cx, [root_dir_size]
     mov bx, FAT_BUFFER_ADDR
-    call disk_read
+    call DISK_READ
 
     ; Подготовка к поиску файла в корневом каталоге
     xor bx, bx               ; Счётчик пройденных записей
@@ -68,7 +72,7 @@ file_load:
     ; Переход к следующей записи
     add di, 32             ; Увеличиваем смещение на размер записи (32 байта)
     inc bx                 ; Увеличиваем индекс записи
-    cmp bx, [dir_entries]
+    cmp bx, [dir_entries] 
     jb .search             ; Если не вышли за предел, продолжаем поиск
 
     ; Ошибка 1: Вышли за предел, => указанного файла нет
@@ -122,7 +126,7 @@ file_load:
     mov ax, [reserved_sectors]
     mov cx, [sectors_per_fat]
     mov bx, FAT_BUFFER_ADDR
-    call disk_read
+    call DISK_READ
 
     ; Установка сегмента и смещения для чтения файла
     mov bx, [dest_segment]
@@ -140,7 +144,7 @@ file_load:
     add ax, [data_lba]
 
     ; Чтение следующего кластера (cl содержит кол-во секторов)
-    call disk_read
+    call DISK_READ
 
     ; Индикатор прогресса чтения ("кубики")
     call print_square_char

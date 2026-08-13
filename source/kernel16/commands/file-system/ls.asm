@@ -1,14 +1,19 @@
 ; © Realix > Command: LS
 ; (27.07.26) v0.1
 ; ================
-; ❗️ Зависимости: bios-api/disk/read.asm, bios-api/fat12/init.asm,
+; ❗️ Зависимости: bios-api/disk/read.asm, filesystem/fat12/init.asm,
 ;                 kernel16/io: print, print_ctrl, print_reg
 
 ; ❗️ Требуется инициализация FAT12 через `fat12_init`
-%include "bios-api/fat12/init.asm"
+%include "filesystem/fat12/init.asm"
 
 ; Основные константы
 %include 'shared/config.asm'
+
+; Настройка DiskAPI: Read (Если не настроен)
+%ifndef DISK_READ
+%define DISK_READ bios_disk_read
+%endif
 
 ; Раскладка записи корневого каталога FAT12 (32 байта)
 ; ❗️ Те же смещения используются в bios-api/fat12/file_load.asm
@@ -45,7 +50,7 @@ cmd_ls:
     mov ax, [root_dir_lba]
     mov cx, [root_dir_size]
     mov bx, FAT_BUFFER_ADDR
-    call disk_read
+    call DISK_READ
 
     ; Подготовка к выводу информации о файлах
     xor bx, bx               ; Счётчик пройденных записей

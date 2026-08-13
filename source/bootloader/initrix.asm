@@ -10,10 +10,15 @@ org 0x0
 ; Основные константы
 %include 'shared/config.asm'
 
+; Настройка DiskAPI
+%define DISK_INIT bios_disk_init
+%define DISK_READ bios_disk_read
+
+; > Основной код
 main:
     ; Инициализация драйверов 
-    ; (`disk_init` запоминает номер диска, переданный из Bootix)
-    call disk_init
+    ; (`DISK_INIT` запоминает номер диска, переданный из Bootix в dl)
+    call DISK_INIT
     jc disk_init_error
     call fat12_init
 
@@ -36,7 +41,7 @@ main:
 
     ; Экспорт собранных данных (*Доп. сегмент)
     mov ax, [low_memory_kb]
-    mov dl, [disk_current_drive]
+    mov dl, [curr_drive_num]
     mov word [es:PCINFO_ADDR + PCINFO_LOW_MEM], ax  ; Размер "нижней" памяти (КБ)
     mov byte [es:PCINFO_ADDR + PCINFO_DRIVE], dl    ; Номер загрузочного диска
     mov word [es:PCINFO_ADDR + PCINFO_ENTRIES], bp  ; Кол-во записей в карте памяти
@@ -106,7 +111,7 @@ error_handler:
 %include 'kernel16/io/print_reg.asm'
 %include 'kernel16/commands/base/cls.asm'
 %include 'bios-api/disk/read.asm'
-%include 'bios-api/fat12/file_load.asm'
+%include 'filesystem/fat12/file_load.asm'
 %include 'bios-api/memory/high.asm'
 %include 'bios-api/memory/low.asm'
 %include 'network/rtl8139.asm'
@@ -118,7 +123,7 @@ err_get_lower_memory: db '[!] E5: Get lower memory failed (int 12h)!', 0
 err_get_memory_map:   db '[!] E6: Get memory map failed (int 15h)!', 0
 
 ; Предупреждения
-msg_warn_no_nic: db '[!] Network card RTL8139 not found, networking disabled.', ENTER, 0
+msg_warn_no_nic: db '[*] Network card RTL8139 not found, networking disabled.', ENTER, 0
 
 ; Сообщения об ошибках
 err_disk_init: db '[!] E7: Disk init failed!', ENTER, 0
