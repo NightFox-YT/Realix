@@ -1,37 +1,38 @@
 ; © Realix > Disk: Initialization
-; (13.08.26) v0.12
+; (27.07.26) v0.1
 ; ================
 
 ; Защита от повторного включения модуля
-%ifndef BIOS_DISK_INIT
-%define BIOS_DISK_INIT
+%ifndef DISK_INIT
+%define DISK_INIT
 
-; > Инициализация и получение параметров диска через BIOS (Вызывается на старте)
+; > Инициализация и получение параметров диска (Вызывается на старте)
 ; Параметры:
 ;  - dl: номер диска
 ; Вывод:
 ;  - cx: sectors_per_track
 ;  - dh: heads
-;  - dl: number of hard hisk drives
+;  - dl: num of hard hisk drives
 ;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка чтения)
-;  - Заполняет переменные curr_drive_num, curr_disk_spt и curr_disk_heads
-bios_disk_init:
+;  - Заполняет переменные disk_current_drive, disk_spt и disk_heads
+disk_init:
     push ax
     push bx
     push di
-    push es
 
-    ; Запоминаем номер инициализированного диска
-    mov [curr_drive_num], dl
+    ; Запоминаем номер диска до вызова BIOS
+    mov [disk_current_drive], dl
 
     ; Считывание параметров диска (С защитой от бага на некоторых BIOS)
-    ; > es:di - указатель на таблицу параметров дискеты, => обнуляем
+    push es
     xor di, di
     mov es, di
 
     mov ah, 8h
     int 0x13
-    jc .return  ; Выходим из функции (Ошибка)
+    
+    pop es
+    jc .done  ; Выходим из функции (Ошибка)
 
     ; Форматируем кол-во секторов на дорожку (Убираем байты цилиндра)
     and cl, 0x3F
@@ -41,19 +42,19 @@ bios_disk_init:
     inc dh
 
     ; Сохраняем значения в переменные
-    movzx word [curr_disk_heads], dh
-    mov [curr_disk_spt], cx
+    movzx ax, dh
+    mov [disk_heads], ax
+    mov [disk_spt], cx
 
-.return:
-    pop es
+.done:
     pop di
     pop bx
     pop ax
     ret
 
 ; Переменные текущего диска (Номер и геометрия)
-curr_drive_num:  db 0
-curr_disk_spt:   dw 0
-curr_disk_heads: dw 0
+disk_current_drive: db 0
+disk_spt:           dw 0
+disk_heads:         dw 0
 
 %endif
