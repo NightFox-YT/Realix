@@ -100,6 +100,8 @@ fn execute(input: &str) {
         "reboot" => { commands::reboot::run() }
         "shutdown" => { commands::shutdown::run() }
         "echo" => { commands::echo::run(args) }
+        "hex" => { commands::hex::run(args); }
+        "fib" => { commands::fib::run(args); }
         "uptime" => {
             let mut str_buffer: [u8; 10] = [0u8; 10];
 

@@ -53,6 +53,26 @@ pub fn u32_to_dec_str(value: u32, str_buffer: &mut [u8; 10]) -> &str {
     core::str::from_utf8(&str_buffer[i..]).unwrap()
 }
 
+/// Разбор беззнакового десятичного числа из строки
+/// Параметры:
+///  - s: строка с числом (только цифры, без пробелов/знака)
+/// Вывод:
+///  - None, если строка пустая, содержит не только цифры, или число не влезает в u32
+pub fn parse_u32(s: &str) -> Option<u32> {
+    if s.is_empty() {
+        return None;
+    }
+
+    let mut value: u32 = 0;
+    for byte in s.bytes() {
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+        value = value.checked_mul(10)?.checked_add((byte - b'0') as u32)?;
+    }
+    Some(value)
+}
+
 /// Запись байта в I/O-порт
 #[inline(always)]
 pub unsafe fn outb(port: u16, value: u8) {
