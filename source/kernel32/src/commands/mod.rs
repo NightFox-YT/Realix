@@ -3,7 +3,9 @@
 // ================
 
 pub mod echo;
+pub mod fib;
 pub mod help;
+pub mod hex;
 pub mod matrix;
 pub mod meminfo;
 pub mod reboot;
