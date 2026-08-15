@@ -38,4 +38,7 @@ msg_help:
     db '> hex <num>  - <num> to hexadecimal   > shutdown - Power off PC', ENTER
     db '> fib <0-24> - Nth Fibonacci number', ENTER
     db '  [Tools]', ENTER
-    db '> key - Show pressed key codes', 0
+    db '> key - Show pressed key codes', ENTER
+    db '  [Dev]', ENTER
+    db '> asm - Enter mini-assembler (blank line to finish)', ENTER
+    db '> run - Execute the assembled code', 0

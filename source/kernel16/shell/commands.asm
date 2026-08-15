@@ -44,6 +44,8 @@ cmd_table:
     dw .str_sysinfo,  cmd_sysinfo
     dw .str_panic,    cmd_panic
     dw .str_uptime,   cmd_uptime
+    dw .str_asm,      cmd_asm
+    dw .str_run,      cmd_run
     dw 0
 
 .str_help:     db 'help', 0
@@ -77,6 +79,8 @@ cmd_table:
 .str_panic:    db 'panic', 0
 .str_uptime:   db 'uptime', 0
 .str_exec:     db 'exec', 0
+.str_asm:      db 'asm', 0
+.str_run:      db 'run', 0
 
 ; > Исполнитель команд
 ; Параметры:
@@ -321,6 +325,9 @@ cmd_panic:
 
 ; > Команда помощи
 %include "kernel16/commands/base/help.asm"
+
+; > Мини-ассемблер (asm/run)
+%include "kernel16/commands/dev/asm.asm"
 
 ; > Перевод символа al в верхний регистр (a-z -> A-Z, иначе без изменений)
 ; Параметры & Вывод:
