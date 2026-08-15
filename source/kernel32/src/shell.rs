@@ -7,6 +7,7 @@
 use crate::commands;
 use crate::drivers::keyboard::{self, read_key};
 use crate::drivers::pit;
+use crate::drivers::speaker;
 use crate::drivers::vga::{self, Color};
 use crate::utils;
 
@@ -227,6 +228,11 @@ fn read_line(history: &mut History) -> [u8; HISTORY_SLOT_SIZE] {
                 buffer[pos] = byte;
                 pos += 1;
                 vga::print_char(byte, Color::LightGray);
+            }
+            // Буфер строки заполнен (pos == INPUT_MAX) — сигнализируем об этом,
+            // а не просто молча игнорируем ввод
+            keyboard::Key::Char(byte) if (0x20..=0x7E).contains(&byte) => {
+                speaker::beep_short();
             }
             _ => {}
         }
