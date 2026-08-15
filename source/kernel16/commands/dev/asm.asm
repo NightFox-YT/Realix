@@ -31,6 +31,11 @@ cmd_asm:
 
     mov word [asm_cursor], 0
 
+    ; Сбрасываем зависшие в буфере BIOS клавиши (напр. авто-повтор Enter,
+    ; которым была отправлена сама команда 'asm') - иначе первый A> может
+    ; сразу "проглотить" их и завершиться, не дав ничего ввести
+    call drain_keyboard_buffer
+
     mov si, msg_asm_intro
     call print
 
@@ -807,6 +812,25 @@ read_token:
     pop cx
     pop ax
     stc
+    ret
+
+
+; > Сбрасывает все клавиши, зависшие в буфере BIOS (не блокирует)
+; Использует int 0x16 ah=1 (проверка без удаления) + ah=0 (чтение/удаление)
+drain_keyboard_buffer:
+    push ax
+
+.loop:
+    mov ah, 1
+    int 0x16
+    jz .done        ; ZF=1 - буфер пуст
+
+    xor ah, ah
+    int 0x16         ; Читаем клавишу (удаляя её из буфера)
+    jmp .loop
+
+.done:
+    pop ax
     ret
 
 
