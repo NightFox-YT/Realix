@@ -10,7 +10,8 @@ use crate::utils::outb;
 // Порты PIT и базовая частота генератора PIT (Гц)
 const PIT_CHANNEL0: u16 = 0x40;
 const PIT_COMMAND: u16 = 0x43;
-const BASE_FREQUENCY: u32 = 1_193_182;
+// pub(crate): также используется speaker.rs (канал 2 работает от того же генератора)
+pub(crate) const BASE_FREQUENCY: u32 = 1_193_182;
 
 // Нижний предел частоты (Делитель должен влезать в 16 бит)
 const MIN_FREQUENCY: u32 = 20;
