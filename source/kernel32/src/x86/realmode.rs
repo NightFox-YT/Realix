@@ -194,14 +194,14 @@ core::arch::global_asm!(
     "    mov es, ax",
 
     // IVT-совместимый IDTR (настоящий Real Mode, база 0000:0000).
-    // ❗️ Прерывания НЕ включаем (нет sti): PIC уже перепрошит на векторы
-    // 0x20+ (см. x86::pic::remap) - таймер/клавиатура в Real Mode попали бы
-    // не в BIOS-обработчик, а в мусор по смещению 0x20*4 в настоящем IVT.
-    // BIOS-дисковые вызовы не требуют внешних прерываний (опрос контроллера
-    // внутри самого BIOS), а bios_disk_call() на стороне Rust дополнительно
-    // маскирует PIC на время вызова - двойная защита на случай, если сам
-    // BIOS внутри себя выполнит sti
+    // ❗️ Прерывания ВКЛЮЧАЕМ (sti): некоторые BIOS-сервисы (напр. чтение
+    // гибкого диска) сами ждут аппаратный IRQ (IRQ6 контроллера дискет) для
+    // сигнала завершения - без прерываний вызов может зависнуть навсегда.
+    // Это безопасно ТОЛЬКО потому, что bios_disk_call() на стороне Rust уже
+    // перепрошил PIC на "родные" смещения BIOS (08h/70h) перед вызовом -
+    // иначе IRQ уходил бы не в настоящий BIOS-обработчик, а в мусор
     "    lidt [esi + {off_real_idtr}]",
+    "    sti",
 
     // --- Геометрия диска: int 13h, ah=8h ---
     "    mov dl, [esi + {off_drive}]",
@@ -391,20 +391,43 @@ fn bios_disk_call(operation: u8, lba: u32, count: u8, dest: u32) -> bool {
         RM_PARAMS.buffer_offset = (dest & 0xF) as u16;
         RM_PARAMS.drive = crate::pcinfo().boot_drive_num;
 
-        // Маскируем весь PIC на время перехода в Real Mode: он уже
-        // перепрошит на векторы 0x20+ (см. x86::pic::remap), а Real Mode
-        // ожидает IRQ0/IRQ1 на векторах 0x08/0x09 в настоящем IVT - без
-        // маскирования таймер/клавиатура попали бы туда, где в IVT нет
-        // осмысленного обработчика (см. комментарий в rm_bios_disk_call)
+        // PIC сейчас перепрошит на векторы kernel32 (0x20+, см.
+        // x86::pic::remap), а некоторые BIOS-сервисы (напр. чтение гибкого
+        // диска) сами ждут аппаратный IRQ для сигнала завершения - на "чужих"
+        // векторах он ушёл бы не в BIOS-обработчик, а в мусор (или вовсе не
+        // дошёл бы, будучи замаскирован) и вызов завис бы навсегда.
+        // Временно возвращаем PIC на "родные" смещения BIOS и снимаем маску
+        // со всех IRQ на время вызова, восстанавливая оба состояния по возврату.
+        //
+        // ❗️ Прерывания на время ЭТОЙ перепрошивки отключаем на уровне CPU
+        // (не только внутри rm_bios_disk_call): иначе в окне между
+        // reinit_offsets(BIOS) и входом в асм-функцию (где ещё активны
+        // protected-mode IDT ядра И уже "родные" смещения PIC) залётный IRQ0
+        // ушёл бы на вектор 0x08 - а это обработчик Double Fault в IDT
+        // kernel32, не таймер. sti обратно включает уже сама asm-функция,
+        // но только после того, как загружен временный Real Mode IDTR
+        crate::x86::idt::interrupts_disable();
+
         let saved_mask1 = crate::utils::inb(PIC1_DATA);
         let saved_mask2 = crate::utils::inb(PIC2_DATA);
-        crate::utils::outb(PIC1_DATA, 0xFF);
-        crate::utils::outb(PIC2_DATA, 0xFF);
+
+        crate::x86::pic::reinit_offsets(
+            crate::x86::pic::BIOS_PIC1_OFFSET,
+            crate::x86::pic::BIOS_PIC2_OFFSET,
+        );
+        crate::utils::outb(PIC1_DATA, 0x00);
+        crate::utils::outb(PIC2_DATA, 0x00);
 
         rm_bios_disk_call();
 
+        crate::x86::pic::reinit_offsets(
+            crate::x86::pic::PIC1_OFFSET,
+            crate::x86::pic::PIC2_OFFSET,
+        );
         crate::utils::outb(PIC1_DATA, saved_mask1);
         crate::utils::outb(PIC2_DATA, saved_mask2);
+
+        crate::x86::idt::interrupts_enable();
 
         RM_PARAMS.result == 0
     }
