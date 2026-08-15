@@ -193,9 +193,15 @@ core::arch::global_asm!(
     "    mov ds, ax",
     "    mov es, ax",
 
-    // IVT-совместимый IDTR (настоящий Real Mode, база 0000:0000)
+    // IVT-совместимый IDTR (настоящий Real Mode, база 0000:0000).
+    // ❗️ Прерывания НЕ включаем (нет sti): PIC уже перепрошит на векторы
+    // 0x20+ (см. x86::pic::remap) - таймер/клавиатура в Real Mode попали бы
+    // не в BIOS-обработчик, а в мусор по смещению 0x20*4 в настоящем IVT.
+    // BIOS-дисковые вызовы не требуют внешних прерываний (опрос контроллера
+    // внутри самого BIOS), а bios_disk_call() на стороне Rust дополнительно
+    // маскирует PIC на время вызова - двойная защита на случай, если сам
+    // BIOS внутри себя выполнит sti
     "    lidt [esi + {off_real_idtr}]",
-    "    sti",
 
     // --- Геометрия диска: int 13h, ah=8h ---
     "    mov dl, [esi + {off_drive}]",
@@ -371,6 +377,10 @@ pub fn write_sectors(lba: u32, count: u8, dest: u32) -> bool {
     bios_disk_call(OP_WRITE, lba, count, dest)
 }
 
+// Порты данных (масок) master/slave PIC - см. x86::pic
+const PIC1_DATA: u16 = 0x21;
+const PIC2_DATA: u16 = 0xA1;
+
 /// Общая точка входа для чтения/записи секторов
 fn bios_disk_call(operation: u8, lba: u32, count: u8, dest: u32) -> bool {
     unsafe {
@@ -381,7 +391,20 @@ fn bios_disk_call(operation: u8, lba: u32, count: u8, dest: u32) -> bool {
         RM_PARAMS.buffer_offset = (dest & 0xF) as u16;
         RM_PARAMS.drive = crate::pcinfo().boot_drive_num;
 
+        // Маскируем весь PIC на время перехода в Real Mode: он уже
+        // перепрошит на векторы 0x20+ (см. x86::pic::remap), а Real Mode
+        // ожидает IRQ0/IRQ1 на векторах 0x08/0x09 в настоящем IVT - без
+        // маскирования таймер/клавиатура попали бы туда, где в IVT нет
+        // осмысленного обработчика (см. комментарий в rm_bios_disk_call)
+        let saved_mask1 = crate::utils::inb(PIC1_DATA);
+        let saved_mask2 = crate::utils::inb(PIC2_DATA);
+        crate::utils::outb(PIC1_DATA, 0xFF);
+        crate::utils::outb(PIC2_DATA, 0xFF);
+
         rm_bios_disk_call();
+
+        crate::utils::outb(PIC1_DATA, saved_mask1);
+        crate::utils::outb(PIC2_DATA, saved_mask2);
 
         RM_PARAMS.result == 0
     }
