@@ -17,7 +17,7 @@ mod x86;
 // Подключение функций
 use core::arch::{asm, naked_asm};
 use core::panic::PanicInfo;
-use drivers::{keyboard, pit, vga};
+use drivers::{fat12, keyboard, pit, vga};
 use memory::{frame_allocator, pmm};
 use x86::{gdt, idt};
 
@@ -55,7 +55,7 @@ impl PcInfo {
 
 /// Предоставление доступа-обёртки к структуре PcInfo
 #[inline]
-unsafe fn pcinfo() -> &'static PcInfo {
+pub(crate) unsafe fn pcinfo() -> &'static PcInfo {
     &*(PCINFO_ADDR as *const PcInfo)
 }
 
@@ -117,6 +117,11 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     unsafe {
         let pcinfo: &PcInfo = &*pcinfo_addr;
         frame_allocator::init(&pcinfo.memory_map);
+    }
+
+    // Инициализация FAT12 (через Real Mode BIOS thunk - см. x86::realmode)
+    if !fat12::init() {
+        vga::print_line("[!] FAT12 init failed - file commands unavailable.\n", vga::Color::Red);
     }
 
     // Вывод логотипа и приглашения

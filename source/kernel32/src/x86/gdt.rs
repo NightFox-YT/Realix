@@ -9,7 +9,10 @@ use core::mem::size_of;
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
 pub const TSS_SELECTOR: u16 = 0x28;
-const GDT_SIZE: usize = 6;
+// 16-битные дескрипторы для временного перехода в Real Mode (см. x86::realmode)
+pub const REALMODE_CODE_SELECTOR: u16 = 0x30;
+pub const REALMODE_DATA_SELECTOR: u16 = 0x38;
+const GDT_SIZE: usize = 8;
 
 // Коснтанты флагов Access Byte
 #[allow(dead_code)]
@@ -202,6 +205,24 @@ pub fn init() {
             &raw const TSS as u32,
             (size_of::<TaskStateSegment>() - 1) as u32,
             PRESENT | RING0 | TSS_AVAILABLE_32,
+            0,
+        );
+
+        // (Ring 0) 16-bit Code - для временного перехода в Real Mode.
+        // Байтовая гранулярность, лимит 0xFFFF (сегмент = 64 КБ, как в Real Mode);
+        // без GRAN_4K/BIT32_MODE - декодирование инструкций 16-битное
+        GDT[6] = GdtDescriptor::new(
+            0x0,
+            0x0000FFFF,
+            PRESENT | RING0 | SYSTEM | EXECUTABLE | READ_WRITE_ABLE,
+            0,
+        );
+
+        // (Ring 0) 16-bit Data - см. GDT[6]
+        GDT[7] = GdtDescriptor::new(
+            0x0,
+            0x0000FFFF,
+            PRESENT | RING0 | SYSTEM | READ_WRITE_ABLE,
             0,
         );
 
