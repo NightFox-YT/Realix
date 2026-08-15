@@ -1,9 +1,9 @@
 ; © Realix > Command: Mini-Assembler (asm / run)
 ; (15.08.26) v0.1
 ; ================
-; ❗️ Зависимости: kernel16/shell: cli (cli_input, input_buffer), commands
-;                 (skip_spaces, char_to_lower, str_equal), parse (parse_uint16),
-;                 kernel16/io: print & print_reg
+; ❗️ Зависимости: kernel16/shell: cli (input_buffer, ENTER/BACKSPACE/SPACE_KEY,
+;                 visual_erase_char), commands (skip_spaces, char_to_lower,
+;                 str_equal), parse (parse_uint16), kernel16/io: print & print_reg
 ; ❗️ 'asm' очищает буфер и собирает инструкции по одной за строку в RAM,
 ;    'run' выполняет собранный код. Регистры общего назначения обнуляются
 ;    перед запуском; push/pop должны быть сбалансированы - код исполняется
@@ -22,6 +22,16 @@ OPTYPE_NONE  equ 0
 OPTYPE_REG16 equ 1
 OPTYPE_REG8  equ 2
 OPTYPE_IMM   equ 3
+
+; ASCII-код Ctrl+C (одинаков для Ctrl+C и Ctrl+Shift+C через int 0x16 ah=0 -
+; BIOS не различает Shift для управляющих символов, поэтому Shift проверяется
+; отдельно через флаги клавиатуры в BDA)
+CTRL_C_KEY equ 0x03
+
+; Адрес байта флагов клавиатуры в BIOS Data Area (биты 0-1: Right/Left Shift)
+BDA_KB_FLAGS_SEGMENT equ 0x40
+BDA_KB_FLAGS_OFFSET  equ 0x17
+BDA_SHIFT_MASK       equ 0x03
 
 ; > Команда входа в мини-ассемблер: asm
 ; Сбрасывает буфер и читает инструкции по одной, пока не введена пустая строка
@@ -43,7 +53,8 @@ cmd_asm:
     mov si, asm_prompt
     call print
 
-    call cli_input
+    call asm_read_line
+    jc .aborted
 
     ; Пустая строка - завершение ввода
     cmp byte [input_buffer], 0
@@ -72,6 +83,18 @@ cmd_asm:
     call print
     call print_new_line
     jmp .loop
+
+.aborted:
+    mov si, msg_asm_aborted
+    call print
+    mov ax, [asm_cursor]
+    call print_dec16
+    mov si, msg_asm_done2
+    call print
+
+    pop si
+    pop ax
+    ret
 
 .finish:
     mov si, msg_asm_done
@@ -834,6 +857,99 @@ drain_keyboard_buffer:
     ret
 
 
+; > Чтение одной строки ввода для asm-режима (без истории, в отличие от cli_input)
+; Backspace работает как обычно. Ctrl+C (без Shift) очищает текущую строку.
+; Ctrl+Shift+C - немедленный выход (BIOS не различает Shift для управляющих
+; символов через int 0x16 ah=0, поэтому Shift проверяется отдельно через BDA).
+; Вывод:
+;  - input_buffer: 0-terminated строка
+;  - CF: 0 - обычная строка (Enter), 1 - запрошен выход (Ctrl+Shift+C)
+asm_read_line:
+    push ax
+    push bx
+    push di
+
+    xor bx, bx
+    mov di, input_buffer
+
+.input_loop:
+    xor ah, ah
+    int 0x16
+
+    cmp al, ENTER_KEY
+    je .enter_pressed
+
+    cmp al, BACKSPACE_KEY
+    je .backspace_pressed
+
+    cmp al, CTRL_C_KEY
+    je .ctrl_c_pressed
+
+    ; Игнорируем прочие управляющие символы (Escape, стрелки и т.п.)
+    cmp al, SPACE_KEY
+    jb .input_loop
+
+    ; Переполнение буфера - лишние символы молча игнорируются
+    cmp bx, INPUT_BUFFER_LEN
+    jae .input_loop
+
+    call print_char
+    mov [di], al
+    inc di
+    inc bx
+    jmp .input_loop
+
+.backspace_pressed:
+    test bx, bx
+    jz .input_loop
+
+    dec di
+    dec bx
+    mov byte [di], 0
+    call visual_erase_char
+    jmp .input_loop
+
+.ctrl_c_pressed:
+    ; Проверка удержан ли Shift (BDA, флаги клавиатуры: биты 0-1)
+    push es
+    mov ax, BDA_KB_FLAGS_SEGMENT
+    mov es, ax
+    mov al, [es:BDA_KB_FLAGS_OFFSET]
+    pop es
+    test al, BDA_SHIFT_MASK
+    jnz .abort
+
+    ; Обычный Ctrl+C (без Shift) - просто очищаем текущую строку
+.clear_line:
+    test bx, bx
+    jz .clear_done
+    call visual_erase_char
+    dec bx
+    jmp .clear_line
+
+.clear_done:
+    mov di, input_buffer
+    mov byte [di], 0
+    jmp .input_loop
+
+.abort:
+    call print_new_line
+    mov byte [di], 0
+    stc
+    jmp .return
+
+.enter_pressed:
+    call print_new_line
+    mov byte [di], 0
+    clc
+
+.return:
+    pop di
+    pop bx
+    pop ax
+    ret
+
+
 ; > Пропускает пробелы и не более одной запятой между операндами
 skip_operand_sep:
     call skip_spaces
@@ -894,10 +1010,12 @@ msg_asm_intro:
     db 'Realix Mini-Assembler. Blank line to finish, run to execute.', ENTER
     db 'Ops: mov add sub push pop int nop hlt cli sti', ENTER
     db 'Regs: ax cx dx bx sp bp si di (16-bit) / al ah cl ch dl dh bl bh (8-bit)', ENTER
-    db 'Imm: decimal or 0xHEX, e.g. mov ax,0x0e00', ENTER, 0
+    db 'Imm: decimal or 0xHEX, e.g. mov ax,0x0e00', ENTER
+    db 'Ctrl+C clears the current line, Ctrl+Shift+C exits immediately.', ENTER, 0
 
-msg_asm_done:  db ENTER, 'Assembled ', 0
-msg_asm_done2: db ' bytes. Type "run" to execute.', ENTER, 0
+msg_asm_done:    db ENTER, 'Assembled ', 0
+msg_asm_aborted: db ENTER, 'Aborted (Ctrl+Shift+C). Assembled ', 0
+msg_asm_done2:   db ' bytes. Type "run" to execute.', ENTER, 0
 
 msg_run_start:  db 'Executing ', 0
 msg_run_start2: db ' bytes...', ENTER, 0
