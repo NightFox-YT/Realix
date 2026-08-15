@@ -36,6 +36,20 @@ pub fn init(frequency: u32) {
     let divisor: u32 = BASE_FREQUENCY / frequency;
     FREQUENCY.store(frequency, Relaxed);
 
+    set_raw_divisor(divisor as u16);
+}
+
+/// Программирует делитель PIT напрямую, без проверки минимальной частоты -
+/// используется x86::realmode для временного возврата к "родному" делителю
+/// BIOS (0, что аппаратно означает 65536 -> ~18.2 Гц) перед вызовом BIOS.
+/// Некоторые BIOS-сервисы (напр. чтение/запись гибкого диска: раскрутка
+/// мотора, таймауты) сами используют PIT для отсчёта задержек - если он
+/// тикает в divisor/65536 раз чаще, чем BIOS рассчитывает, эти отсчёты
+/// сбиваются (независимо от маскирования прерываний - делитель влияет на
+/// сам счётчик PIT, не только на доставку прерывания от него)
+/// Параметры:
+///  - divisor: делитель (0 аппаратно означает 65536)
+pub fn set_raw_divisor(divisor: u16) {
     unsafe {
         // Отправляем команду выбора режима
         outb(PIT_COMMAND, PIT_COMMAND_BYTE);
@@ -45,6 +59,24 @@ pub fn init(frequency: u32) {
         outb(PIT_CHANNEL0, (divisor & 0xFF) as u8);
         outb(PIT_CHANNEL0, ((divisor >> 8) & 0xFF) as u8);
     }
+}
+
+/// Переключает PIT на "родной" делитель BIOS (0 -> 65536, ~18.2 Гц) не
+/// трогая сохранённую FREQUENCY - см. set_raw_divisor. get_uptime()/sleep()
+/// при этом продолжат считать по прежней (настоящей) частоте kernel32, а не
+/// по временной - это не проблема, т.к. окно использования короткое
+/// (Real Mode BIOS вызов) и не рассчитано быть точным источником времени
+pub fn use_bios_rate() {
+    set_raw_divisor(0);
+}
+
+/// Возвращает PIT к частоте kernel32, сохранённой в FREQUENCY (см. init())
+pub fn restore_rate() {
+    let frequency: u32 = FREQUENCY.load(Relaxed);
+    if frequency == 0 {
+        return; // init() ещё не вызывался - восстанавливать нечего
+    }
+    set_raw_divisor((BASE_FREQUENCY / frequency) as u16);
 }
 
 /// Вызывается irq_handler на каждый тик (IRQ0)
