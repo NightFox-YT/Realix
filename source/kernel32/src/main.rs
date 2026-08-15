@@ -17,7 +17,7 @@ mod x86;
 // Подключение функций
 use core::arch::{asm, naked_asm};
 use core::panic::PanicInfo;
-use drivers::{fat12, keyboard, pit, vga};
+use drivers::{keyboard, pit, vga};
 use memory::{frame_allocator, pmm};
 use x86::{gdt, idt};
 
@@ -119,10 +119,10 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
         frame_allocator::init(&pcinfo.memory_map);
     }
 
-    // Инициализация FAT12 (через Real Mode BIOS thunk - см. x86::realmode)
-    if !fat12::init() {
-        vga::print_line("[!] FAT12 init failed - file commands unavailable.\n", vga::Color::Red);
-    }
+    // ❗️ FAT12 больше не инициализируется здесь безусловно - см.
+    // fat12::ensure_init(), вызываемую самими файловыми командами при первом
+    // реальном обращении к диску. Так неисправность в дисковом коде ломает
+    // только файловые команды, а не всю загрузку ОС.
 
     // Вывод логотипа и приглашения
     vga::clear_screen();

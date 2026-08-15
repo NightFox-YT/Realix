@@ -96,8 +96,22 @@ pub struct DirEntry {
     pub size: u32,
 }
 
+/// Инициализация по требованию: если уже инициализировано, ничего не делает
+/// (безопасно вызывать перед каждой командой файловой системы). Так диск
+/// трогается только при первом реальном обращении к файлам, а не при каждой
+/// загрузке ОС - неисправность здесь ломает только файловые команды, а не
+/// весь boot
+fn ensure_init() -> bool {
+    if unsafe { matches!(FS_INFO, Some(_)) } {
+        return true;
+    }
+    init()
+}
+
 /// Инициализация: читает загрузочный сектор, разбирает BPB, читает FAT
-/// и корневой каталог в память. Должна быть вызвана один раз при старте.
+/// и корневой каталог в память. Идемпотентна - безопасно вызывать повторно
+/// (например, чтобы обновить состояние диска), но обычно достаточно
+/// ensure_init(), вызываемой автоматически другими функциями модуля
 /// Вывод: true при успехе
 pub fn init() -> bool {
     unsafe {
@@ -197,6 +211,7 @@ fn fat_buf_addr() -> u32 {
 /// Возвращает запись каталога по индексу (0-based), либо None если
 /// достигнут конец каталога (свободная запись) или индекс за пределами
 pub fn dir_entry(index: usize) -> Option<DirEntry> {
+    ensure_init();
     unsafe {
         let info = FS_INFO?;
         if index >= info.dir_entries as usize {
@@ -243,6 +258,7 @@ pub fn is_real_entry(entry: &DirEntry) -> bool {
 
 /// Максимальное число записей в корневом каталоге (для перебора в командах)
 pub fn dir_entries_capacity() -> u16 {
+    ensure_init();
     unsafe { FS_INFO.map(|i| i.dir_entries).unwrap_or(0) }
 }
 
@@ -365,6 +381,7 @@ fn write_dir_entry(index: usize, name_83: Option<&[u8; 11]>, first_cluster: u16,
 /// Вывод:
 ///  - true при успехе
 pub fn write_file(name_83: &[u8; 11], data: &[u8]) -> bool {
+    ensure_init();
     let info = match unsafe { FS_INFO } {
         Some(i) => i,
         None => return false,
@@ -448,6 +465,7 @@ pub fn write_file(name_83: &[u8; 11], data: &[u8]) -> bool {
 /// Переименовывает файл
 /// Вывод: true при успехе (false: не найден, либо новое имя уже занято)
 pub fn rename_file(old_name_83: &[u8; 11], new_name_83: &[u8; 11]) -> bool {
+    ensure_init();
     let info = match unsafe { FS_INFO } {
         Some(i) => i,
         None => return false,
@@ -471,6 +489,7 @@ pub fn rename_file(old_name_83: &[u8; 11], new_name_83: &[u8; 11]) -> bool {
 /// Удаляет файл (освобождает кластеры и помечает запись каталога удалённой)
 /// Вывод: true при успехе (false: не найден)
 pub fn delete_file(name_83: &[u8; 11]) -> bool {
+    ensure_init();
     let info = match unsafe { FS_INFO } {
         Some(i) => i,
         None => return false,
@@ -505,6 +524,7 @@ pub fn delete_file(name_83: &[u8; 11]) -> bool {
 /// Вывод:
 ///  - Some(размер файла в байтах), если найден и уместился в dest; None иначе
 pub fn read_file(name_83: &[u8; 11], dest: &mut [u8]) -> Option<u32> {
+    ensure_init();
     let info = unsafe { FS_INFO? };
     let mut cluster: u16 = 0;
     let mut size: u32 = 0;
