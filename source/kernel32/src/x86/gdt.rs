@@ -9,10 +9,17 @@ use core::mem::size_of;
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
 pub const TSS_SELECTOR: u16 = 0x28;
-// 16-битные дескрипторы для временного перехода в Real Mode (см. x86::realmode)
+// 16-битный дескриптор кода для временного перехода в Real Mode (см.
+// x86::realmode). Отдельный 16-битный дескриптор данных не нужен - ds
+// остаётся сегментом 0/kernel_data_sel на протяжении всего перехода, т.к.
+// esi (адресация RmParams) уже хранит абсолютный адрес
 pub const REALMODE_CODE_SELECTOR: u16 = 0x30;
-pub const REALMODE_DATA_SELECTOR: u16 = 0x38;
-const GDT_SIZE: usize = 8;
+// База 16-битного дескриптора = физический адрес загрузки kernel32
+// (source/shared/config.asm: KERNEL_LOAD_SEGMENT*16). x86::realmode вычисляет
+// смещения меток относительно ЭТОЙ базы - если она не совпадает, любой
+// дальний переход в 16-битный код промахивается мимо настоящих инструкций
+pub const REALMODE_SEGMENT_BASE: u32 = 0x10000;
+const GDT_SIZE: usize = 7;
 
 // Коснтанты флагов Access Byte
 #[allow(dead_code)]
@@ -209,20 +216,15 @@ pub fn init() {
         );
 
         // (Ring 0) 16-bit Code - для временного перехода в Real Mode.
+        // База = REALMODE_SEGMENT_BASE (физический адрес загрузки kernel32) -
+        // x86::realmode адресует метки смещениями относительно этой базы, а
+        // не абсолютными адресами (см. комментарий у REALMODE_SEGMENT_BASE).
         // Байтовая гранулярность, лимит 0xFFFF (сегмент = 64 КБ, как в Real Mode);
         // без GRAN_4K/BIT32_MODE - декодирование инструкций 16-битное
         GDT[6] = GdtDescriptor::new(
-            0x0,
+            REALMODE_SEGMENT_BASE,
             0x0000FFFF,
             PRESENT | RING0 | SYSTEM | EXECUTABLE | READ_WRITE_ABLE,
-            0,
-        );
-
-        // (Ring 0) 16-bit Data - см. GDT[6]
-        GDT[7] = GdtDescriptor::new(
-            0x0,
-            0x0000FFFF,
-            PRESENT | RING0 | SYSTEM | READ_WRITE_ABLE,
             0,
         );
 

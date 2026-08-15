@@ -23,7 +23,7 @@
 //    лимит 0xFFFF) перестанут влезать.
 
 use core::mem::offset_of;
-use crate::x86::gdt::{REALMODE_CODE_SELECTOR, REALMODE_DATA_SELECTOR};
+use crate::x86::gdt::REALMODE_CODE_SELECTOR;
 
 // Операции для RmParams.operation
 pub const OP_READ: u8 = 0;
@@ -69,6 +69,12 @@ struct RmParams {
     saved_idtr_base: u32,
     real_idtr_limit: u16,
     real_idtr_base: u32,
+
+    // --- Сохранённый ESP вызывающей стороны (см. заголовок файла: SP
+    // временно перенаправляется на RM_STACK, а верхняя половина ESP при
+    // этом не трогается 16-битным `mov sp` - без явного восстановления
+    // popfd/popad в конце читали бы не тот стек) ---
+    saved_esp: u32,
 }
 
 #[no_mangle]
@@ -83,6 +89,7 @@ static mut RM_PARAMS: RmParams = RmParams {
     saved_idtr_limit: 0, saved_idtr_base: 0,
     // IVT-совместимый IDTR: настоящий IVT по 0000:0000, 256 записей x 4 байта
     real_idtr_limit: 0x03FF, real_idtr_base: 0,
+    saved_esp: 0,
 };
 
 // Временный стек для работы в Real Mode (собственный кадр kernel32)
@@ -108,6 +115,12 @@ core::arch::global_asm!(
     // esi - база RM_PARAMS на всю функцию (пережив ает дальние переходы и
     // int 13h/int 10h - ни то, ни другое esi не трогает)
     "    lea esi, [RM_PARAMS]",
+
+    // Сохраняем ESP вызывающей стороны - 16-битный `mov sp` ниже перенаправит
+    // только младшую половину ESP на временный стек Real Mode, старшая
+    // половина при этом не тронется, поэтому перед popfd/popad нужно явно
+    // восстановить весь ESP, иначе они прочитают не тот участок стека
+    "    mov [esi + {off_saved_esp}], esp",
 
     // Сохраняем текущий (защищённого режима) IDTR
     "    sidt [esi + {off_saved_idtr}]",
@@ -145,30 +158,25 @@ core::arch::global_asm!(
 
     ".code16",
     "pm16_entry:",
-    "    mov ax, {rm_data_sel}",
-    "    mov ds, ax",
-    "    mov es, ax",
-    "    mov fs, ax",
-    "    mov gs, ax",
-    "    mov ss, ax",
-
-    // Смещение для следующего скачка - читаем заранее (esi адресация
-    // 32-битная и корректна независимо от текущего ds)
+    // ds всё ещё kernel_data_sel (0x10, база 0) - не менялся с самого вызова,
+    // поэтому esi-адресация (esi хранит АБСОЛЮТНЫЙ адрес RM_PARAMS) пока
+    // корректна без изменений. ВАЖНО: rm_data_sel сюда НЕ грузим - его база
+    // 0x10000 совпадает с esi, и адресация задвоилась бы (esi уже абсолютный
+    // адрес, а не смещение от чего-либо)
     "    mov bx, [esi + {off_realmode_offset}]",
+    "    mov dx, [esi + {off_stack_top_offset}]",
 
     // Сбрасываем PE в CR0 - выходим из Protected Mode
     "    mov eax, cr0",
     "    and eax, 0xFFFFFFFE",
     "    mov cr0, eax",
 
-    // ds/es/... теперь обычные real-mode сегменты. 0x1000*16 = 0x10000 -
-    // та же база, что и у 16-битных дескрипторов GDT
+    // ss/sp настраиваем ДО перехода ниже, чтобы сам push+retf уже использовал
+    // правильный (не мусорный) стек. 0x1000*16 = 0x10000 - совпадает с базой
+    // 16-битных дескрипторов GDT, поэтому уже прочитанное смещение верно
     "    mov ax, 0x1000",
-    "    mov ds, ax",
-    "    mov es, ax",
-    "    mov fs, ax",
-    "    mov gs, ax",
     "    mov ss, ax",
+    "    mov sp, dx",
 
     // Дальний переход довершает вход в настоящий Real Mode
     "    push 0x1000",
@@ -176,8 +184,14 @@ core::arch::global_asm!(
     "    retf",
 
     "rm_entry:",
-    // Собственный стек на время Real Mode (верх RM_STACK)
-    "    mov sp, [esi + {off_stack_top_offset}]",
+    // ds/es пока хранят "устаревший" protected-mode кэш (0x10, база 0) - это
+    // ещё валидно для чтения (сегментные регистры не переоцениваются заново
+    // сами по себе при переключении PE, только при явной перезагрузке), но
+    // раз мы теперь настоящий Real Mode, явно приводим к сегменту 0 - и то,
+    // и другое совпадает по факту (база 0), меняем для ясности/на будущее
+    "    xor ax, ax",
+    "    mov ds, ax",
+    "    mov es, ax",
 
     // IVT-совместимый IDTR (настоящий Real Mode, база 0000:0000)
     "    lidt [esi + {off_real_idtr}]",
@@ -276,12 +290,8 @@ core::arch::global_asm!(
     "    retf",
 
     "pm16_return:",
-    "    mov ax, {rm_data_sel}",
-    "    mov ds, ax",
-    "    mov es, ax",
-    "    mov fs, ax",
-    "    mov gs, ax",
-    "    mov ss, ax",
+    // ds всё ещё сегмент 0 (не менялся с rm_entry) - для esi-адресации этого
+    // достаточно, rm_data_sel сюда намеренно НЕ грузим (см. pm16_entry)
 
     // Шаг 2: 16-битный PM -> обычный 32-битный PM ядра (полный физический
     // адрес). 32-битные регистры дают 32-битный push автоматически (0x66);
@@ -305,12 +315,16 @@ core::arch::global_asm!(
     // Восстанавливаем IDTR защищённого режима (PIT/клавиатура снова рабочие)
     "    lidt [esi + {off_saved_idtr}]",
 
+    // Восстанавливаем ESP вызывающей стороны (см. комментарий в начале
+    // функции) - без этого popfd/popad читали бы временный стек Real Mode
+    // вместо настоящих сохранённых значений
+    "    mov esp, [esi + {off_saved_esp}]",
+
     "    popfd",
     "    popad",
     "    ret",
 
     rm_code_sel = const REALMODE_CODE_SELECTOR,
-    rm_data_sel = const REALMODE_DATA_SELECTOR,
     kernel_code_sel = const crate::x86::gdt::KERNEL_CODE_SELECTOR,
     kernel_data_sel = const crate::x86::gdt::KERNEL_DATA_SELECTOR,
     stack_size = const RM_STACK_SIZE,
@@ -337,6 +351,7 @@ core::arch::global_asm!(
     off_stack_top_offset = const offset_of!(RmParams, stack_top_offset),
     off_saved_idtr = const offset_of!(RmParams, saved_idtr_limit),
     off_real_idtr = const offset_of!(RmParams, real_idtr_limit),
+    off_saved_esp = const offset_of!(RmParams, saved_esp),
 );
 
 /// Чтение секторов диска через BIOS (Real Mode thunk)
