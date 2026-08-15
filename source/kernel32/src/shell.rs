@@ -99,6 +99,7 @@ fn execute(input: &str) {
         "reboot" => { commands::reboot::run() }
         "shutdown" => { commands::shutdown::run() }
         "echo" => { commands::echo::run(args) }
+        "calc" => { commands::calc::run(args); }
         "uptime" => {
             let mut str_buffer: [u8; 10] = [0u8; 10];
 
