@@ -16,7 +16,7 @@ pub fn run(args: &str) {
     let (a, op, b) = match (a, op, b, extra) {
         (Some(a), Some(op), Some(b), None) => (a, op, b),
         _ => {
-            vga::print_line("[?] Usage: calc <num1> <+ - * /> <num2>\n", Color::LightGray);
+            vga::print_line("[?] Usage: calc <num1> <+ - * /> <num2> (or , . ' without Shift)\n", Color::LightGray);
             return;
         }
     };
@@ -36,6 +36,14 @@ pub fn run(args: &str) {
         }
     };
 
+    // Алиасы операторов без Shift: , -> + . -> - ' -> *
+    let op = match op {
+        "," => "+",
+        "." => "-",
+        "'" => "*",
+        other => other,
+    };
+
     let result: Option<i64> = match op {
         "+" => a.checked_add(b),
         "-" => a.checked_sub(b),
@@ -48,7 +56,7 @@ pub fn run(args: &str) {
             Some(a / b)
         }
         _ => {
-            vga::print_line("[!] Unknown operator, use + - * /\n", Color::Red);
+            vga::print_line("[!] Unknown operator, use + - * / (or , . ' without Shift)\n", Color::Red);
             return;
         }
     };
