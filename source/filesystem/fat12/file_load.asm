@@ -17,6 +17,7 @@
 ; Предел длины цепочки кластеров (Aрхитектурный потолок FAT12)
 FAT12_MAX_CHAIN equ 4084
 
+
 ; > Загрузка файла с диска в память
 ; Параметры:
 ;  - si: смещение адреса имени файла (11 символов, формат 8.3)
@@ -35,7 +36,7 @@ file_load:
     push di
     push es
 
-    ; Настраиваем флаг направления и сегмент es
+    ; Настраиваем флаг направления и доп. сегмент
     cld
     xor ax, ax
     mov es, ax
@@ -47,10 +48,10 @@ file_load:
     mov [extra_table_offset], di
 
 .read_root_dir:
-    ; Читаем корневой каталог в память
-    mov ax, [root_dir_lba]
-    mov cx, [root_dir_size]
-    mov bx, FAT_BUFFER_ADDR
+    ; Чтение корневого каталога в память
+    mov ax, [root_dir_lba]        ; LBA каталога
+    mov cl, byte [root_dir_size]  ; Кол-во секторов - размер каталога
+    mov bx, FAT_BUFFER_ADDR       ; Адрес записи FAT буфера
     call DISK_READ
 
     ; Подготовка к поиску файла в корневом каталоге
@@ -62,7 +63,7 @@ file_load:
     mov si, [filename_offset]
     mov cx, 11
 
-    ; Сравниваем по символу названия файлов, сохраняя смещение записи
+    ; Сравнение по символу названия файлов, сохраняя смещение записи
     ; > ds:si & es:di; si++, di++ до cx == 0
     push di
     repe cmpsb
@@ -96,8 +97,7 @@ file_load:
     mov [file_size], ecx
     add ecx, ebx
 
-    ; Проверка на пустой файл: Цепочки кластеров нет
-    ; (0 - пусто, 1 - резерв)
+    ; Проверка на пустой файл: Цепочки кластеров нет (0 - пусто, 1 - резерв)
     cmp word [file_cluster], 2
     jb .done
 
@@ -122,10 +122,10 @@ file_load:
     ; Сброс счётчика пройденных кластеров (Защита от петли FAT)
     mov word [chain_length], 0
 
-    ; Читаем FAT в память
-    mov ax, [reserved_sectors]
-    mov cx, [sectors_per_fat]
-    mov bx, FAT_BUFFER_ADDR
+    ; Чтение FAT таблицы в память
+    mov ax, [reserved_sectors]       ; LBA
+    mov cl, byte [sectors_per_fat]   ; Кол-во секторов - размер FAT
+    mov bx, FAT_BUFFER_ADDR          ; Адрес записи FAT буфера
     call DISK_READ
 
     ; Установка сегмента и смещения для чтения файла
@@ -168,7 +168,7 @@ file_load:
     mov ax, [file_cluster]
     mov cx, 3
     mul cx
-    mov cx, 2
+    dec cx     ; cx: 3 -> 2 (mul не трогает cx)
     div cx
 
     ; Считывание записи из таблицы FAT по индексу (ax)
@@ -249,6 +249,7 @@ file_load:
     pop ax
     ret
 
+
 ; > Проверка пересечения диапазона [start, end) с записями таблицы регионов
 ; Параметры:
 ;  - di: смещение адреса таблицы регионов
@@ -290,6 +291,7 @@ check_table:
     pop edx
     pop eax
     ret
+
 
 ; Переменные модуля
 filename_offset:    dw 0

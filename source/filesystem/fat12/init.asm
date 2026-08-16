@@ -1,7 +1,7 @@
 ; © Realix > FAT12: Initialization
 ; (13.08.26) v0.12
 ; ================
-; ❗️ Требует запущенного Bootix с BPB по адресу 0x0:0x7C00
+; ❗️ Требует запущенного Bootix с BPB по адресу 0x7C00
 
 ; Защита от повторного включения
 %ifndef FAT12_INIT
@@ -10,12 +10,12 @@
 ; Основные константы
 %include 'shared/config.asm'
 
+
 ; > Инициализация параметров FAT12
 ; (Вызывается при переключении/инициализации диска)
 fat12_init:
     push ax
     push bx
-    push cx
     push dx
     push es
 
@@ -65,10 +65,10 @@ fat12_init:
 .done:
     pop es
     pop dx
-    pop cx
     pop bx
     pop ax
     ret
+
 
 ; Переменные FAT12
 root_dir_lba:  dw 0

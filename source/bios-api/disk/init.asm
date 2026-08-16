@@ -6,7 +6,9 @@
 %ifndef BIOS_DISK_INIT
 %define BIOS_DISK_INIT
 
-; > Инициализация и получение параметров диска через BIOS (Вызывается на старте)
+
+; > Инициализация и получение параметров диска через BIOS
+; (Вызывается при переключении/инициализации диска)
 ; Параметры:
 ;  - dl: номер диска
 ; Вывод:
@@ -14,24 +16,23 @@
 ;  - dh: heads
 ;  - dl: number of hard hisk drives
 ;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка чтения)
-;  - Заполняет переменные curr_drive_num, curr_disk_spt и curr_disk_heads
+;  - Заполняет переменные curr_drive_num, curr_drive_spt и curr_drive_heads
 bios_disk_init:
     push ax
     push bx
     push di
+    push es
 
     ; Запоминаем номер инициализированного диска
     mov [curr_drive_num], dl
 
     ; Считывание параметров диска (С защитой от бага на некоторых BIOS)
     ; > es:di - указатель на таблицу параметров дискеты, => обнуляем
-    push es
     xor di, di
     mov es, di
 
-    mov ah, 8h
+    mov ah, 08h
     int 0x13
-    pop es
     jc .return  ; Выходим из функции (Ошибка)
 
     ; Форматируем кол-во секторов на дорожку (Убираем байты цилиндра)
@@ -43,18 +44,20 @@ bios_disk_init:
 
     ; Сохраняем значения в переменные
     movzx ax, dh
-    mov [curr_disk_heads], ax
-    mov [curr_disk_spt], cx
+    mov [curr_drive_heads], ax
+    mov [curr_drive_spt], cx
 
 .return:
+    pop es
     pop di
     pop bx
     pop ax
     ret
 
+
 ; Переменные текущего диска (Номер и геометрия)
-curr_drive_num:  db 0
-curr_disk_spt:   dw 0
-curr_disk_heads: dw 0
+curr_drive_num:   db 0
+curr_drive_spt:   dw 0
+curr_drive_heads: dw 0
 
 %endif

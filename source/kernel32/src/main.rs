@@ -13,6 +13,7 @@ mod memory;
 mod shell;
 mod utils;
 mod x86;
+//mod config; <- Скоро...
 
 // Подключение функций
 use core::arch::{asm, naked_asm};
@@ -31,9 +32,10 @@ pub const PCINFO_ADDR: usize = 0x4500;
 #[derive(Copy, Clone)]
 #[repr(C, packed)]
 pub struct PcInfo {
+    pub memory_mb:    u32,
     pub low_memory_kb: u16,
-    pub boot_drive_num: u8,
     pub mmap_count: u16,
+    pub boot_drive_num: u32,
     pub memory_map: [pmm::E820Entry; E820_MAX_ENTRIES],
 }
 

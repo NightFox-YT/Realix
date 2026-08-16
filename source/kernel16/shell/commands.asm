@@ -2,11 +2,14 @@
 ; ø Вдохновлено @nyxmalware
 ; (06.08.26) v0.11
 ; ================
-; ❗️ Зависимости: bios-api/memory, kernel16/io, kernel16/shell/parse
-;                 kernel16/debug/panic.asm
+; ❗️ Зависимости: bios-api/memory, bios-api/io, kernel16/shell/parse
+;                 kernel16/debug/panic, display/boot_screen
 ; TODO:
 ;  - Возвращение carry_flag при ошибке
 ;  - В shutdown полагаться не только на APM
+
+; Основные константы
+%include 'shared/config.asm'
 
 ; Таблица команд (С названиями и нуль-терминатором)
 CMD_ENTRY_SIZE equ 4
@@ -172,15 +175,26 @@ cmd_reboot:
 
 ; > Команда вывода информации о памяти
 cmd_meminfo:
+    push ax
+    push cx
     push si
+    push es
 
-    ; Показ строк с информацией о памяти
+    ; Сброс доп. сегмента
+    xor ax, ax
+    mov es, ax
+
+    ; Сбор информации о памяти и "расстаскивание" для вызова
+    call get_lower_memory
     call show_lower_memory
     call print_new_line
 
+    mov cx, [es:PCINFO_ADDR + PCINFO_MMAP_ENTRIES]
+    call get_usable_memory
     call show_usable_memory
     call print_new_line
 
+    ; (cx уже передан ранее)
     call show_map_entries_cnt
     call print_new_line
     call print_new_line
@@ -189,7 +203,10 @@ cmd_meminfo:
     mov si, note_meminfo
     call print
 
+    pop es
     pop si
+    pop cx
+    pop ax
     ret
 
 ; > Команда выключения ПК (через APM)

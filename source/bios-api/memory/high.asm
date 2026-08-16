@@ -1,11 +1,11 @@
 ; © Realix > High memory (Memory Map)
-; (05.08.26) v0.11
+; (15.08.26) v0.12
 ; ================
 
 ; Основные константы
 %include 'shared/config.asm'
 
-; Константы карты памяти (! MAX_ENTRIES идёт из Rust)
+; Константы карты памяти (❗️ MAX_ENTRIES идёт из Rust)
 E820_ENTRY_SIZE  equ 24
 E820_MAX_ENTRIES equ 64
 
@@ -91,35 +91,9 @@ get_memory_map:
     ret
 
 
-; > Вывод кол-ва записей карты памяти в текстовом режиме
-; ❗️ Зависимости: kernel16/print.asm
-show_map_entries_cnt:
-    push si
-    push ax
-    push es
-
-    ; Настраиваем сегмент es под `PCINFO`
-    xor ax, ax
-    mov es, ax
-
-    ; Выводим информацию о кол-ве записей карты памяти
-    mov si, str_memory_map
-    call print
-    mov ax, word [es:PCINFO_ADDR + PCINFO_ENTRIES]
-    call print_dec16
-    mov si, str_entries
-    call print
-
-.done:
-    pop es
-    pop ax
-    pop si
-    ret
-
-
 ; > Получение общей длины всех отрезкой памяти по её карте
 ; Параметры:
-;  - es:di: Указатель на `PCINFO`
+;  - cx: Кол-во записей в карте памяти
 ; Вывод:
 ;  - eax: Число свободной памяти (До 2 ^ 32 МБ или до 4096 ТБ)
 get_usable_memory:
@@ -132,21 +106,19 @@ get_usable_memory:
     xor ebx, ebx
     xor edx, edx
 
-    ; Читаем количество записей (Если 0 - Выходим)
-    mov cx, [es:di + PCINFO_ENTRIES]
+    ; Смотрим количество записей (Если 0 - Выходим)
     test cx, cx
     jz .empty
 
     ; Доп. защита от повреждённого `PCINFO`
     ; (не больше, чем реально бывает записей)
     cmp cx, E820_MAX_ENTRIES
-    jbe .count_valid
+    jbe .entries_cnt_valid
     mov cx, E820_MAX_ENTRIES
 
-.count_valid:
+.entries_cnt_valid:
     ; Адрес первой записи E820
-    mov si, di
-    add si, PCINFO_MAP
+    mov si, PCINFO_ADDR + PCINFO_MAP
 
 .loop:
     ; Проходим по свободным регионам памяти
@@ -183,38 +155,3 @@ get_usable_memory:
     pop ecx
     pop ebx
     ret
-
-
-; > Вывод кол-ва свободной памяти в текстовом режиме
-; ❗️ Зависимости: kernel16/print.asm, kernel16/print_reg.asm
-show_usable_memory:
-    push di
-    push es
-    push si
-    push ax
-
-    ; Считаем и выводим кол-во свободной памяти
-    xor ax, ax
-    mov es, ax
-    mov di, PCINFO_ADDR
-    call get_usable_memory
-
-    ; (ax содержит нужное число после `call get_usable_memory`)
-    mov si, str_usable_ram
-    call print
-    call print_dec32
-    mov si, str_mb
-    call print
-
-.done:
-    pop ax
-    pop si
-    pop es
-    pop di
-    ret
-
-; Строки
-str_memory_map: db 'Memory Map: ', 0
-str_entries:    db ' entries', 0
-str_usable_ram: db 'Usable RAM: ', 0
-str_mb:         db ' MB', 0

@@ -14,6 +14,7 @@ org 0x0
 %define DISK_INIT bios_disk_init
 %define DISK_READ bios_disk_read
 
+
 ; > Установка ядра
 kernel_start:
     ; Инициализация драйвера диска и fat12
@@ -79,9 +80,10 @@ error_handler:
     jmp 0xFFFF:0
 
 ; Подключение модулей
-%include 'kernel16/io/print.asm'
-%include 'kernel16/io/print_ctrl.asm'
-%include 'kernel16/io/print_reg.asm'
+%include 'bios-api/io/print.asm'
+%include 'bios-api/io/print_ctrl.asm'
+%include 'bios-api/io/print_reg.asm'
+%include 'bios-api/io/clear.asm'
 %include 'kernel16/shell/cli.asm'
 %include 'kernel16/shell/commands.asm'
 %include 'bios-api/memory/high.asm'
@@ -89,6 +91,8 @@ error_handler:
 %include 'bios-api/disk/read.asm'
 %include 'filesystem/fat12/file_load.asm'
 %include 'bios-api/vga.asm'
+%include 'display/memory.asm'
+%include 'display/boot_screen.asm'
 %include 'kernel16/debug/panic.asm'
 %include 'kernel16/syscall.asm'
 

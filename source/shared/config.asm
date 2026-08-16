@@ -1,5 +1,5 @@
 ; © Realix > Config
-; (27.07.26) v0.1
+; (15.08.26) v0.12
 ; ================
 
 ; Защита от повторного включения
@@ -7,7 +7,7 @@
 %define CONFIG_ASM
 
 ; ! Не забывайте менять эту строку
-%define OS_VERSION 'v0.11'
+%define OS_VERSION 'v0.12'
 
 ; Управляющие символы и ASCII коды
 %define ENTER 0x0D, 0x0A
@@ -23,10 +23,11 @@ KERNEL_LOAD_OFFSET   equ 0
 KERNEL32_PHYS_ADDR   equ (KERNEL_LOAD_SEGMENT*16 + KERNEL_LOAD_OFFSET)
 
 ; Раскладка структуры PCINFO
-PCINFO_LOW_MEM equ 0  ; Размер "нижней" памяти (КБ, word)
-PCINFO_DRIVE   equ 2  ; Номер загрузочного диска (byte)
-PCINFO_ENTRIES equ 3  ; Кол-во записей карты памяти (word)
-PCINFO_MAP     equ 5  ; Массив записей E820
+PCINFO_ALL_MEM      equ 0   ; Размер всей памяти (МБ)
+PCINFO_LOW_MEM      equ 4   ; Размер "нижней" памяти (КБ)
+PCINFO_MMAP_ENTRIES equ 6   ; Кол-во записей карты памяти
+PCINFO_DRIVE        equ 8   ; Номер загрузочного диска
+PCINFO_MAP          equ 12  ; Массив записей E820
 
 ; Маркеры кластеров FAT12 (общие для bootix и bios-api/fat12)
 CHAIN_END   equ 0x0FF8  ; Кластер >= этого - конец цепочки (EOF)

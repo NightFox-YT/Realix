@@ -1,8 +1,9 @@
 ; © Realix > Bootix (Stage 1)
 ; (13.08.26) v0.12
 ; ================
-; ❗️ Зависимости: kernel16/io/print (в режиме PRINT_MINIMAL),
-;                 bios-api/disk/read, filesystem/fat12/initrix_load
+; ❗️ Зависимости: bios-api/io/print (в режиме PRINT_MINIMAL),
+;                 bios-api/keyboard (в режиме KEYBOARD_MINIMAL),
+;                 bios-api/disk/read
 
 ; Настройка компиляции
 bits 16
@@ -71,20 +72,17 @@ main:
     mov [bpb_sectors_per_track], cx
     mov [bpb_heads], dh
 
-    ; Переход к загрузке файла... (Через fall-through)
+    ; > Далее загрузка 2-ого этапа загрузчика (Initrix.bin)
+    ; ❗️ Свой мин. обход FAT12 вместо filesystem/fat12/file_load,
+    ;    чтобы 1-ый этап влез в 512 байт (Дублирование намеренное)
 
-
-; > Загрузка 2-ого этапа загрузчика (Initrix.bin)
-; ❗️ Свой мин. обход FAT12 вместо filesystem/fat12/file_load,
-;    чтобы 1-ый этап влез в 512 байт (Дублирование намеренное)
-initrix_load:
     ; Вычисление LBA корневого каталога
     ; > LBA = fats * sectors_per_fat + reserved
     movzx ax, byte [bpb_fat_count]
     mul word [bpb_sectors_per_fat]
     add ax, [bpb_reserved_sectors]
 
-    ; *Сохраняем LBA корневого каталога
+    ; *Сохраняем LBA корневого каталога (root_dir_lba)
     push ax
     mov cx, ax
 
@@ -105,35 +103,35 @@ initrix_load:
     add cx, ax
     mov [data_lba], cx
 
-    ; Чтение корневого каталога
+    ; Чтение корневого каталога в память
     mov cl, al               ; Кол-во секторов - размер каталога
-    pop ax                   ; *Восстанавливаем сохранённый LBA каталога
-    mov bx, FAT_BUFFER_ADDR  ; Адрес записи
+    pop ax                   ; *Восстанавливаем LBA каталога
+    mov bx, FAT_BUFFER_ADDR  ; Адрес записи FAT буфера
     call DISK_READ
 
-    ; Подготовка к поиску файла
-    xor bx, bx               ; Кол-во пройденных записей корневого каталога
-    mov di, FAT_BUFFER_ADDR  ; Адрес текущей записи корневого каталога
+    ; Подготовка к поиску файла в корневом каталоге
+    xor bx, bx               ; Счётчик пройденных записей
+    mov di, FAT_BUFFER_ADDR  ; Смещение текущей записи
 
 .search_initrix:
     ; Подготовка к сравнению названий (до 11 символов)
     mov si, file_initrix_bin
     mov cx, 11
 
-    ; Сравнение по символу названия файлов, сохраняя адрес записи
-    ; > si:di++ до cx == 0
+    ; Сравнение по символу названия файлов, сохраняя смещение записи
+    ; > ds:si & es:di; si++, di++ до cx == 0
     push di
     repe cmpsb
     pop di
     je .found_initrix
 
     ; Переход к следующей записи
-    add di, 32                ; Увеличиваем адрес на размер записи (32 байта)
+    add di, 32                ; Увеличиваем смещение на размер записи (32 байта)
     inc bx                    ; Увеличиваем индекс записи
     cmp bx, [bpb_dir_entries]
     jb .search_initrix        ; Если не вышли за предел, продолжаем поиск
 
-    ; Если "Выход за предел", файла второго этапа загрузчика нет
+    ; Если "Выход за предел", => файла второго этапа загрузчика нет
     mov si, err_initrix_not_found
     jmp error_handler
 
@@ -142,10 +140,10 @@ initrix_load:
     mov ax, [di + 26]  ; Поле первого кластера (Смещение 26 байтов)
     push ax            ; *Сохраняем номер кластера
 
-    ; Чтение FAT таблицы
-    mov ax, [bpb_reserved_sectors]  ; LBA
-    mov cl, [bpb_sectors_per_fat]   ; Кол-во секторов - размер FAT
-    mov bx, FAT_BUFFER_ADDR         ; Адрес записи
+    ; Чтение FAT таблицы в память
+    mov ax, [bpb_reserved_sectors]       ; LBA
+    mov cl, byte [bpb_sectors_per_fat]   ; Кол-во секторов - размер FAT
+    mov bx, FAT_BUFFER_ADDR              ; Адрес записи FAT буфера
     call DISK_READ
 
     ; Установка сегмента и смещения для чтения Initrix
@@ -165,7 +163,7 @@ initrix_load:
     mul cx
     add ax, [data_lba]
 
-    ; Чтение следующего кластера (cl уже содержит нужное кол-во секторов)
+    ; Чтение следующего кластера (cl содержит кол-во секторов)
     call DISK_READ
 
     ; Увеличиваем адрес смещения Initrix на кол-во прочитанных байт
@@ -174,22 +172,22 @@ initrix_load:
     add bx, ax
     jnc .load_initrix_continue
 
-    ; Сдвигаем es на след. параграф (+64 КБ)
+    ; Сдвигаем es на 0x1000 параграфов (+64 КБ)
     mov ax, es
     add ax, 0x1000
     mov es, ax
     xor bx, bx
 
 .load_initrix_continue:
-    ; Вычисление смещения след. кластера в таблице FAT
-    ; (ax - индекс записи, dx - Cluster % 2)
+    ; Вычисляем байтовое смещение записи след. кластера
+    ; > (cluster * 3 / 2), ax - смещение в байтах, dx - Cluster % 2
     pop ax     ; *Восстанавливаем номер кластера
     mov cx, 3
     mul cx
-    dec cx     ; cx -= 1 (3 -> 2, т.к. mul не трогает cx)
+    dec cx     ; cx: 3 -> 2 (mul не трогает cx)
     div cx
 
-    ; Считывание записи из таблицы FAT
+    ; Считывание записи из таблицы FAT по индексу (ax)
     mov si, FAT_BUFFER_ADDR
     add si, ax
     mov ax, [si]
@@ -210,13 +208,13 @@ initrix_load:
 .next_cluster:
     ; Проверка на конец файла
     cmp ax, CHAIN_END
-    jae .read_initrix_finish
+    jae .initrix_load_finish
 
     ; *Сохраняем номер кластера для след. итерации, продолжая чтение
     push ax
     jmp .load_initrix_loop
 
-.read_initrix_finish:
+.initrix_load_finish:
     ; Передача номера диска
     mov dl, [ebr_drive_number]
     
@@ -233,18 +231,19 @@ initrix_load:
 ; Параметры:
 ;  - si: сообщение об ошибке
 error_handler:
+    ; Вывод сообщения и ожидание нажатия
     call print
-
-    ; Ожидание нажатия
-    mov ah, 0
-    int 0x16
+    call wait_key
 
     ; Аппаратный сброс процессора через вектор BIOS
     jmp 0xFFFF:0
 
+
 ; Подключение модулей
 %define PRINT_MINIMAL
-%include 'kernel16/io/print.asm'
+%include 'bios-api/io/print.asm'
+%define KEYBOARD_MINIMAL
+%include 'bios-api/keyboard.asm'
 %include 'bios-api/disk/read.asm'
 
 ; Сообщения
