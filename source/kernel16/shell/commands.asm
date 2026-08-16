@@ -1,9 +1,8 @@
-; © Realix > Shell: Commands
-; ø Вдохновлено @nyxmalware
-; (06.08.26) v0.11
+; © Realix > Shell: Commands Handler
+; (16.08.26) v0.12
 ; ================
 ; ❗️ Зависимости: bios-api/memory, bios-api/io, kernel16/shell/parse
-;                 kernel16/debug/panic, display/boot_screen
+;                 kernel16/panic, display/memory
 ; TODO:
 ;  - Возвращение carry_flag при ошибке
 ;  - В shutdown полагаться не только на APM
@@ -17,8 +16,8 @@ CMD_ENTRY_SIZE equ 4
 align 2
 cmd_table:
     dw .str_help,     cmd_help
-    dw .str_cls,      cmd_cls
-    dw .str_clear,    cmd_cls
+    dw .str_cls,      clear_screen
+    dw .str_clear,    clear_screen
     dw .str_reboot,   cmd_reboot
     dw .str_shutdown, cmd_shutdown
     dw .str_meminfo,  cmd_meminfo
@@ -80,6 +79,7 @@ cmd_table:
 .str_panic:    db 'panic', 0
 .str_uptime:   db 'uptime', 0
 .str_exec:     db 'exec', 0
+
 
 ; > Исполнитель команд
 ; Параметры:
@@ -166,133 +166,25 @@ execute_cmd:
     pop si
     ret
 
-; > Команда перезагрузки
-cmd_reboot:
-    cli
 
-    ; Аппаратный сброс процессора через вектор BIOS
-    jmp 0xFFFF:0x0000
 
-; > Команда вывода информации о памяти
-cmd_meminfo:
-    push ax
-    push cx
-    push si
-    push es
-
-    ; Сброс доп. сегмента
-    xor ax, ax
-    mov es, ax
-
-    ; Сбор информации о памяти и "расстаскивание" для вызова
-    call get_lower_memory
-    call show_lower_memory
-    call print_new_line
-
-    mov cx, [es:PCINFO_ADDR + PCINFO_MMAP_ENTRIES]
-    call get_usable_memory
-    call show_usable_memory
-    call print_new_line
-
-    ; (cx уже передан ранее)
-    call show_map_entries_cnt
-    call print_new_line
-    call print_new_line
-
-    ; Небольшая заметка
-    mov si, note_meminfo
-    call print
-
-    pop es
-    pop si
-    pop cx
-    pop ax
-    ret
-
-; > Команда выключения ПК (через APM)
-cmd_shutdown:
-    push ax
-    push bx
-    push cx
-    push si
-
-    ; Подключение к APM:
-    ; > ax - APM функция с подключением реального режима
-    ; > bx - устройство: "System BIOS"
-    mov ax, 0x5301
-    xor bx, bx
-    int 0x15
-    jc .error
-
-    ; Установка версии APM
-    ; > al - выбор версии
-    ; > bx - устройство: "System BIOS"
-    ; > cx - запрашиваемая версия APM 1.2
-    mov ax, 0x530E
-    xor bx, bx
-    mov cx, 0x0102
-    int 0x15
-    jc .error
-
-    ; Команда выключения питания
-    ; > al - установка состояния питания
-    ; > bx - устройство: "All devices" (все устройства)
-    ; > cx - состояние: "Off" (выключить)
-    mov ax, 0x5307
-    mov bx, 0x0001
-    mov cx, 0x0003
-    int 0x15
-    jc .error
-
-    jmp $
-
-.error:
-    ; Ошибка 8: Не удалось выключить ПК
-    mov si, err_shutdown
-    call print
-
-    pop si
-    pop cx
-    pop bx
-    pop ax
-    ret
-
-; > Команда "Echo"
-; Параметры:
-;  - si: указатель на начало аргументов команды
-cmd_echo:
-    push ax
-    push si
-
-    ; Проверка существования текстового аргумента
-    call require_arg
-    jc .done
-
-    ; Вывод сообщения
-    call print
-
-.done:
-    pop si
-    pop ax
-    ret
-
-; > Команда "About"
-cmd_about:
-    push si
-
-    mov si, msg_about
-    call print
-
-    pop si
-    ret
 
 ; > Команда самостоятельного вызова паники
 cmd_panic:
     call debug_panic_manual
     ret
 
-; > Команда очистки экрана
-%include "kernel16/commands/base/cls.asm"
+; > Команды управления питанием
+%include "kernel16/commands/power.asm"
+
+; > Команда просмотра информации о памяти
+%include "kernel16/commands/base/meminfo.asm"
+
+; > Команда вывода строки на экран
+%include "kernel16/commands/base/echo.asm"
+
+; > Команда просмотра информации о проекте
+%include "kernel16/commands/base/about.asm"
 
 ; > Команды для работы с текстом
 %include "kernel16/commands/text.asm"
@@ -304,25 +196,25 @@ cmd_panic:
 %include "kernel16/commands/calc.asm"
 
 ; > Команда загрузки файла с диска
-%include "kernel16/commands/file-system/load.asm"
+%include "kernel16/commands/filesystem/load.asm"
 
 ; > Команда загрузки RLX приложения с диска
-%include "kernel16/commands/file-system/exec.asm"
+%include "kernel16/commands/filesystem/exec.asm"
 
 ; > Команда вывода списка файлов
-%include "kernel16/commands/file-system/ls.asm"
+%include "kernel16/commands/filesystem/ls.asm"
 
 ; > Команда печати файла как текста
-%include "kernel16/commands/file-system/type.asm"
+%include "kernel16/commands/filesystem/type.asm"
 
 ; > Команда шестнадцатеричного дампа файла
-%include "kernel16/commands/file-system/hexdump.asm"
+%include "kernel16/commands/filesystem/hexdump.asm"
 
 ; > Команда вывода снимка регистров
 %include "kernel16/commands/debug/regs.asm"
 
 ; > Команды вывода времени и даты (RTC)
-%include "kernel16/commands/rtc.asm"
+%include "kernel16/commands/debug/date-time.asm"
 
 ; > Команда демонстрации графического режима
 %include "kernel16/commands/vga.asm"
@@ -331,113 +223,16 @@ cmd_panic:
 %include "kernel16/commands/debug/key.asm"
 
 ; > Команды для вывода системной информации
-%include "kernel16/commands/debug/sysinfo.asm"
+%include "kernel16/commands/base/sysinfo.asm"
 
 ; > Команды для вывода аптайма
-%include "kernel16/commands/debug/uptime.asm"
+%include "kernel16/commands/base/uptime.asm"
 
 ; > Команда помощи
 %include "kernel16/commands/base/help.asm"
 
-; > Перевод символа al в верхний регистр (a-z -> A-Z, иначе без изменений)
-; Параметры & Вывод:
-;  - al: символ (Любой + a-z)
-char_to_upper:
-    cmp al, 'a'
-    jb .done
-    cmp al, 'z'
-    ja .done
-    sub al, 32
-.done:
-    ret
-
-; > Перевод символа al в нижний регистр (A-Z -> a-z, иначе без изменений)
-; Параметры & Вывод:
-;  - al: символ (Любой + A-Z)
-char_to_lower:
-    cmp al, 'A'
-    jb .done
-    cmp al, 'Z'
-    ja .done
-    add al, 32
-.done:
-    ret
-
-; > Пропуск пробелов до первого символа
-; Вывод:
-;  - si: указатель на первый символ строки
-skip_spaces:
-    ; Пропуск пробела c переходом к след. символу
-    lodsb
-    cmp al, ' '
-    je skip_spaces
-
-.done:
-    ; Возвращаем si назад на первый символ строки
-    dec si
-    ret
-
-; > Разбор единственного числового аргумента команды
-; (Пропускает пробелы, читает число и требует пустой хвост)
-; Параметры:
-;  - si: указатель на аргументы команды
-; Вывод:
-;  - ax: число (uint16)
-;  - CF (Carry Flag): 0 (Успех), 1 (Пусто / Не число / Мусор после числа)
-parse_uint16_arg:
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    cmp byte [si], 0
-    je .fail
-
-    ; Парсинг числа
-    call parse_uint16
-    jc .fail
-
-    ; После числа допустимы только пробелы
-    push ax
-    call skip_spaces
-    cmp byte [si], 0
-    pop ax
-    jne .fail
-
-.done:
-    clc
-    ret
-
-.fail:
-    stc
-    ret
-
-; > Пропуск пробелов с проверкой, что аргумент не пуст
-; Параметры:
-;  - si: указатель на аргументы команды
-; Вывод:
-;  - si: указатель на первый символ аргумента
-;  - CF (Carry Flag): 0 (Аргумент есть), 1 (Аргумент пуст)
-require_arg:
-    call skip_spaces
-    cmp byte [si], 0
-    je .fail
-
-.done:
-    clc
-    ret
-
-.fail:
-    stc
-    ret
+; Подключение доп. модуля для команд
+%include "kernel16/shell/utils.asm"
 
 ; Сообщения об ошибках
 err_unknown_cmd: db "[!] Unknown command. Type 'help' for list of commands.", 0
-err_shutdown:    db '[!] E8: PC shutdown failed! (No APM)', 0
-
-; Сообщения
-msg_about:
-    db '> Realix version: ', OS_VERSION, ENTER
-    db 'Realix is a lightweight hybrid x86 OS.', ENTER
-    db 'It supports a built-in boot switcher that lets users choose:', ENTER
-    db '1. 16-bit Real Mode kernel for legacy compatibility', ENTER
-    db '2. 32-bit Protected Mode kernel for high performance.', 0
-
-note_meminfo: db 'Note: In Real mode you can access only low RAM.', 0

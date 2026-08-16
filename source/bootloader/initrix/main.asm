@@ -14,18 +14,19 @@ org 0x0
 %define DISK_INIT bios_disk_init
 %define DISK_READ bios_disk_read
 
+
 ; > Основной код
 ; Параметры:
 ;  - dl: номер загрузочного диска (Передаётся из Bootix - stage 1)
 main:
+    ; Вывод сообщения о запуске инициализации
+    mov si, msg_init
+    call print
+
     ; Инициализация драйверов (`DISK_INIT` запоминает переданный номер диска)
     call DISK_INIT
     jc disk_init_error
     call fat12_init
-
-    ; Вывод сообщения о успешной инициализации
-    mov si, msg_init
-    call print
 
     ; Получение и сохранение объёма доступной "нижней" памяти (до 640 КБ)
     call get_lower_memory
@@ -102,17 +103,17 @@ error_handler:
 %include 'bios-api/io/print.asm'
 %include 'bios-api/io/print_ctrl.asm'
 %include 'bios-api/io/print_reg.asm'
-%include 'bios-api/io/clear.asm'
+%include 'bios-api/io/screen.asm'
 %include 'bios-api/io/cursor.asm'
 %include 'bios-api/memory/high.asm'
 %include 'bios-api/memory/low.asm'
 %include 'bios-api/keyboard.asm'
 %include 'bios-api/rtc.asm'
-%include 'bios-api/vga.asm'
+%include 'bios-api/graphics.asm'
 %include 'display/memory.asm'
 %include 'display/boot_screen.asm'
 %include 'filesystem/fat12/file_load.asm'
-%include 'shared/network_rtl8139.asm'
+; %include 'drivers/network_rtl8139.asm'
 %include 'bootloader/initrix/switcher.asm'
 
 ; Сообщения

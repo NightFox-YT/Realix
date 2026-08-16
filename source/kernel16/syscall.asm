@@ -1,8 +1,8 @@
 ; © Realix > Kernel16: System API (INT 0x80)
-; ø Copyright by @Ramix
+; ø Copyright by Roario0602
 ; (07.08.26) v0.11
 ; ================
-; ❗️ Зависимости: kernel16/io/print
+; ❗️ Зависимости: bios-api/io/print, bios-api/vga, bios-api/keyboard
 
 ; Настройка компиляции
 bits 16
@@ -12,6 +12,7 @@ bits 16
 
 ; Флаги работы приложения
 app16_running: db 0
+
 
 ; > Инициализация вектора int 0x80 в IVT
 syscall16_init:
@@ -27,6 +28,7 @@ syscall16_init:
 
     pop es
     ret
+
 
 ; > Точка входа для int 0x80
 syscall16_entry:
@@ -55,14 +57,11 @@ syscall16_entry:
     jmp .done
 
 .sys_read_key:
-    mov ah, 0
-    int 0x16
-    mov bx, sp
-    mov [ss:bx + 14], ax
+    call wait_key
     jmp .done
 
 .sys_clear:
-    call cmd_cls
+    call clear_screen
     jmp .done
 
 .sys_exit:

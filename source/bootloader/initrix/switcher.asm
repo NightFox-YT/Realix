@@ -34,7 +34,7 @@ boot_switcher:
 
 .timer_loop:
     ; Проверка нажатия клавиши (из буфера)
-    call wait_key_nb
+    call keyboard_poll
     jnz .key_pressed
 
     ; Получаем текущее кол-во тиков и считаем сколько прошло

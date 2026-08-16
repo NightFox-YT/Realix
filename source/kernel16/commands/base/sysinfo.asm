@@ -1,10 +1,11 @@
 ; © Realix > Command: Sysinfo
 ; (29.07.26) v0.11
 ; ================
-; ❗️ Зависимости: kernel16/io/print_reg & print
+; ❗️ Зависимости: bios-api/io/print_reg & print, bios-api/vga
 
 ; Основные константы
 %include 'shared/config.asm'
+
 
 ; > Команда показа информации:
 ; 1. Видеорежим, кол-во столбцов, текущий номер страницы
@@ -18,11 +19,8 @@ cmd_sysinfo:
     push si
     push es
 
-    ; Функция BIOS: Получение инфы о видеорежиме
-    mov ah, 0x0F
-    int 0x10
-
-    ; Сохраняем в промежуточный регистр
+    ; Получение инфы о видеорежиме и сохранение в промежуточный регистр
+    call vga_get_mode
     mov cx, ax
 
     ; Вывод номера видеорежима (нижний байт)
@@ -45,16 +43,16 @@ cmd_sysinfo:
 
     call print_new_line
 
-    ; Функция BIOS: Получение текущее кол-во тиков с полуночи
-    xor ah, ah
-    int 0x1A
+    ; Получение текущее кол-во тиков с полуночи
+    call get_ticks_value
 
     ; Записываем информацию в eax и выводим информацию о тиках
     mov si, msg_info_ticks
     call print
-    movzx eax, cx
-    shl eax, 16
-    mov ax, dx
+    
+    shl ecx, 16
+    movzx eax, dx
+    or eax, ecx
     call print_dec32
 
     call print_new_line

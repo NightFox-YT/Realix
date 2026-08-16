@@ -1,7 +1,7 @@
 ; © Realix > Commands: RTC (time / date)
 ; (28.07.26) v0.11
 ; ================
-; ❗️ Зависимости: kernel16/io: print, print_ctrl, print_reg (print_bcd2)
+; ❗️ Зависимости: bios-api/io/*, bios-api/rtc
 
 ; > Команда вывода времени (RTC)
 cmd_time:
@@ -11,8 +11,7 @@ cmd_time:
     push si
 
     ; Чтение времени: ch - часы, cl - минуты, dh - секунды (BCD)
-    mov ah, 0x02
-    int 0x1A
+    call get_time
     jc .fail
 
     ; Выводим сообщение о времени
@@ -52,8 +51,7 @@ cmd_date:
     push si
 
     ; Чтение даты: ch - век, cl - год, dh - месяц, dl - день (BCD)
-    mov ah, 0x04
-    int 0x1A
+    call get_date
     jc .fail
 
     ; Выводим сообщение о дате

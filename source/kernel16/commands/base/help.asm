@@ -1,7 +1,8 @@
 ; © Realix > Command: Help
 ; (28.07.26) v0.11
 ; ================
-; ❗️ Зависимости: kernel16/io/print.asm
+; ❗️ Зависимости: bios-api/io/print
+
 
 ; > Команда помощи
 cmd_help:
@@ -13,7 +14,8 @@ cmd_help:
     pop si
     ret
 
-; > Сообщение
+
+; Сообщение
 msg_help:
     db 'Commands:', ENTER
     db '  [Base]                               [Text]', ENTER
