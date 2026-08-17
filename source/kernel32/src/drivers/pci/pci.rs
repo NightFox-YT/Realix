@@ -1,24 +1,31 @@
-/* Realix PCI realization
-    Copyright(C) 2026 Alexander Silaev <thebinaryblob@gmail.com>
-*/
+// © Realix, Alexander Silaev <thebinaryblob@gmail.com> > drivers: PCI
+// (17.08.26) v0.11
+// ================
+
 use crate::utils;
 use crate::drivers::vga::{self, Color};
 
 /* ИИ подсказал мне отличную идею! Структуры, как я до этого не додумался?
-
+    Блять неправильно выразился, матчинг классов вообщем, не структуры, о них я знал.
+    Думаю такие комментарии не запрещены.
 */
 pub struct PCIDevice {
-    pub bus: u8,
-    pub slot: u8,
-    pub func: u8,
-    pub vendorid: u16,
-    pub david: u16,
+    pub bus:        u8,
+    pub slot:       u8,
+    pub func:       u8,
+    pub vendor_id:  u16,
+    pub dev_id:     u16,
     pub base_class: u8,
-    pub sub_class: u8,
+    pub sub_class:  u8,
 }
 
 impl PCIDevice {
-    pub fn pci_match_class(&self) -> &'static str /* Note: Data from wiki.osdev.org/PCI */
+    /// Матчинг классов ПисиАй и их подклассов
+    /// Параметры:
+    /// - PCIDevice.
+    /// Вывод:
+    /// - Неизменяемая строка.
+    pub fn pci_match_class(&self) -> &'static str /* Данные взяты из wiki.osdev.org/PCI */
     {
         match (self.base_class, self.sub_class) {
             (0x00, 0x00) => "Non-VGA Compatible Unclassified Device",
@@ -64,7 +71,7 @@ impl PCIDevice {
             (0x06, 0x06) => "Bridge: NuBus: Bridge",
             (0x06, 0x07) => "Bridge: CardBus Bridge",
             (0x06, 0x08) => "Bridge: RACEway Bridge",
-            (0x06, 0x09) => "Bridge: PCI2PCI Bridge(2)", /* я хз просто в osdev два PCI2PCI моста*/
+            (0x06, 0x09) => "Bridge: PCI2PCI Bridge(1)", /* я хз просто в osdev два PCI2PCI моста*/
             (0x06, 0x0A) => "Bridge: InfiniBand2PCI Host Bridge",
             (0x06, _)    => "Bridge: Unknown",
             (0x07, 0x00) => "SCC: Serial Controller", /* SCC -> Simple Communication Controller*/
@@ -142,10 +149,18 @@ impl PCIDevice {
 
 const PCI_CONFIG_ADDR: u32 = 0xCF8;
 const PCI_CONFIG_DATA: u32 = 0xCFC;
-const PCI_WRITE_INFO_ON_VGA_SCREEN: u8 = 23;
+pub const PCI_WRITE_INFO_ON_VGA_SCREEN: u8 = 23;
 /* вывел в отдельную функцию потому что я не ИИ и мне впадлу писать одно и тоже два раза,
  не знаю зачем в си версии я делал по два раза
  */
+/// Получение адреса PCI
+/// Параметры:
+/// - bus: Адрес шины PCI.
+/// - slot: Номер слота.
+/// - func: Номер функции чипа.
+/// - offset: Отступ.
+/// Вывод
+/// - Адрес.
 fn pci_get_address(bus: u8, slot: u8, func: u8, offset: u8) -> u32
 {
     let bobbus: u32 = (bus as u32) & 0xFF;
@@ -162,36 +177,47 @@ fn pci_get_address(bus: u8, slot: u8, func: u8, offset: u8) -> u32
     return address;
 }
 
-/* Чтение конфига PCI */
+/// Чтение конфига PCI
+/// Параметры:
+/// - bus: Адрес шины PCI.
+/// - slot: Номер слота.
+/// - func: Номер функции чипа.
+/// - offset: Отступ.
+/// Вывод:
+/// - Конфигурацию PCI.
 pub unsafe fn pci_read_config(bus: u8, slot: u8, func: u8, off: u8) -> u32
 {
-    let pciaddress: u32 = pci_get_address(bus, slot, func, off);
+    let pci_address: u32 = pci_get_address(bus, slot, func, off);
 
-    utils::outl(PCI_CONFIG_ADDR, pciaddress);
+    utils::outl(PCI_CONFIG_ADDR, pci_address);
 
     utils::io_wait();
 
     return utils::inl(PCI_CONFIG_DATA as u16);
 }
 
-/* Проверка на устройства */
+/// Проверка на устройства
+/// Параметры:
+/// - bus: Адрес шины PCI.
+/// - device: номер устройства.
+/// - flags: Флаги.
 pub unsafe fn pci_check_device(bus: u8, device: u8, flags: u8)
 {
     let reg0: u32 = pci_read_config(bus, device, 0, 0);
-    let vendorid: u16 = (reg0 & 0xFFFF) as u16;
-    if vendorid == 0xFFFF || vendorid == 0x0000 { return; }
+    let vendor_id: u16 = (reg0 & 0xFFFF) as u16;
+    if vendor_id == 0xFFFF || vendor_id == 0x0000 { return; }
 
     let reg3: u32 = pci_read_config(bus, device, 0, 0x0C);
-    let hedr_typo: u8 = ((reg3 >> 16) & 0xFF) as u8; /* header type*/
+    let header_type: u8 = ((reg3 >> 16) & 0xFF) as u8; /* header type*/
 
-    let total_funcs: u8 = if (hedr_typo & 0x80) != 0 { 8 } else { 1 };
+    let total_funcs: u8 = if (header_type & 0x80) != 0 { 8 } else { 1 };
     for function in 0..total_funcs
     {
-        let curreg0: u32 = pci_read_config(bus, device, function, 0);
-        let curven = (curreg0 & 0xFFFF) as u16;
-        let curdev: u16 = ((curreg0 >> 16) & 0xFFFF) as u16;
+        let cur_reg0: u32 = pci_read_config(bus, device, function, 0);
+        let cur_ven = (cur_reg0 & 0xFFFF) as u16;
+        let cur_dev: u16 = ((cur_reg0 >> 16) & 0xFFFF) as u16;
 
-        if curven == 0xFFFF || curven == 0x0000 { continue; }
+        if cur_ven == 0xFFFF || cur_ven == 0x0000 { continue; }
 
         let reg2: u32 = pci_read_config(bus, device, function, 0x08);
         let base_class: u8 = ((reg2 >> 24) & 0xFF) as u8;
@@ -201,8 +227,8 @@ pub unsafe fn pci_check_device(bus: u8, device: u8, flags: u8)
             bus,
             slot: device,
             func: function,
-            vendorid: curven,
-            david: curven,
+            vendor_id: cur_ven,
+            dev_id: cur_ven,
             base_class,
             sub_class,
         };
@@ -212,16 +238,22 @@ pub unsafe fn pci_check_device(bus: u8, device: u8, flags: u8)
         if flags == PCI_WRITE_INFO_ON_VGA_SCREEN {
             vga::print_line("INFO: PCI Device Found:", Color::White);
             let mut num_buf = [0u8; 10];
-            let vendor_str = utils::u32_to_hex_str(pci_dev.vendorid as u32, &mut num_buf);
+            let vendor_str = utils::u32_to_hex_str(pci_dev.vendor_id as u32, &mut num_buf);
             vga::print_line(vendor_str, Color::White);
-            let device_str = utils::u32_to_hex_str(pci_dev.david as u32, &mut num_buf);
+            let device_str = utils::u32_to_hex_str(pci_dev.dev_id as u32, &mut num_buf);
             vga::print_line(device_str, Color::White);
             vga::print_line(class_name, Color::White);
         }
     }
 }
 
-/* запись конфига */
+/// Запись конфига PCI
+/// Параметры:
+/// - bus: Адрес шины PCI.
+/// - slot: Номер слота.
+/// - func: Номер функции чипа.
+/// - off: Отступ.
+/// - value: Значение.
 pub unsafe fn pci_write_config(bus: u8, slot: u8, func: u8, off: u8, value: u32)
 {
     let address: u32 = pci_get_address(bus, slot, func, off);
@@ -232,15 +264,13 @@ pub unsafe fn pci_write_config(bus: u8, slot: u8, func: u8, off: u8, value: u32)
     utils::outl(PCI_CONFIG_DATA, value);
     utils::io_wait();
 }
-
-pub unsafe fn pci_start() -> i16
+/// Сканирование шины PCI
+/// Параметры:
+/// - flags: Флаги(PCI_WRITE_INFO_ON_VGA_SCREEN)
+pub fn pci_init(flags: u8) -> i16
 {
-    /* Честно не знаю зачем оно нужно, когда я пилил свой форк с RCOM, это было обязательно, сейчас нет.
-        Но я оставлю на будущее.
-    */
     for device in 0..32 {
-        pci_check_device(0, device, 0);
+        unsafe { pci_check_device(0, device, flags); }
     }
-    0 /* Буду наверное разбираться в PCI Express 1.0, хотя не думаю что оно нужно ведь ОС делается под x86.
-    И цель сейчас статическая линковка.*/
+    0
 }

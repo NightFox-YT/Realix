@@ -75,7 +75,7 @@ pub unsafe fn outw(port: u16, value: u16) {
     );
 }
 
-
+/// Запись Длинного(long) числа в I/O-порт
 #[inline(always)]
 pub unsafe fn outl(port: u32, value: u32) {
     asm!(
@@ -101,7 +101,7 @@ pub unsafe fn inb(port: u16) -> u8 {
 
     value
 }
-
+/// Чтение длинного(long) числа из I/O-порта
 #[inline(always)]
 pub unsafe fn inl(port: u16) -> u32 {
     let value: u32;
@@ -116,6 +116,7 @@ pub unsafe fn inl(port: u16) -> u32 {
     value
 }
 
+/// Задержка IO-порта
 #[inline(always)]
 pub unsafe fn io_wait() {
     outb(0x80, 0);
