@@ -4,3 +4,4 @@
 
 pub mod pmm;
 pub mod frame_allocator;
+pub mod stack;
