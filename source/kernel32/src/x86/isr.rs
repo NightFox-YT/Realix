@@ -8,7 +8,7 @@ use core::arch::global_asm;
 
 use crate::drivers::vga::{self, Color};
 use crate::drivers::{keyboard, pit};
-use crate::halt_loop;
+use crate::{halt_loop, memory::stack};
 use crate::x86::idt::{interrupts_disable, interrupts_enable};
 use crate::x86::{gdt, pic};
 use crate::utils::inb;
@@ -144,7 +144,12 @@ pub extern "C" fn irq_handler(regs: &Registers) {
     }
 
     match irq {
-        IRQ_TIMER => { pit::tick(); }
+        IRQ_TIMER => {
+            if !stack::is_intact() {
+                stack::halt_on_overflow();
+            }
+            pit::tick();
+        }
         IRQ_KEYBOARD => {
             let scancode: u8 = unsafe { inb(keyboard::KEYBOARD_DATA_PORT) };
             keyboard::on_scancode(scancode);
