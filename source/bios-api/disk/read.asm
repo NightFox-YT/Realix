@@ -1,15 +1,15 @@
-; © Realix > Disk Read
+; © Realix > Disk: Read
 ; (13.08.26) v0.12
 ; ================
-; ❗️ Зависимости: error_handler (внешний обработчик),
-;                 bios-api/disk/init (переменные)
+; ❗️ Зависимости: error_handler (внешний обработчик), bios-api/disk/init (переменные)
 
 ; ❗️ Требуется инициализация диска через `bios_disk_init`
 %include "bios-api/disk/init.asm"
 
 
 ; > Чтение секторов с диска
-; ❗️ Номер диска берётся из `bios_disk_init/curr_drive_num`
+; ❗️ Номер диска берётся из `bios-api/disk/init/curr_drive_num`
+;    При неудачном завершении использует error_handler (внешний обработчик)
 ; Параметры:
 ;  - ax: LBA
 ;  - cl: кол-во секторов для чтения (до 128)
@@ -20,7 +20,7 @@ bios_disk_read:
     push dx
     push di
 
-    ; Номер текущего диска для BIOS
+    ; Получаем номер текущего диска
     mov dl, [curr_drive_num]
 
     push cx          ; *Сохраняем кол-во секторов (cl)
@@ -64,13 +64,13 @@ bios_disk_read:
 
 
 ; > Перевод LBA адреса в CHS адрес
-; ❗️ Геометрия диска берётся из `bios_disk_init`
+; ❗️ Геометрия диска берётся из `bios-api/disk/init`
 ; Параметры:
 ;  - ax: LBA
 ; Вывод:
 ;  - cx [bits 0-5]: сектор
 ;  - cx [bits 6-15]: цилиндр
-;  - dh: номер головы
+;  - dh: голова
 lba_to_chs:
     push ax
     push dx
@@ -95,20 +95,19 @@ lba_to_chs:
 
     pop ax      ; *Восстанавливаем ax <- оригинальный dx
     mov dl, al  ; Возвращаем номер диска на место в dl
-    pop ax      ; *Восстанавливаем оригинальный ax (LBA)
+    pop ax      ; *Восстанавливаем LBA (оригинальный ax)
 
     ret
 
 
-; > Сброс контроллера диска
+; > Сброс контроллера диска (*Доп. функция)
 ; Параметры:
 ;  - dl: номер диска
 disk_reset:
     pusha
 
-    ; Сброс контроллера диска
-    xor ax, ax  ; Функция BIOS: Сброс дискового контроллера
-    stc         ; Установка Carry Flag (Некоторые BIOS не устанавливают)
+    xor ax, ax
+    stc           ; Установка Carry Flag (Некоторые BIOS не устанавливают)
     int 0x13
     jc read_error
 

@@ -83,7 +83,7 @@ exception_common:
     mov [.panic_message_ptr], si
 
     ; Убедимся, что включен текстовый режим и зальём экран одним цветом
-    call vga_enable_text_mode
+    call enable_vga_textmode
     mov bh, 0x1F               ; Белый текст на синем фоне
     call fill_screen
 

@@ -2,43 +2,50 @@
 ; (16.08.26) v0.12
 ; ================
 
+; Основные константы
+%include 'shared/config.asm'
+
 ; Константы экрана VGA
 VGA_WIDTH   equ 320
 VGA_HEIGHT  equ 200
 VGA_SEGMENT equ 0xA000
 
-; > Инициализация видеорежима 13h (320x200, 256 цветов)
-vga_enable_video_mode:
+
+; > Включение видеорежима (320x200, 256 цветов)
+enable_vga_videomode:
     push ax
 
-    ; Установка режима (ah = 0, al = 13h)
-    mov ax, 0x0013
+    ; Функция BIOS: Установка режима (ah = 0, al = 13h)
+    mov ax, VIDEO_MODE_320x200
     int 0x10
 
     pop ax
     ret
+
 
 ; > Включение текстового режима (80x25)
-vga_enable_text_mode:
+enable_vga_textmode:
     push ax
 
-    ; Установка режима (ah = 0, al = 03h)
-    mov ax, 0x0003
+    ; Функция BIOS: Установка режима (ah = 0, al = 03h)
+    mov ax, TEXT_MODE_80x25
     int 0x10
 
     pop ax
     ret
+
 
 ; > Получение информации о видеорежиме
 ; Вывод:
 ;  - al: номер видеорежима
 ;  - ah: кол-во стобцов
 ;  - bh: номер страницы
-vga_get_mode:
+get_vga_mode:
     mov ah, 0x0F
     int 0x10
 
     ret
+
 
 ; > Очистка экрана выбранным цветом
 ; Параметры:

@@ -11,5 +11,5 @@ use crate::drivers::vga::{self, Color};
 pub fn run(line_ptr: &str) {
     // Вывод со срезанным пробелом-разделитель после имени
     vga::print_line(line_ptr.trim_start(), Color::LightGray);
-    vga::new_line();
+    vga::print_new_line();
 }

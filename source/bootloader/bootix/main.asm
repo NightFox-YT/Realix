@@ -68,6 +68,7 @@ setup:
 ; > Основной код
 main:
     ; Инициализация драйвера диска (dl содержит номер диска)
+    ; ! CF не проверяется - нет места (512 байт так-то)
     call DISK_INIT
     mov [bpb_sectors_per_track], cx
     mov [bpb_heads], dh

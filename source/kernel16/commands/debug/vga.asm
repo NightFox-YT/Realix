@@ -26,7 +26,7 @@ cmd_vga:
     int 0x16
 
     ; Переход в режим 320x200 (256 цветов) и заливка фона
-    call vga_enable_video_mode
+    call enable_vga_videomode
     mov al, VGA_DEMO_BG
     call vga_fill
 
@@ -57,7 +57,7 @@ cmd_vga:
     int 0x16
 
     ; Возврат в текстовый режим 80x25 (Заодно очищает экран)
-    call vga_enable_text_mode
+    call enable_vga_textmode
 
 .done:
     pop si

@@ -24,6 +24,7 @@ cmd_meminfo:
     call print_new_line
 
     mov cx, [es:PCINFO_ADDR + PCINFO_MMAP_ENTRIES]
+    mov si, PCINFO_ADDR + PCINFO_MMAP
     call get_usable_memory
     call show_usable_memory
     call print_new_line

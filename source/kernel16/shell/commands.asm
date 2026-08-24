@@ -217,7 +217,7 @@ cmd_panic:
 %include "kernel16/commands/debug/date-time.asm"
 
 ; > Команда демонстрации графического режима
-%include "kernel16/commands/vga.asm"
+%include "kernel16/commands/debug/vga.asm"
 
 ; > Команды для вывода ascii/scancode клавиши
 %include "kernel16/commands/debug/key.asm"
@@ -234,5 +234,6 @@ cmd_panic:
 ; Подключение доп. модуля для команд
 %include "kernel16/shell/utils.asm"
 
-; Сообщения об ошибках
+
+; Сообщение о неизвестной команде
 err_unknown_cmd: db "[!] Unknown command. Type 'help' for list of commands.", 0
