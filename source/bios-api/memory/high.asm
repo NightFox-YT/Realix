@@ -5,9 +5,6 @@
 ; Основные константы
 %include 'shared/config.asm'
 
-; Константы карты памяти (❗️ MAX_ENTRIES идёт из Rust)
-E820_ENTRY_SIZE  equ 24
-E820_MAX_ENTRIES equ 64
 
 ; > Получение карты памяти: int 0x15 (E820)
 ; Параметры:
@@ -93,13 +90,14 @@ get_memory_map:
 
 ; > Получение общей длины всех отрезкой памяти по её карте
 ; Параметры:
+;  - es:si: Указатель на начало карты памяти
 ;  - cx: Кол-во записей в карте памяти
 ; Вывод:
 ;  - eax: Число свободной памяти (До 2 ^ 32 МБ или до 4096 ТБ)
 get_usable_memory:
     push ebx
-    push ecx
     push edx
+    push cx
     push si
 
     ; Подготовка параметров
@@ -110,15 +108,10 @@ get_usable_memory:
     test cx, cx
     jz .empty
 
-    ; Доп. защита от повреждённого `PCINFO`
-    ; (не больше, чем реально бывает записей)
+    ; Доп. защита от повреждённого `PCINFO` (Не больше, чем ожидается Rust ядром)
     cmp cx, E820_MAX_ENTRIES
-    jbe .entries_cnt_valid
+    jbe .loop
     mov cx, E820_MAX_ENTRIES
-
-.entries_cnt_valid:
-    ; Адрес первой записи E820
-    mov si, PCINFO_ADDR + PCINFO_MAP
 
 .loop:
     ; Проходим по свободным регионам памяти
@@ -151,7 +144,7 @@ get_usable_memory:
 
 .done:
     pop si
+    pop cx
     pop edx
-    pop ecx
     pop ebx
     ret

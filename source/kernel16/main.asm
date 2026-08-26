@@ -77,11 +77,12 @@ error_handler:
     ; Аппаратный сброс процессора через вектор BIOS
     jmp 0xFFFF:0
 
+
 ; Подключение модулей
 %include 'bios-api/disk/read.asm'
 %include 'bios-api/io/print.asm'
-%include 'bios-api/io/print_ctrl.asm'
 %include 'bios-api/io/print_reg.asm'
+%include 'bios-api/io/cursor.asm'
 %include 'bios-api/io/screen.asm'
 %include 'bios-api/memory/high.asm'
 %include 'bios-api/memory/low.asm'
@@ -89,9 +90,8 @@ error_handler:
 %include 'bios-api/rtc.asm'
 %include 'bios-api/graphics.asm'
 %include 'display/memory.asm'
-%include 'display/boot_screen.asm'
 %include 'filesystem/fat12/file_load.asm'
-%include 'kernel16/shell/cli.asm'.
+%include 'kernel16/shell/cli.asm'
 %include 'kernel16/shell/history.asm'
 %include 'kernel16/shell/commands.asm'
 %include 'kernel16/panic.asm'

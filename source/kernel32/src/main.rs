@@ -13,7 +13,7 @@ mod memory;
 mod shell;
 mod utils;
 mod x86;
-//mod config; <- Скоро...
+mod config;
 
 // Подключение функций
 use core::arch::{asm, naked_asm};
@@ -21,12 +21,8 @@ use core::panic::PanicInfo;
 use drivers::{keyboard, pit, vga};
 use memory::{frame_allocator, pmm, stack};
 use x86::{gdt, idt};
-
+use crate::config::{PCINFO_ADDR, E820_MAX_ENTRIES};
 use crate::memory::pmm::E820Entry;
-
-/// Максимум записей карты (Значение берёт E820_MAX_ENTRIES в high.asm)
-pub const E820_MAX_ENTRIES: usize = 64;
-pub const PCINFO_ADDR: usize = 0x4500;
 
 /// Структура PCINFO, формируемая загрузчиком
 #[derive(Copy, Clone)]
@@ -35,7 +31,8 @@ pub struct PcInfo {
     pub memory_mb:    u32,
     pub low_memory_kb: u16,
     pub mmap_count: u16,
-    pub boot_drive_num: u32,
+    pub boot_drive_num: u16,
+    pub videomode: u16,
     pub memory_map: [pmm::E820Entry; E820_MAX_ENTRIES],
 }
 
@@ -123,6 +120,16 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     unsafe {
         let pcinfo: &PcInfo = &*pcinfo_addr;
         frame_allocator::init(&pcinfo.memory_map);
+        vga::init(pcinfo.videomode);
+
+        if pcinfo.videomode == 1 {
+            vga::fill_screen(vga::Color::LightCyan);
+            for k in (0..=120).step_by(40) {
+                vga::draw_rect(10, 40, 10 + k, 40 + k, vga::Color::Cyan);
+            }
+            
+            vga::draw_rect(0, 320, 180, 200, vga::Color::Cyan);
+        }
     }
 
     // Вывод логотипа и приглашения
@@ -193,7 +200,7 @@ fn draw_logo(start_x: usize, start_y: usize) {
     }
 
     for _ in 0..11 {
-        vga::new_line();
+        vga::print_new_line();
     }
 }
 

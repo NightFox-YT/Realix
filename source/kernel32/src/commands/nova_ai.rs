@@ -227,7 +227,7 @@ fn _159(){
 fn _170(){
     vga::clear_screen();
     _159();
-    for _ in 0..10{vga::new_line();}
+    for _ in 0..10{vga::print_new_line();}
     vga::print_line("     Realix X NOVA Pilot v0.1\n",Color::Cyan);
     vga::print_line("     Qwen 2.5 1.5B Q8_K\n",Color::Cyan);
     vga::print_line("______________________________\n\n",Color::DarkGray);
@@ -248,8 +248,8 @@ pub unsafe fn BC(_172:&str){
 unsafe fn _173(){
     core::arch::asm!("sti");
     _170();
-    vga::new_line();
-    vga::new_line();
+    vga::print_new_line();
+    vga::print_new_line();
     if !_80{
         vga::print_line("[WARN] Model not loaded.\n",Color::Yellow);
         keyboard::read_key();
@@ -271,7 +271,7 @@ unsafe fn _173(){
                 }
                 keyboard::Key::Char(b'\n')=>{
                     _178[_179]=0;
-                    vga::new_line();
+                    vga::print_new_line();
                     break
                 }
                 keyboard::Key::Char(0x08)=>{
@@ -299,6 +299,6 @@ unsafe fn _173(){
         }
         let _187=_101(_176,_177,_185,_184.len());
         vga::print_line(" [done]\n",Color::Green);
-        vga::new_line();
+        vga::print_new_line();
     }
 }

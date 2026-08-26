@@ -20,7 +20,7 @@ cmd_sysinfo:
     push es
 
     ; Получение инфы о видеорежиме и сохранение в промежуточный регистр
-    call vga_get_mode
+    call get_vga_mode
     mov cx, ax
 
     ; Вывод номера видеорежима (нижний байт)

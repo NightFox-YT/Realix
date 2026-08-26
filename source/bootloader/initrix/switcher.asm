@@ -19,14 +19,14 @@ boot_switcher:
     call print
 
     ; Выключаем курсор и получаем номер строки, где будет таймер
-    call set_cursor_off
+    call cursor_set_off
     call get_cursor_pos
     mov [.timer_cursor_y], dh
 
 .timer_start:
-    ; Получаем начальное значение тиков (в cx:dx)
+    ; Получаем начальное значение тиков (в eax)
     call get_ticks_value
-    mov [last_tick_low], dx
+    mov [last_tick], eax
 
     ; Вывод сообщения о запущенном таймере
     mov si, msg_timer
@@ -39,11 +39,10 @@ boot_switcher:
 
     ; Получаем текущее кол-во тиков и считаем сколько прошло
     call get_ticks_value
-    mov ax, dx
-    sub ax, word [last_tick_low]
+    sub eax, dword [last_tick]
 
     ; Если прошла 1 сек. (~18 тиков), обновляем таймер
-    cmp ax, 18
+    cmp eax, 18
     jae .update_timer
 
     ; Ждём след. прерывание для продолжения
@@ -52,7 +51,7 @@ boot_switcher:
 
 .update_timer:
     ; Обновляем наши внутренние счётчики
-    add word [last_tick_low], 18
+    add word [last_tick], 18
     sub byte [remaining_sec], 1
 
     ; Ставим курсор на место числа
@@ -62,8 +61,8 @@ boot_switcher:
     call set_cursor_pos
 
     ; Выводим сколько осталось секунд
-    movzx ax, byte [remaining_sec]
-    call print_byte
+    mov al, [remaining_sec]
+    call print_hex8
 
     ; Проверяем наш счётчик
     cmp byte [remaining_sec], 0
@@ -77,6 +76,8 @@ boot_switcher:
     je load_kernel16
     cmp al, '2'
     je load_kernel32
+    cmp al, '3'
+    je load_kernel32_video
 
     jmp .timer_loop
 
@@ -86,7 +87,7 @@ boot_switcher:
 ; > Ветка Real Mode (16 bit)
 load_kernel16:
     ; Включаем курсор
-    call set_cursor_on
+    call cursor_set_on
 
     ; Вывод сообщения о начале загрузки ядра
     call print_new_line
@@ -115,10 +116,30 @@ load_kernel16:
     jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
 
 
+; > Ветка Protected Mode с Video Mode (32-bit)
+load_kernel32_video:
+    ; Включение видеорежима
+    call enable_vga_videomode
+
+    ; Обнуление сегмента под `PCINFO` для записи
+    push es
+    push ax
+    xor ax, ax
+    mov es, ax
+
+    mov word [es:PCINFO_ADDR + PCINFO_VIDEOMODE], 1
+
+    pop ax
+    pop es
+
+    ; Переход к стандартной загрузке
+    jmp load_kernel32
+
+
 ; > Ветка Protected Mode (32-bit)
 load_kernel32:
     ; Включаем курсор
-    call set_cursor_on
+    call cursor_set_on
 
     ; Вывод сообщения о начале перехода в Protected Mode
     call print_new_line
@@ -234,9 +255,10 @@ pmode_entry:
 bits 16
 
 msg_choose_mode:
-    db '[+] Select OS Mode:', ENTER
+    db '[?] Select OS Mode:', ENTER
     db '  [1] 16-bit Real Mode (NASM)', ENTER
-    db '  [2] 32-bit Protected Mode (Rust)', ENTER, 0
+    db '  [2] 32-bit Protected Mode (Rust)', ENTER
+    db '  [3] 32-bit Video Mode (Rust Experiment)', ENTER, 0
 
 msg_timer:       db '  (Auto: 32-bit will be selected in 10 seconds)', 0
 msg_loading_16:  db '[+] Loading 16-bit kernel.', ENTER, 0
@@ -247,4 +269,4 @@ kernel16_filename: db 'KERNEL16BIN'
 kernel32_filename: db 'KERNEL32BIN'
 
 remaining_sec: db 10
-last_tick_low: dw 0
+last_tick:     dd 0

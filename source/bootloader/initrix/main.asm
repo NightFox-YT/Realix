@@ -38,7 +38,7 @@ main:
     mov es, ax
 
     ;  - Получение карты памяти (*Доп. сегмент)
-    mov di, PCINFO_ADDR + PCINFO_MAP
+    mov di, PCINFO_ADDR + PCINFO_MMAP
     call get_memory_map
     jc memory_map_error
     mov [mmap_entries], bp
@@ -46,6 +46,7 @@ main:
     ;  - Получение объёма всей доступной памяти (*Доп. сегмент)
     ;  ! Надежда на то, что bp ещё содержит кол-во записей карты памяти
     mov cx, bp
+    mov si, PCINFO_ADDR + PCINFO_MMAP
     call get_usable_memory
     mov [memory_mb], eax
     
@@ -58,14 +59,30 @@ main:
     mov ax, [mmap_entries]                          ; ++
     mov [es:PCINFO_ADDR + PCINFO_MMAP_ENTRIES], ax  ; 16: Кол-во записей в карте памяти
 
-    movzx eax, byte [curr_drive_num]
-    mov [es:PCINFO_ADDR + PCINFO_DRIVE], eax        ; 8 + 24 (Padding): Номер загрузочного диска
+    movzx ax, byte [curr_drive_num]
+    mov [es:PCINFO_ADDR + PCINFO_DRIVE], ax         ; 16: Номер загрузочного диска
+    mov ax, 0                                       ; ++
+    mov [es:PCINFO_ADDR + PCINFO_VIDEOMODE], 0      ; 16: Номер видеорежима
 
-    ; Вывод загрузочного экрана
+    ; Вывод заголовка загрузочного экрана
+    call clear_screen
+    mov si, str_title
+    call print
+    call print_beep_char
+
+    ; Вывод диагностической информации о памяти
     mov ax, [low_memory_kb]
-    mov ebx, [memory_mb]
+    call show_lower_memory
+    call print_new_line
+
+    mov eax, [memory_mb]
+    call show_usable_memory
+    call print_new_line
+
     mov cx, [mmap_entries]
-    call show_boot_screen
+    call show_map_entries_cnt
+    call print_new_line
+    call print_new_line
 
     ; Переход в модуль выбора ядра
     jmp boot_switcher
@@ -101,7 +118,6 @@ error_handler:
 ; Подключение модулей
 %include 'bios-api/disk/read.asm'
 %include 'bios-api/io/print.asm'
-%include 'bios-api/io/print_ctrl.asm'
 %include 'bios-api/io/print_reg.asm'
 %include 'bios-api/io/screen.asm'
 %include 'bios-api/io/cursor.asm'
@@ -111,13 +127,15 @@ error_handler:
 %include 'bios-api/rtc.asm'
 %include 'bios-api/graphics.asm'
 %include 'display/memory.asm'
-%include 'display/boot_screen.asm'
 %include 'filesystem/fat12/file_load.asm'
 ; %include 'drivers/network_rtl8139.asm'
 %include 'bootloader/initrix/switcher.asm'
 
 ; Сообщения
 msg_init:  db '[+] Initializing...', ENTER, 0
+str_title:
+    db '     Realix ', OS_VERSION, ENTER
+    db '(C) NightFox developer', ENTER, ENTER, 0
 
 ; Сообщения о предупреждениях и ошибках
 msg_warn_no_nic:      db '[*] Network card RTL8139 not found, networking disabled.', ENTER, 0

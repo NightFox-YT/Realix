@@ -2,8 +2,9 @@
 ; (15.08.26) v0.12
 ; ================
 
+
 ; > Выключить курсор (Текстовый режим)
-set_cursor_off:
+cursor_set_off:
     push ax
     push cx
 
@@ -15,8 +16,9 @@ set_cursor_off:
     pop ax
     ret
 
+
 ; > Включить курсор (Текстовый режим)
-set_cursor_on:
+cursor_set_on:
     push ax
     push cx
 
@@ -27,6 +29,7 @@ set_cursor_on:
     pop cx
     pop ax
     ret
+
 
 ; > Получение позиции курсора (Текстовый режим)
 ; Вывод:
@@ -43,6 +46,7 @@ get_cursor_pos:
     pop bx
     pop ax
     ret
+
 
 ; > Поставить курсор на опр. позициию (Текстовый режим)
 ; Параметры:
