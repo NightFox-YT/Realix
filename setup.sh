@@ -24,7 +24,7 @@ explain_ewszz() {
 
 view_installed_packages_zz() {
     echo "┌───────────────────────── VIP00 - View Installed Packages ────────────────────────────────┐"
-    echo "│ mtools, nmap, qemu-desktop, i686-elf-gcc, i686-elf-binutils, curl, wget, Makefile, rust, │"
+    echo "│ mtools, nasm, qemu-desktop, i686-elf-gcc, i686-elf-binutils, curl, wget, Makefile, rust, │"
     echo "│ llvm-tools and rust toolchain nightly. The GCC Toolchain is installed in /usr/local/bin/ │"
     echo "└──────────────────────────────────────────────────────────────────────────────────────────┘"
 }
