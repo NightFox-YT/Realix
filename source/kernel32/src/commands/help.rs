@@ -16,8 +16,7 @@ pub fn show() {
     vga::print_line("> meminfo   - Show memory information\n", Color::LightGray);
     vga::print_line("  [Fun]\n", Color::Cyan);
     vga::print_line("> matrix    - Show matrix rain\n", Color::LightGray);
-    vga::print_line("> stopwatch - Count seconds until a key is pressed\n", Color::LightGray);
-    vga::print_line("> banner [t]- Print text in a banner frame\n", Color::LightGray);
+    vga::print_line("> stopwatch - Count seconds in realtime\n", Color::LightGray);
     vga::print_line("  [Power]\n", Color::Cyan);
     vga::print_line("> reboot    - Reboot PC\n", Color::LightGray);
     vga::print_line("> shutdown  - Power off PC\n", Color::LightGray);

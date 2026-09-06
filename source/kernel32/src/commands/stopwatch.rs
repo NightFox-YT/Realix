@@ -9,32 +9,35 @@ use crate::drivers::vga::{self, Color};
 use crate::utils;
 
 // Интервал обновления счётчика (мс)
-const UPDATE_INTERVAL_MS: u32 = 50;
+const UPDATE_INTERVAL_MS: u32 = 200;
 
-/// Запуск секундомера: показывает секунды в реальном времени,
-/// останов по любой нажатой клавише
+/// Запуск секундомера, остановка по нажатию клавиши
 pub fn run() {
-    vga::print_line("Stopwatch started. Press any key to stop.\n", Color::LightGray);
-
+    // Точка отсчёта
     let start: u32 = pit::get_uptime();
 
-    // Значение и ширина последней отрисованной цифры (для стирания перед перерисовкой)
+    // Значение и ширина отрисованного значения (для перерисовки)
     let mut shown_value: u32 = u32::MAX;
     let mut shown_len: usize = 0;
 
-    loop {
-        let elapsed: u32 = pit::get_uptime() - start;
+    vga::print_line("[+] Stopwatch started. (Press any key to stop)\n", Color::LightGray);
+    vga::print_line("Elapsed time (seconds): ", Color::LightGray);
 
+    loop {
         // Перерисовываем число, только когда оно изменилось
+        let elapsed: u32 = pit::get_uptime() - start;
         if elapsed != shown_value {
+            // Стираем символы прошлого числа
             for _ in 0..shown_len {
                 vga::print_backspace();
             }
 
+            // Вывод сколько прошло секунд
             let mut str_buffer: [u8; 10] = [0u8; 10];
             let elapsed_str: &str = utils::u32_to_dec_str(elapsed, &mut str_buffer);
             vga::print_line(elapsed_str, Color::White);
 
+            // Обновление переменных
             shown_len = elapsed_str.len();
             shown_value = elapsed;
         }
@@ -48,6 +51,4 @@ pub fn run() {
 
         pit::sleep(UPDATE_INTERVAL_MS);
     }
-
-    vga::print_line(" s\n", Color::LightGray);
 }

@@ -7,7 +7,7 @@ BUILD_DIR ?= $(abspath ../../build)
 SRC_DIR   ?= $(abspath ../../source)
 ASM       := nasm
 ASMFLAGS  := -f bin -i $(SRC_DIR)
-ASM_SRC := $(shell find $(SRC_DIR) -name '*.asm')
+ASM_SRC   := $(shell find $(SRC_DIR) -name '*.asm')
 
 .PHONY: all bootloader bootix initrix clean
 
