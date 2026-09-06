@@ -32,6 +32,20 @@ cmd_calc:
     lodsb
     mov [.operator], al
 
+    ; Алиасы операторов без Shift: , -> + . -> - ' -> *
+    cmp al, ','
+    jne .not_comma
+    mov byte [.operator], '+'
+.not_comma:
+    cmp al, '.'
+    jne .not_dot
+    mov byte [.operator], '-'
+.not_dot:
+    cmp al, 0x27  ; '
+    jne .not_quote
+    mov byte [.operator], '*'
+.not_quote:
+
     ; Проверка существования второго числа
     call require_arg
     jc .error_syntax
@@ -144,7 +158,7 @@ cmd_calc:
 ; Строки
 msg_result:     db 'Result: ', 0
 str_minus:      db '-', 0
-msg_calc_usage: db '[?] Usage: calc <num1> <+ - * /> <num2>', 0
-err_operator:   db '[!] Unknown operator, use + - * /', 0
+msg_calc_usage: db "[?] Usage: calc <num1> <+ - * /> <num2> (or , . ' without Shift)", 0
+err_operator:   db "[!] Unknown operator, use + - * / (or , . ' without Shift)", 0
 err_div_zero:   db '[!] Division by zero!', 0
 err_overflow:   db '[!] Result too large (overflow)', 0
