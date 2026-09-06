@@ -120,6 +120,8 @@ fn execute(input: &str) {
             vga::print_line("Entering Matrix... (Press any key to exit)\n", Color::Green);
             commands::matrix::run();
         }
+        "stopwatch" => { commands::stopwatch::run(); }
+        "banner" => { commands::banner::run(args); }
         "nova" => {
             unsafe { commands::nova_ai::BC(args); }
         }
