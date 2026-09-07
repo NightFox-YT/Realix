@@ -19,10 +19,10 @@ mod config;
 use core::arch::{asm, naked_asm};
 use core::panic::PanicInfo;
 use drivers::{keyboard, pit, vga};
-use memory::{frame_allocator, pmm};
-use crate::pmm::E820Entry;
+use memory::{frame_allocator, pmm, stack};
 use x86::{gdt, idt};
 use crate::config::{PCINFO_ADDR, E820_MAX_ENTRIES};
+use crate::memory::pmm::E820Entry;
 
 /// Структура PCINFO, формируемая загрузчиком
 #[derive(Copy, Clone)]
@@ -97,6 +97,10 @@ pub extern "C" fn _start() -> ! {
 ///  - pcinfo_addr: адрес структуры PCINFO, собранной загрузчиком
 #[no_mangle]
 extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
+    // Загрузчик уже использует этот стек. Устанавливаем защиту до включения
+    // прерываний, которые могут дополнительно разместить в нём свой фрейм.
+    stack::init();
+
     // Инициализация модулей
     idt::interrupts_disable();
     gdt::init();
