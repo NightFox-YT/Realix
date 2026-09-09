@@ -62,7 +62,7 @@ main:
     movzx ax, byte [curr_drive_num]
     mov [es:PCINFO_ADDR + PCINFO_DRIVE], ax         ; 16: Номер загрузочного диска
     mov ax, 0                                       ; ++
-    mov [es:PCINFO_ADDR + PCINFO_VIDEOMODE], 0      ; 16: Номер видеорежима
+    mov word [es:PCINFO_ADDR + PCINFO_VIDEOMODE], 0 ; 16: Номер видеорежима
 
     ; Вывод заголовка загрузочного экрана
     call clear_screen
