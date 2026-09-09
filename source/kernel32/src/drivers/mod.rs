@@ -6,4 +6,3 @@ pub mod vga;
 pub mod keyboard;
 pub mod pit;
 pub mod speaker;
-pub mod font;

@@ -15,35 +15,19 @@ const PIC2_DATA: u16 = 0xA1;
 const PIC_EOI: u8 = 0x20;
 
 // Смещения векторов IRQ в IDT (32-47)
-pub const PIC1_OFFSET: u8 = 0x20;
-pub const PIC2_OFFSET: u8 = 0x28;
-
-// "Родные" смещения BIOS (master: 08h-0Fh, slave: 70h-77h) - на них
-// рассчитаны все реальные обработчики в настоящем IVT, установленные BIOS.
-// Используется x86::realmode/x86::realmode_video при временном переходе в
-// Real Mode: некоторые BIOS-сервисы (напр. чтение гибкого диска, ожидание
-// тика таймера для внутренней задержки) сами ждут аппаратного IRQ - если
-// PIC в этот момент настроен на смещения kernel32 (20h/28h), такой IRQ уйдёт
-// не в настоящий BIOS-обработчик, а в мусор по несуществующему вектору
-pub const BIOS_PIC1_OFFSET: u8 = 0x08;
-pub const BIOS_PIC2_OFFSET: u8 = 0x70;
+const PIC1_OFFSET: u8 = 0x20;
+const PIC2_OFFSET: u8 = 0x28;
 
 
 /// Короткая задержка для старых PIC/ISA-устройств
-/// (Порт 0x80 исторически под POST-коды, годится для паузы ввода-вывода)
 #[inline(always)]
 unsafe fn io_wait() {
     outb(0x80, 0);
 }
 
 
-/// Перепрошивка смещений векторов IRQ (ICW1-ICW4), без изменения масок
-/// (регистр масок - отдельный от ICW-последовательности, переживает её
-/// нетронутым). Используется как для основной перепрошивки на 32-47, так и
-/// для временного возврата к "родным" смещениям BIOS (см. x86::realmode_video)
-/// Параметры:
-///  - offset1/offset2: базовые векторы IRQ0-7 (master) / IRQ8-15 (slave)
-pub fn reinit_offsets(offset1: u8, offset2: u8) {
+/// Перепрошивка PIC на векторы 32-47, чтобы не пересекаться с исключениями 0-19
+pub fn remap() {
     // Настройка ICW (Initialization Command Words)
     unsafe {
         // ICW1: Старт инициализации, ожидается ICW4
@@ -53,9 +37,9 @@ pub fn reinit_offsets(offset1: u8, offset2: u8) {
         io_wait();
 
         // ICW2: Задаём смещение для векторов IRQ в IDT
-        outb(PIC1_DATA, offset1);
+        outb(PIC1_DATA, PIC1_OFFSET);
         io_wait();
-        outb(PIC2_DATA, offset2);
+        outb(PIC2_DATA, PIC2_OFFSET);
         io_wait();
 
         // ICW3: Связываем master & slave
@@ -70,16 +54,8 @@ pub fn reinit_offsets(offset1: u8, offset2: u8) {
         io_wait();
         outb(PIC2_DATA, 0x01);
         io_wait();
-    }
-}
 
-
-/// Перепрошивка PIC на векторы 32-47, чтобы не пересекаться с исключениями 0-19
-pub fn remap() {
-    reinit_offsets(PIC1_OFFSET, PIC2_OFFSET);
-
-    // Маскируем все IRQ, нужные откроем ниже
-    unsafe {
+        // Маскируем все IRQ, нужные откроем ниже
         outb(PIC1_DATA, 0xFF);
         outb(PIC2_DATA, 0xFF);
     }

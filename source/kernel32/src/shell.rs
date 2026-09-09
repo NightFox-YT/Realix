@@ -122,8 +122,7 @@ fn execute(input: &str) {
             commands::matrix::run();
         }
         "stopwatch" => { commands::stopwatch::run(); }
-        "gfx" => { commands::gfx::run(); }
-        "cliff" => { commands::cliff::run(args); }
+        "cliff" => { commands::cliff::run(); }
         "nova" => {
             unsafe { commands::nova_ai::BC(args); }
         }
