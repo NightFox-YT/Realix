@@ -78,7 +78,7 @@ pub fn run(args: &str) {
     } else {
         vga::print_line(utils::u32_to_dec_str(result as u32, &mut buf), Color::White);
     }
-    vga::new_line();
+    vga::print_new_line();
 }
 
 /// Разбор беззнакового десятичного числа
