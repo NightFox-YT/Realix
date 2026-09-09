@@ -29,7 +29,12 @@ static SHIFT: AtomicBool = AtomicBool::new(false);
 
 /// Клавиша
 #[derive(Clone, Copy)]
-pub enum Key { Char(u8), Up, Down, Left, Right, Escape, F7 }
+pub enum Key {
+    Char(u8), Up, Down, Left, Right, Escape, F7,
+    // Стрелки с зажатым Shift - отдельные варианты, а не Key::Up + отдельный
+    // флаг: сохраняет остальной код (Cliff и т.п.) простым матчем по Key
+    ShiftUp, ShiftDown, ShiftLeft, ShiftRight,
+}
 
 /// Перевод scancode в ASCII (с учётом текущего состояния Shift)
 pub fn scancode_to_ascii(scancode: u8, shift: bool) -> Option<u8> {
@@ -107,12 +112,12 @@ fn scancode_to_key(scancode: u8, shift: bool) -> Option<Key> {
 }
 
 /// Перевод расширенного scancode (с префиксом 0xE0)
-fn extended_to_key(scancode: u8) -> Option<Key> {
+fn extended_to_key(scancode: u8, shift: bool) -> Option<Key> {
     match scancode {
-        0x48 => Some(Key::Up),
-        0x50 => Some(Key::Down),
-        0x4B => Some(Key::Left),
-        0x4D => Some(Key::Right),
+        0x48 => Some(if shift { Key::ShiftUp } else { Key::Up }),
+        0x50 => Some(if shift { Key::ShiftDown } else { Key::Down }),
+        0x4B => Some(if shift { Key::ShiftLeft } else { Key::Left }),
+        0x4D => Some(if shift { Key::ShiftRight } else { Key::Right }),
         _ => None,
     }
 }
@@ -183,7 +188,7 @@ pub fn read_key() -> Key {
             let shift: bool = SHIFT.load(Relaxed);
             let key: Option<Key> = if extended {
                 extended = false;
-                extended_to_key(scancode)
+                extended_to_key(scancode, shift)
             } else {
                 scancode_to_key(scancode, shift)
             };

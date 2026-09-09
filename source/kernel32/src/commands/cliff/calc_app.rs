@@ -4,9 +4,14 @@
 // Максимальная длина вводимого выражения (напр. "999999999+999999999")
 const CALC_INPUT_CAP: usize = 24;
 
-/// Размер окна калькулятора (знакоместа)
-pub const WINDOW_W: usize = 20;
-pub const WINDOW_H: usize = 5;
+/// Размер окна калькулятора (знакоместа) - по умолчанию и границы для
+/// изменения размера через Shift+стрелки (см. cliff::apply_resize)
+pub const DEFAULT_W: usize = 20;
+pub const DEFAULT_H: usize = 5;
+pub const MIN_W: usize = 16;
+pub const MAX_W: usize = 40;
+pub const MIN_H: usize = 5;
+pub const MAX_H: usize = 10;
 
 /// Состояние калькулятора (сохраняется между перерисовками окна)
 pub struct CalcApp {

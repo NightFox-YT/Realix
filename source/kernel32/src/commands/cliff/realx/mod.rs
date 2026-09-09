@@ -21,17 +21,17 @@ impl RealXIde {
 /// (см. cliff::DOCS_LINES/editor::MAX_LINES)
 pub const DOCS_TEXT: &[&str] = &[
     "RealX - ultra basic, Python-like",
-    "x = 5             # assign (int)",
-    "y = x + 3 * (2-1) # + - * / ()",
-    "print(y)          # print number",
-    "print(\"hi\")       # print text",
-    "# comment",
+    "x = 5             # int",
+    "s = \"hi\" + name    # str: '' or \"\", + concat",
+    "name = input(\"Name: \")   # reads a line",
+    "print(x)          # print(expr) - int or str",
     "if x > 3:",
     "    print(x)",
     "end",
     "while x > 0:",
     "    x = x - 1",
     "end",
-    "Cmp: == != < <= > >=",
+    "Cmp == != < <= > >=  (int-int or str-str)",
+    "-,*,/ only int; + also concats str",
     "No elif/else/def - Esc closes",
 ];

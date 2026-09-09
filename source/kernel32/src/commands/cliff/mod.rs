@@ -10,6 +10,13 @@
 //    В приложении Calc - стрелки двигают окно; в TextZ/RealX IDE - стрелки
 //    двигают курсор редактирования (окно на месте - слишком большое, чтобы
 //    таскать было практично). Escape в приложении закрывает его окно.
+//    Shift+стрелки в любом приложении - изменение размера окна (см.
+//    apply_resize/resize_bounds); TextZ/RealX IDE ограничены снизу видом
+//    (клетка редактора не может уменьшиться до нуля) и сверху полным
+//    размером буфера (больше показывать всё равно нечего - см. editor.rs).
+//    Уменьшенное окно редактора показывает viewport вокруг курсора
+//    (scroll_offset), а не весь буфер - Docs/Output (без курсора) всегда
+//    показывают буфер с начала
 // ❗️ До двух окон одновременно в стеке (RealX: IDE внизу + Docs/Output
 //    поверх, "новое окно" по '\'/'`' - см. Layer/Action ниже); остальные
 //    приложения используют только один уровень стека
@@ -50,6 +57,14 @@ const DOCS_COL: usize = 10;
 const OUTPUT_ROW: usize = 5;
 const OUTPUT_COL: usize = 16;
 
+// Границы размера для TextZ/RealX IDE/Docs/Output (все делят один и тот же
+// вид окна-редактора) - максимум = "естественный" полный размер буфера
+// (editor::LINE_LEN/MAX_LINES) - больше показывать всё равно нечего
+const EDITOR_MIN_W: usize = 24;
+const EDITOR_MAX_W: usize = editor::LINE_LEN + 4;
+const EDITOR_MIN_H: usize = 7;
+const EDITOR_MAX_H: usize = editor::MAX_LINES + 3;
+
 // Куда "прятать" аппаратный текстовый курсор, когда его позиция не имеет
 // смысла (стол, Calc) - подальше от содержимого, в угол экрана
 const PARKED_CURSOR_ROW: usize = vga::VGA_TEXT_HEIGHT - 1;
@@ -67,6 +82,8 @@ struct Window {
     layer: Layer,
     row: usize,
     col: usize,
+    width: usize,
+    height: usize,
 }
 
 enum Action {
@@ -114,11 +131,17 @@ pub fn run() {
                     depth -= 1;
                 }
                 Action::OpenDocs => {
-                    stack[depth] = Some(Window { layer: Layer::RealXDocs, row: DOCS_ROW, col: DOCS_COL });
+                    stack[depth] = Some(Window {
+                        layer: Layer::RealXDocs, row: DOCS_ROW, col: DOCS_COL,
+                        width: EDITOR_MAX_W, height: EDITOR_MAX_H,
+                    });
                     depth += 1;
                 }
                 Action::OpenOutput(output) => {
-                    stack[depth] = Some(Window { layer: Layer::RealXOutput(output), row: OUTPUT_ROW, col: OUTPUT_COL });
+                    stack[depth] = Some(Window {
+                        layer: Layer::RealXOutput(output), row: OUTPUT_ROW, col: OUTPUT_COL,
+                        width: EDITOR_MAX_W, height: EDITOR_MAX_H,
+                    });
                     depth += 1;
                 }
             }
@@ -133,26 +156,69 @@ pub fn run() {
 
 fn open_icon(selected: usize) -> Window {
     match selected {
-        0 => Window { row: CALC_DEFAULT_ROW, col: CALC_DEFAULT_COL, layer: Layer::Calc(CalcApp::new()) },
-        1 => Window { row: APP_ROW, col: APP_COL, layer: Layer::TextZ(TextZApp::new()) },
-        _ => Window { row: APP_ROW, col: APP_COL, layer: Layer::RealXIde(RealXIde::new()) },
+        0 => Window {
+            row: CALC_DEFAULT_ROW, col: CALC_DEFAULT_COL,
+            width: calc_app::DEFAULT_W, height: calc_app::DEFAULT_H,
+            layer: Layer::Calc(CalcApp::new()),
+        },
+        1 => Window {
+            row: APP_ROW, col: APP_COL,
+            width: EDITOR_MAX_W, height: EDITOR_MAX_H,
+            layer: Layer::TextZ(TextZApp::new()),
+        },
+        _ => Window {
+            row: APP_ROW, col: APP_COL,
+            width: EDITOR_MAX_W, height: EDITOR_MAX_H,
+            layer: Layer::RealXIde(RealXIde::new()),
+        },
     }
+}
+
+/// Границы изменения размера для типа окна (см. apply_resize)
+fn resize_bounds(layer: &Layer) -> (usize, usize, usize, usize) {
+    match layer {
+        Layer::Calc(_) => (calc_app::MIN_W, calc_app::MAX_W, calc_app::MIN_H, calc_app::MAX_H),
+        Layer::TextZ(_) | Layer::RealXIde(_) | Layer::RealXDocs | Layer::RealXOutput(_) =>
+            (EDITOR_MIN_W, EDITOR_MAX_W, EDITOR_MIN_H, EDITOR_MAX_H),
+    }
+}
+
+/// Shift+стрелка - изменение размера окна (в пределах min/max для его типа);
+/// после изменения окно подвинуто, чтобы не вылезти за экран. Возвращает
+/// false, если `key` не является клавишей изменения размера (ничего не тронуто)
+fn apply_resize(win: &mut Window, key: Key, min_w: usize, max_w: usize, min_h: usize, max_h: usize) -> bool {
+    match key {
+        Key::ShiftRight => win.width = (win.width + 1).min(max_w),
+        Key::ShiftLeft => win.width = win.width.saturating_sub(1).max(min_w),
+        Key::ShiftDown => win.height = (win.height + 1).min(max_h),
+        Key::ShiftUp => win.height = win.height.saturating_sub(1).max(min_h),
+        _ => return false,
+    }
+
+    win.col = win.col.min(vga::VGA_TEXT_WIDTH.saturating_sub(win.width));
+    win.row = win.row.min(vga::VGA_TEXT_HEIGHT.saturating_sub(win.height)).max(1);
+    true
 }
 
 /// Обрабатывает клавишу для верхнего (активного) окна в стеке
 fn handle_top(win: &mut Window, key: Key) -> Action {
+    let (min_w, max_w, min_h, max_h) = resize_bounds(&win.layer);
+    if apply_resize(win, key, min_w, max_w, min_h, max_h) {
+        return Action::None;
+    }
+
     match &mut win.layer {
         Layer::Calc(calc) => {
             match key {
                 Key::Escape => return Action::Close,
                 Key::Up => win.row = win.row.saturating_sub(1).max(1),
-                Key::Down => win.row = (win.row + 1).min(vga::VGA_TEXT_HEIGHT - calc_app::WINDOW_H),
+                Key::Down => win.row = (win.row + 1).min(vga::VGA_TEXT_HEIGHT - win.height),
                 Key::Left => win.col = win.col.saturating_sub(1),
-                Key::Right => win.col = (win.col + 1).min(vga::VGA_TEXT_WIDTH - calc_app::WINDOW_W),
+                Key::Right => win.col = (win.col + 1).min(vga::VGA_TEXT_WIDTH - win.width),
                 Key::Char(b'\x08') => calc.backspace(),
                 Key::Char(b'\n') | Key::Char(b'=') => calc.evaluate(),
                 Key::Char(byte) => calc.push(byte),
-                Key::F7 => {}
+                _ => {}
             }
         }
         Layer::TextZ(app) => match key {
@@ -175,7 +241,7 @@ fn handle_top(win: &mut Window, key: Key) -> Action {
             Key::Char(b'\x08') => ide.editor.backspace(),
             Key::Char(b'\n') => ide.editor.newline(),
             Key::Char(b'\\') => return Action::OpenDocs,
-            Key::Char(b'`') => return Action::OpenOutput(realx::lang::run(&ide.editor)),
+            Key::Char(b'`') => return Action::OpenOutput(realx::lang::run(&ide.editor, realx_read_input)),
             Key::Char(byte) if (0x20..=0x7E).contains(&byte) => ide.editor.type_char(byte),
             _ => {}
         },
@@ -187,6 +253,49 @@ fn handle_top(win: &mut Window, key: Key) -> Action {
         }
     }
     Action::None
+}
+
+/// Читает строку с клавиатуры для input() внутри выполняемой программы
+/// RealX (см. realx::lang::EvalCtx) - рисует окно вывода РОВНО в той позиции
+/// и размере, где его откроет Action::OpenOutput (OUTPUT_ROW/OUTPUT_COL/
+/// EDITOR_MAX_W/EDITOR_MAX_H), затем показывает вводимый текст на следующей
+/// клетке после последней выведенной строки (подсказки от input(), если
+/// была, уже в `out` к этому моменту - см. lang::parse_input_call) и
+/// блокирующе читает клавиатуру до Enter. Безопасно вызывать вложенно из
+/// run(), т.к. read_key() - обычный синхронный опрос, как и везде в kernel32
+fn realx_read_input(out: &mut RealXOutput) -> ([u8; realx::lang::INPUT_CAP], usize) {
+    draw_output_window(OUTPUT_ROW, OUTPUT_COL, EDITOR_MAX_W, EDITOR_MAX_H, Color::LightGreen, out);
+
+    let content_rows = EDITOR_MAX_H - 3;
+    let prompt_row = out.count().saturating_sub(1).min(content_rows - 1);
+    let prompt_len = if out.count() > 0 { out.line_str(out.count() - 1).len() } else { 0 };
+    let text_row = OUTPUT_ROW + 2 + prompt_row;
+    let text_col = OUTPUT_COL + 2 + prompt_len;
+    let max_len = (EDITOR_MAX_W - 4).saturating_sub(prompt_len).min(realx::lang::INPUT_CAP);
+
+    let mut buf = [0u8; realx::lang::INPUT_CAP];
+    let mut len = 0usize;
+
+    loop {
+        vga::set_cursor_pos(text_row, text_col + len);
+        match keyboard::read_key() {
+            Key::Char(b'\n') => break,
+            Key::Char(b'\x08') => {
+                if len > 0 {
+                    len -= 1;
+                    vga::write_char_at(text_row, text_col + len, b' ', Color::White);
+                }
+            }
+            Key::Char(byte) if (0x20..=0x7E).contains(&byte) && len < max_len => {
+                buf[len] = byte;
+                vga::write_char_at(text_row, text_col + len, byte, Color::White);
+                len += 1;
+            }
+            _ => {}
+        }
+    }
+
+    (buf, len)
 }
 
 /// Полная перерисовка кадра: стол, затем все окна стека снизу вверх
@@ -216,85 +325,107 @@ fn draw_desktop(selected: usize) {
 }
 
 fn draw_window(win: &Window) {
+    let (row, col, w, h) = (win.row, win.col, win.width, win.height);
     match &win.layer {
-        Layer::Calc(calc) => draw_calc_window(win.row, win.col, calc),
-        Layer::TextZ(app) => draw_editor_window(win.row, win.col, "TEXTZ", &app.editor),
-        Layer::RealXIde(ide) => draw_editor_window(win.row, win.col, "REALX IDE", &ide.editor),
-        Layer::RealXDocs => draw_docs_window(win.row, win.col),
-        Layer::RealXOutput(out) => draw_output_window(win.row, win.col, out),
+        Layer::Calc(calc) => draw_calc_window(row, col, w, h, calc),
+        Layer::TextZ(app) => draw_editor_window(row, col, w, h, "TEXTZ", &app.editor),
+        Layer::RealXIde(ide) => draw_editor_window(row, col, w, h, "REALX IDE", &ide.editor),
+        Layer::RealXDocs => draw_static_window(row, col, w, h, "REALX DOCS", Color::Yellow, realx::DOCS_TEXT),
+        Layer::RealXOutput(out) => {
+            let border = if out.error { Color::LightRed } else { Color::LightGreen };
+            draw_output_window(row, col, w, h, border, out);
+        }
     }
 }
 
-fn draw_calc_window(row: usize, col: usize, calc: &CalcApp) {
-    let w = calc_app::WINDOW_W;
-    let h = calc_app::WINDOW_H;
+/// Обрезка строки (только ASCII в этом проекте - байтовый срез безопасен)
+fn clip(text: &str, max_len: usize) -> &str {
+    &text[..text.len().min(max_len)]
+}
+
+/// Смещение "прокрутки" - минимальное, чтобы курсор оставался виден в окне
+/// шириной/высотой `visible` из `total` строк/столбцов буфера
+fn scroll_offset(cursor: usize, visible: usize, total: usize) -> usize {
+    let need = cursor.saturating_sub(visible.saturating_sub(1));
+    need.min(total.saturating_sub(visible))
+}
+
+fn draw_calc_window(row: usize, col: usize, w: usize, h: usize, calc: &CalcApp) {
     clear_interior(row, col, w, h);
     draw_box_text(row, col, w, h, Color::White);
 
+    let content_w = w - 4;
     draw_text_at(row + 1, col + 2, "CALC", Color::LightCyan);
     draw_text_at(row + 1, col + w - 4, "[X]", Color::LightRed);
 
-    draw_text_at(row + 2, col + 2, calc.input_str(), Color::White);
+    draw_text_at(row + 2, col + 2, clip(calc.input_str(), content_w), Color::White);
 
     if calc.error() {
         draw_text_at(row + 3, col + 2, "ERR", Color::LightRed);
     } else if let Some(result) = calc.result() {
         let mut buf: [u8; 12] = [0; 12];
         let text = calc_app::format_result(result, &mut buf);
-        draw_text_at(row + 3, col + 2, text, Color::LightBlue);
+        draw_text_at(row + 3, col + 2, clip(text, content_w), Color::LightBlue);
     }
 
     vga::set_cursor_pos(PARKED_CURSOR_ROW, PARKED_CURSOR_COL);
 }
 
-/// Общее окно редактора (TextZ и RealX IDE делят один и тот же вид)
-fn draw_editor_window(row: usize, col: usize, title: &str, ed: &editor::Editor) {
-    let w = editor::LINE_LEN + 4;
-    let h = editor::MAX_LINES + 3;
+/// Общее окно редактора (TextZ и RealX IDE делят один и тот же вид) -
+/// показывает viewport вокруг курсора, если окно меньше полного буфера
+fn draw_editor_window(row: usize, col: usize, w: usize, h: usize, title: &str, ed: &editor::Editor) {
     clear_interior(row, col, w, h);
     draw_box_text(row, col, w, h, Color::White);
 
     draw_text_at(row + 1, col + 2, title, Color::LightCyan);
     draw_text_at(row + 1, col + w - 4, "[X]", Color::LightRed);
-    if title == "REALX IDE" {
+    if title == "REALX IDE" && w >= 24 {
         draw_text_at(row + 1, col + w - 12, "\\doc `run", Color::DarkGray);
     }
 
-    for r in 0..editor::MAX_LINES {
-        draw_text_at(row + 2 + r, col + 2, ed.line_str(r), Color::White);
+    let content_rows = h - 3;
+    let content_cols = w - 4;
+    let scroll_row = scroll_offset(ed.cur_row, content_rows, editor::MAX_LINES);
+    let scroll_col = scroll_offset(ed.cur_col, content_cols, editor::LINE_LEN);
+
+    for r in 0..content_rows {
+        let line = ed.line_str(scroll_row + r);
+        let start = scroll_col.min(line.len());
+        let visible = &line[start..line.len().min(start + content_cols)];
+        draw_text_at(row + 2 + r, col + 2, visible, Color::White);
     }
 
-    vga::set_cursor_pos(row + 2 + ed.cur_row, col + 2 + ed.cur_col);
+    vga::set_cursor_pos(row + 2 + (ed.cur_row - scroll_row), col + 2 + (ed.cur_col - scroll_col));
 }
 
-fn draw_docs_window(row: usize, col: usize) {
-    let w = editor::LINE_LEN + 4;
-    let h = editor::MAX_LINES + 3;
+/// Окно со статичным текстом (RealX Docs) - без курсора, всегда с начала
+fn draw_static_window(row: usize, col: usize, w: usize, h: usize, title: &str, border: Color, lines: &[&str]) {
     clear_interior(row, col, w, h);
-    draw_box_text(row, col, w, h, Color::Yellow);
+    draw_box_text(row, col, w, h, border);
 
-    draw_text_at(row + 1, col + 2, "REALX DOCS", Color::LightCyan);
+    draw_text_at(row + 1, col + 2, title, Color::LightCyan);
     draw_text_at(row + 1, col + w - 4, "[X]", Color::LightRed);
 
-    for (i, line) in realx::DOCS_TEXT.iter().enumerate().take(editor::MAX_LINES) {
-        draw_text_at(row + 2 + i, col + 2, line, Color::White);
+    let content_rows = h - 3;
+    let content_cols = w - 4;
+    for (i, line) in lines.iter().enumerate().take(content_rows) {
+        draw_text_at(row + 2 + i, col + 2, clip(line, content_cols), Color::White);
     }
 
     vga::set_cursor_pos(PARKED_CURSOR_ROW, PARKED_CURSOR_COL);
 }
 
-fn draw_output_window(row: usize, col: usize, out: &RealXOutput) {
-    let w = editor::LINE_LEN + 4;
-    let h = editor::MAX_LINES + 3;
+fn draw_output_window(row: usize, col: usize, w: usize, h: usize, border: Color, out: &RealXOutput) {
     clear_interior(row, col, w, h);
-    let border = if out.error { Color::LightRed } else { Color::LightGreen };
     draw_box_text(row, col, w, h, border);
 
     draw_text_at(row + 1, col + 2, "REALX OUTPUT", Color::LightCyan);
     draw_text_at(row + 1, col + w - 4, "[X]", Color::LightRed);
 
-    for i in 0..out.count().min(editor::MAX_LINES) {
-        draw_text_at(row + 2 + i, col + 2, out.line_str(i), Color::White);
+    let content_rows = h - 3;
+    let content_cols = w - 4;
+    for i in 0..out.count().min(content_rows) {
+        draw_text_at(row + 2 + i, col + 2, clip(out.line_str(i), content_cols), Color::White);
     }
 
     vga::set_cursor_pos(PARKED_CURSOR_ROW, PARKED_CURSOR_COL);

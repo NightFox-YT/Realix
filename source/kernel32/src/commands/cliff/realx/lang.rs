@@ -1,19 +1,26 @@
 // © Realix > Cliff: RealX - ультра-базовый язык программирования
 // ================
 // ❗️ Синтаксис нарочно похож на Python (переменные, print(...), if/while с
-// операторами сравнения), но с явным `end` вместо отступов - настоящий
-// Python-style off-side rule (отступы как границы блоков) требует полноценного
-// токенайзера с отслеживанием уровня вложенности; `end` даёт тот же результат
-// (читаемый, "по-питоновски" выглядящий код) при спокойно более простом
+// операторами сравнения, строки в "" или ''), но с явным `end` вместо
+// отступов - настоящий Python-style off-side rule (отступы как границы
+// блоков) требует полноценного токенайзера с отслеживанием уровня
+// вложенности; `end` даёт тот же читаемый результат при заметно проще
 // построчном интерпретаторе - см. run() ниже
 // ❗️ Ограничения (осознанно, "ультра-базовый" язык):
-//    - Только целые числа (i64); строки - только литералы в print(), не
-//      сохраняются в переменных
+//    - Два типа значений: целые (i64) и строки (до STR_CAP байт, отдельно
+//      от переменных - не Vec/String, фиксированный буфер в каждом Value)
+//    - "+" работает для пары int (сложение) ИЛИ пары str (конкатенация) -
+//      смешивать типы в одном выражении - ошибка; "- * /" только для int
+//    - Сравнение (== != < <= > >=) - только между двумя int или двумя str
+//      (лексикографически); смешивать типы - ошибка
 //    - До 16 переменных, имя до 8 символов
-//    - if/while - ровно одно условие сравнения (== != < <= > >=), без
-//      elif/else, без вложенных выражений сложнее (a + b * c) со скобками
-//    - Нет пользовательских функций (def) - только последовательный код,
-//      условия и циклы
+//    - if/while - ровно одно условие сравнения, без elif/else, без вложенных
+//      выражений сложнее вида (a + b * c) со скобками
+//    - Нет пользовательских функций (def) - только print/input, условия,
+//      циклы и присваивания
+//    - input() блокирует выполнение и рисует поле ввода прямо в открытом
+//      окне вывода (см. cliff::realx_read_input) - реентерабельности нет,
+//      это обычный синхронный вызов клавиатуры, как и везде в kernel32
 //    - Защита от зависания: программа обрывается с ошибкой после
 //      MAX_STEPS выполненных строк (напр. `while 1 == 1:` без выхода)
 
@@ -29,11 +36,80 @@ const MAX_BLOCK_DEPTH: usize = 6;
 // Предел выполненных "шагов" (строк) - защита от бесконечного цикла
 const MAX_STEPS: usize = 200_000;
 
+// Вместимость строкового значения и ввода input() - размер строки вывода
+pub const STR_CAP: usize = LINE_LEN;
+pub const INPUT_CAP: usize = LINE_LEN;
+
+/// Значение RealX - целое число или строка (см. заголовок файла)
+#[derive(Clone, Copy)]
+enum Value {
+    Int(i64),
+    Str([u8; STR_CAP], usize),
+}
+
+impl Value {
+    fn from_bytes(bytes: &[u8]) -> Value {
+        let mut buf = [0u8; STR_CAP];
+        let n = bytes.len().min(STR_CAP);
+        buf[..n].copy_from_slice(&bytes[..n]);
+        Value::Str(buf, n)
+    }
+}
+
+fn as_int(v: Value) -> Result<i64, ()> {
+    match v {
+        Value::Int(n) => Ok(n),
+        Value::Str(..) => Err(()),
+    }
+}
+
+/// "+" - сложение для пары int, конкатенация для пары str; смешивать типы
+/// (или переполнить строку сверх STR_CAP - см. заголовок файла) - ошибка
+fn add_values(a: Value, b: Value) -> Result<Value, ()> {
+    match (a, b) {
+        (Value::Int(x), Value::Int(y)) => Ok(Value::Int(x.checked_add(y).ok_or(())?)),
+        (Value::Str(abuf, alen), Value::Str(bbuf, blen)) => {
+            let mut buf = [0u8; STR_CAP];
+            let mut pos = 0;
+            for &byte in &abuf[..alen] {
+                if pos >= STR_CAP { break; }
+                buf[pos] = byte;
+                pos += 1;
+            }
+            for &byte in &bbuf[..blen] {
+                if pos >= STR_CAP { break; }
+                buf[pos] = byte;
+                pos += 1;
+            }
+            Ok(Value::Str(buf, pos))
+        }
+        _ => Err(()),
+    }
+}
+
+/// Сравнение - между двумя int (числовое) или двумя str (побайтовое,
+/// лексикографическое); смешивать типы - ошибка
+fn compare(cmp: u8, lhs: Value, rhs: Value) -> Result<bool, ()> {
+    match (lhs, rhs) {
+        (Value::Int(a), Value::Int(b)) => Ok(match cmp {
+            0 => a == b, 1 => a != b, 2 => a <= b, 3 => a >= b, 4 => a < b, _ => a > b,
+        }),
+        (Value::Str(abuf, alen), Value::Str(bbuf, blen)) => {
+            let a = &abuf[..alen];
+            let b = &bbuf[..blen];
+            Ok(match cmp {
+                0 => a == b, 1 => a != b, 2 => a <= b, 3 => a >= b, 4 => a < b, _ => a > b,
+            })
+        }
+        _ => Err(()),
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Var {
     name: [u8; VAR_NAME_LEN],
     name_len: u8,
-    value: i64,
+    value: Value,
 }
 
 struct VarTable {
@@ -56,12 +132,12 @@ impl VarTable {
         None
     }
 
-    fn get(&self, name: &[u8]) -> Option<i64> {
+    fn get(&self, name: &[u8]) -> Option<Value> {
         self.find(name).map(|i| self.vars[i].unwrap().value)
     }
 
     /// Ok(()) при успехе; Err(()) если имя слишком длинное или таблица полна
-    fn set(&mut self, name: &[u8], value: i64) -> Result<(), ()> {
+    fn set(&mut self, name: &[u8], value: Value) -> Result<(), ()> {
         if let Some(i) = self.find(name) {
             self.vars[i].as_mut().unwrap().value = value;
             return Ok(());
@@ -144,30 +220,47 @@ fn parse_i64(bytes: &[u8]) -> Result<i64, ()> {
     Ok(value)
 }
 
-fn parse_expr(lex: &mut Lexer, vars: &VarTable) -> Result<i64, ()> {
-    let mut value = parse_term(lex, vars)?;
-    loop {
-        lex.skip_ws();
-        match lex.peek() {
-            Some(b'+') => { lex.pos += 1; value = value.checked_add(parse_term(lex, vars)?).ok_or(())?; }
-            Some(b'-') => { lex.pos += 1; value = value.checked_sub(parse_term(lex, vars)?).ok_or(())?; }
-            _ => break,
-        }
+/// Разбор строкового литерала "..." или '...' (без escape-последовательностей;
+/// закрывающая кавычка должна совпадать с открывающей)
+fn parse_string_literal<'a>(lex: &mut Lexer<'a>) -> Result<&'a [u8], ()> {
+    lex.skip_ws();
+    let quote = match lex.peek() {
+        Some(b @ b'"') | Some(b @ b'\'') => b,
+        _ => return Err(()),
+    };
+    lex.pos += 1;
+    let start = lex.pos;
+    while matches!(lex.peek(), Some(b) if b != quote) {
+        lex.pos += 1;
     }
-    Ok(value)
+    let text = &lex.bytes[start..lex.pos];
+    if !lex.consume_byte(quote) {
+        return Err(());
+    }
+    Ok(text)
 }
 
-fn parse_term(lex: &mut Lexer, vars: &VarTable) -> Result<i64, ()> {
-    let mut value = parse_factor(lex, vars)?;
+/// Контекст вычисления выражения - доступ к переменным (только чтение - см.
+/// run()/VarTable::set, изменение происходит отдельно после вычисления),
+/// вывод программы (input() пишет в него подсказку/введённый текст) и
+/// функция чтения ввода (см. cliff::realx_read_input - рисует поле ввода и
+/// блокирующе читает клавиатуру)
+struct EvalCtx<'a> {
+    vars: &'a VarTable,
+    out: &'a mut RealXOutput,
+    read_input: &'a mut dyn FnMut(&mut RealXOutput) -> ([u8; INPUT_CAP], usize),
+}
+
+fn parse_expr(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
+    let mut value = parse_term(lex, ctx)?;
     loop {
         lex.skip_ws();
         match lex.peek() {
-            Some(b'*') => { lex.pos += 1; value = value.checked_mul(parse_factor(lex, vars)?).ok_or(())?; }
-            Some(b'/') => {
+            Some(b'+') => { lex.pos += 1; value = add_values(value, parse_term(lex, ctx)?)?; }
+            Some(b'-') => {
                 lex.pos += 1;
-                let rhs = parse_factor(lex, vars)?;
-                if rhs == 0 { return Err(()); }
-                value /= rhs;
+                let rhs = as_int(parse_term(lex, ctx)?)?;
+                value = Value::Int(as_int(value)?.checked_sub(rhs).ok_or(())?);
             }
             _ => break,
         }
@@ -175,32 +268,81 @@ fn parse_term(lex: &mut Lexer, vars: &VarTable) -> Result<i64, ()> {
     Ok(value)
 }
 
-fn parse_factor(lex: &mut Lexer, vars: &VarTable) -> Result<i64, ()> {
+fn parse_term(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
+    let mut value = parse_factor(lex, ctx)?;
+    loop {
+        lex.skip_ws();
+        match lex.peek() {
+            Some(b'*') => {
+                lex.pos += 1;
+                let rhs = as_int(parse_factor(lex, ctx)?)?;
+                value = Value::Int(as_int(value)?.checked_mul(rhs).ok_or(())?);
+            }
+            Some(b'/') => {
+                lex.pos += 1;
+                let rhs = as_int(parse_factor(lex, ctx)?)?;
+                if rhs == 0 { return Err(()); }
+                value = Value::Int(as_int(value)? / rhs);
+            }
+            _ => break,
+        }
+    }
+    Ok(value)
+}
+
+fn parse_factor(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
     lex.skip_ws();
     match lex.peek() {
-        Some(b'-') => { lex.pos += 1; Ok(-parse_factor(lex, vars)?) }
+        Some(b'-') => { lex.pos += 1; Ok(Value::Int(-as_int(parse_factor(lex, ctx)?)?)) }
         Some(b'(') => {
             lex.pos += 1;
-            let v = parse_expr(lex, vars)?;
+            let v = parse_expr(lex, ctx)?;
             if !lex.consume_byte(b')') { return Err(()); }
             Ok(v)
+        }
+        Some(b'"') | Some(b'\'') => {
+            let text = parse_string_literal(lex)?;
+            Ok(Value::from_bytes(text))
         }
         Some(b) if b.is_ascii_digit() => {
             let start = lex.pos;
             while matches!(lex.peek(), Some(b) if b.is_ascii_digit()) { lex.pos += 1; }
-            parse_i64(&lex.bytes[start..lex.pos])
+            Ok(Value::Int(parse_i64(&lex.bytes[start..lex.pos])?))
         }
         Some(b) if b.is_ascii_alphabetic() || b == b'_' => {
             let name = lex.read_ident();
-            vars.get(name).ok_or(())
+            if name == b"input" {
+                parse_input_call(lex, ctx)
+            } else {
+                ctx.vars.get(name).ok_or(())
+            }
         }
         _ => Err(()),
     }
 }
 
+/// input() / input("подсказка") - подсказка (если есть) выводится как
+/// обычная строка вывода, затем (ctx.read_input) рисует поле и блокирующе
+/// читает клавиатуру; введённый текст также попадает в вывод (эхо) и
+/// возвращается как значение-строка
+fn parse_input_call(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
+    if !lex.consume_byte(b'(') { return Err(()); }
+
+    lex.skip_ws();
+    if matches!(lex.peek(), Some(b'"') | Some(b'\'')) {
+        let prompt = parse_string_literal(lex)?;
+        ctx.out.push(prompt);
+    }
+    if !lex.consume_byte(b')') { return Err(()); }
+
+    let (buf, len) = (ctx.read_input)(ctx.out);
+    ctx.out.push(&buf[..len]);
+    Ok(Value::from_bytes(&buf[..len]))
+}
+
 /// Разбор условия сравнения `<expr> <op> <expr>` - ровно один оператор
-fn parse_condition(lex: &mut Lexer, vars: &VarTable) -> Result<bool, ()> {
-    let lhs = parse_expr(lex, vars)?;
+fn parse_condition(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<bool, ()> {
+    let lhs = parse_expr(lex, ctx)?;
     lex.skip_ws();
 
     let cmp = if lex.consume_str(b"==") { 0 }
@@ -211,29 +353,13 @@ fn parse_condition(lex: &mut Lexer, vars: &VarTable) -> Result<bool, ()> {
         else if lex.consume_byte(b'>') { 5 }
         else { return Err(()); };
 
-    let rhs = parse_expr(lex, vars)?;
-    Ok(match cmp {
-        0 => lhs == rhs, 1 => lhs != rhs,
-        2 => lhs <= rhs, 3 => lhs >= rhs,
-        4 => lhs < rhs,  _ => lhs > rhs,
-    })
+    let rhs = parse_expr(lex, ctx)?;
+    compare(cmp, lhs, rhs)
 }
 
-/// Разбор строкового литерала "..." (без escape-последовательностей)
-fn parse_string_literal<'a>(lex: &mut Lexer<'a>) -> Result<&'a [u8], ()> {
-    lex.skip_ws();
-    if !lex.consume_byte(b'"') { return Err(()); }
-    let start = lex.pos;
-    while matches!(lex.peek(), Some(b) if b != b'"') {
-        lex.pos += 1;
-    }
-    let text = &lex.bytes[start..lex.pos];
-    if !lex.consume_byte(b'"') { return Err(()); }
-    Ok(text)
-}
-
-/// Вывод программы RealX - захваченные строки print(), с ограничением по
-/// кол-ву (см. заголовок файла - "ультра-базовый" интерпретатор без скролла)
+/// Вывод программы RealX - захваченные строки print()/input(), с
+/// ограничением по кол-ву (см. заголовок файла - "ультра-базовый"
+/// интерпретатор без скролла своего вывода)
 pub struct RealXOutput {
     lines: [[u8; LINE_LEN]; MAX_LINES],
     len: [usize; MAX_LINES],
@@ -311,8 +437,12 @@ fn skip_to_matching_end(source: &Editor, open_line: usize) -> Option<usize> {
 }
 
 /// Выполняет программу RealX, записанную в редакторе `source`, и возвращает
-/// захваченный вывод (или сообщение об ошибке с error=true)
-pub fn run(source: &Editor) -> RealXOutput {
+/// захваченный вывод (или сообщение об ошибке с error=true). `read_input` -
+/// см. EvalCtx/cliff::realx_read_input - вызывается при каждом input()
+pub fn run(
+    source: &Editor,
+    mut read_input: impl FnMut(&mut RealXOutput) -> ([u8; INPUT_CAP], usize),
+) -> RealXOutput {
     let mut out = RealXOutput::new();
     let mut vars = VarTable::new();
     let mut block_stack: [(usize, bool); MAX_BLOCK_DEPTH] = [(0, false); MAX_BLOCK_DEPTH];
@@ -355,31 +485,31 @@ pub fn run(source: &Editor) -> RealXOutput {
                 out.push_error(pc);
                 return out;
             }
-            lex.skip_ws();
-            let printed: Result<(), ()> = if lex.peek() == Some(b'"') {
-                match parse_string_literal(&mut lex) {
-                    Ok(text) => { out.push(text); Ok(()) }
-                    Err(()) => Err(()),
-                }
-            } else {
-                match parse_expr(&mut lex, &vars) {
-                    Ok(value) => {
-                        let mut buf = [0u8; 12];
-                        let text = format_i64(value, &mut buf);
-                        out.push(text.as_bytes());
-                        Ok(())
-                    }
-                    Err(()) => Err(()),
-                }
+            let value = {
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input };
+                parse_expr(&mut lex, &mut ctx)
             };
-            if printed.is_err() || !lex.consume_byte(b')') {
+            match value {
+                Ok(Value::Int(n)) => {
+                    let mut buf = [0u8; 12];
+                    let text = format_i64(n, &mut buf);
+                    out.push(text.as_bytes());
+                }
+                Ok(Value::Str(buf, len)) => out.push(&buf[..len]),
+                Err(()) => { out.push_error(pc); return out; }
+            }
+            if !lex.consume_byte(b')') {
                 out.push_error(pc);
                 return out;
             }
             pc += 1;
         } else if ident == b"if" || ident == b"while" {
             let is_while = ident == b"while";
-            let cond = match parse_condition(&mut lex, &vars) {
+            let cond = {
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input };
+                parse_condition(&mut lex, &mut ctx)
+            };
+            let cond = match cond {
                 Ok(c) => c,
                 Err(()) => { out.push_error(pc); return out; }
             };
@@ -416,9 +546,13 @@ pub fn run(source: &Editor) -> RealXOutput {
                 out.push_error(pc);
                 return out;
             }
-            match parse_expr(&mut lex, &vars) {
-                Ok(value) => {
-                    if vars.set(ident, value).is_err() {
+            let value = {
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input };
+                parse_expr(&mut lex, &mut ctx)
+            };
+            match value {
+                Ok(v) => {
+                    if vars.set(ident, v).is_err() {
                         out.push(b"Error: too many variables");
                         out.error = true;
                         return out;
