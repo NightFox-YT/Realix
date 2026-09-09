@@ -4,6 +4,7 @@
 
 pub mod calc;
 pub mod echo;
+pub mod gfx;
 pub mod help;
 pub mod matrix;
 pub mod meminfo;

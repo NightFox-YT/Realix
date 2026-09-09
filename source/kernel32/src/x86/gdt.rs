@@ -9,7 +9,16 @@ use core::mem::size_of;
 pub const KERNEL_CODE_SELECTOR: u16 = 0x08;
 pub const KERNEL_DATA_SELECTOR: u16 = 0x10;
 pub const TSS_SELECTOR: u16 = 0x28;
-const GDT_SIZE: usize = 6;
+// 16-битный дескриптор кода для временного перехода в Real Mode (см.
+// x86::realmode_video) - нужен, т.к. из защищённого режима нельзя напрямую
+// вызывать BIOS-прерывания (напр. int 10h для смены видеорежима)
+pub const REALMODE_CODE_SELECTOR: u16 = 0x30;
+// База 16-битного дескриптора = физический адрес загрузки kernel32
+// (source/shared/config.asm: KERNEL_LOAD_SEGMENT*16). x86::realmode_video
+// вычисляет смещения меток относительно ЭТОЙ базы - если она не совпадает,
+// любой дальний переход в 16-битный код промахивается мимо настоящих инструкций
+pub const REALMODE_SEGMENT_BASE: u32 = 0x10000;
+const GDT_SIZE: usize = 7;
 
 // Коснтанты флагов Access Byte
 #[allow(dead_code)]
@@ -202,6 +211,16 @@ pub fn init() {
             &raw const TSS as u32,
             (size_of::<TaskStateSegment>() - 1) as u32,
             PRESENT | RING0 | TSS_AVAILABLE_32,
+            0,
+        );
+
+        // (Ring 0) 16-bit Code - для временного перехода в Real Mode.
+        // База = REALMODE_SEGMENT_BASE, лимит 0xFFFF (сегмент = 64 КБ, как в
+        // Real Mode); без GRAN_4K/BIT32_MODE - декодирование 16-битное
+        GDT[6] = GdtDescriptor::new(
+            REALMODE_SEGMENT_BASE,
+            0x0000FFFF,
+            PRESENT | RING0 | SYSTEM | EXECUTABLE | READ_WRITE_ABLE,
             0,
         );
 
