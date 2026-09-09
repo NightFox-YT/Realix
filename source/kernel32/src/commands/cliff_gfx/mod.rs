@@ -341,16 +341,61 @@ fn redraw_all(selected: usize, stack: &[Option<Window>; 2], depth: usize) {
 }
 
 fn draw_desktop(selected: usize) {
-    vga::fill_screen(Color::Blue);
+    draw_wallpaper();
     draw_text_at(0, 0, "LR:select Enter:open Esc:halt", Color::White);
 
     for (i, icon) in ICONS.iter().enumerate() {
         let col = ICON_START_COL + i * (ICON_W + ICON_GAP);
+        // Заливаем нутро иконки чёрным перед рамкой - иначе подпись читалась
+        // бы поверх обоев (небо/закат/земля), а не однородного фона
+        clear_interior(ICON_ROW, col, ICON_W, ICON_H);
         let border = if i == selected { Color::Yellow } else { Color::LightGray };
         draw_box(ICON_ROW, col, ICON_W, ICON_H, border);
 
         let label_col = col + (ICON_W - icon.label.len()) / 2;
         draw_text_at(ICON_ROW + 1, label_col, icon.label, Color::White);
+    }
+}
+
+/// Обои рабочего стола - стилизованный закат (небо/солнце/горизонт/земля)
+/// несколькими полосами и "звёздами", раскинутыми по детерминированной
+/// формуле (в kernel32 нет источника случайности - см. заголовок файла)
+fn draw_wallpaper() {
+    let w = vga::VGA_VIDEO_WIDTH - 1;
+
+    vga::draw_rect(0, w, 0, 54, Color::Black);       // Ночное небо
+    vga::draw_rect(0, w, 55, 94, Color::Blue);        // Небо
+    vga::draw_rect(0, w, 95, 124, Color::Magenta);    // Закатная дымка
+    vga::draw_rect(0, w, 125, 154, Color::Red);       // Горизонт
+    vga::draw_rect(0, w, 155, 174, Color::Brown);     // Земля
+    vga::draw_rect(0, w, 175, 199, Color::Green);      // Трава
+
+    // "Звёзды" в ночном небе - разброс по x с детерминированным y (без RNG)
+    let mut x = 3usize;
+    while x < vga::VGA_VIDEO_WIDTH {
+        let y = (x * 37 + 11) % 50;
+        let color = if x % 21 == 0 { Color::Yellow } else { Color::White };
+        vga::set_pixel(x, y, color);
+        x += 9;
+    }
+
+    // Солнце - у самого горизонта
+    draw_disc(160, 110, 12, Color::Yellow);
+}
+
+/// Закрашенный круг (простая проверка расстояния - радиус мал, брутфорс ок)
+fn draw_disc(cx: usize, cy: usize, r: usize, color: Color) {
+    let r2 = (r * r) as isize;
+    for dy in -(r as isize)..=(r as isize) {
+        for dx in -(r as isize)..=(r as isize) {
+            if dx * dx + dy * dy <= r2 {
+                let x = cx as isize + dx;
+                let y = cy as isize + dy;
+                if x >= 0 && y >= 0 {
+                    vga::set_pixel(x as usize, y as usize, color);
+                }
+            }
+        }
     }
 }
 

@@ -116,7 +116,7 @@ load_kernel16:
     jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
 
 
-; > Ветка Protected Mode с Video Mode (32-bit)
+; > Ветка Protected Mode с Video Mode (32-bit with Cliff)
 load_kernel32_video:
     ; Включение видеорежима
     call enable_vga_videomode
@@ -258,7 +258,7 @@ msg_choose_mode:
     db '[?] Select OS Mode:', ENTER
     db '  [1] 16-bit Real Mode (NASM)', ENTER
     db '  [2] 32-bit Protected Mode (Rust)', ENTER
-    db '  [3] 32-bit Video Mode (Rust Experiment)', ENTER, 0
+    db '  [3] 32-bit with Cliff', ENTER, 0
 
 msg_timer:       db '  (Auto: 32-bit will be selected in 10 seconds)', 0
 msg_loading_16:  db '[+] Loading 16-bit kernel.', ENTER, 0
