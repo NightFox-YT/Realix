@@ -20,6 +20,7 @@ pub fn show() {
     vga::print_line("> matrix    - Show matrix rain\n", Color::LightGray);
     vga::print_line("> stopwatch - Count seconds in realtime\n", Color::LightGray);
     vga::print_line("> gfx       - VGA 320x200 pixel graphics test\n", Color::LightGray);
+    vga::print_line("> cliff     - Tiny desktop with a calculator app\n", Color::LightGray);
     vga::print_line("  [Power]\n", Color::Cyan);
     vga::print_line("> reboot    - Reboot PC\n", Color::LightGray);
     vga::print_line("> shutdown  - Power off PC\n", Color::LightGray);

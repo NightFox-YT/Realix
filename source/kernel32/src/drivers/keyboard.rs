@@ -19,7 +19,7 @@ static TAIL: AtomicUsize = AtomicUsize::new(0);
 
 /// Клавиша
 #[derive(Clone, Copy)]
-pub enum Key { Char(u8), Up, Down, Escape, F7 }
+pub enum Key { Char(u8), Up, Down, Left, Right, Escape, F7 }
 
 /// Перевод scancode в ASCII
 pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
@@ -72,6 +72,8 @@ fn extended_to_key(scancode: u8) -> Option<Key> {
     match scancode {
         0x48 => Some(Key::Up),
         0x50 => Some(Key::Down),
+        0x4B => Some(Key::Left),
+        0x4D => Some(Key::Right),
         _ => None,
     }
 }

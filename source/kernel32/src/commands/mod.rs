@@ -3,6 +3,7 @@
 // ================
 
 pub mod calc;
+pub mod cliff;
 pub mod echo;
 pub mod gfx;
 pub mod help;
