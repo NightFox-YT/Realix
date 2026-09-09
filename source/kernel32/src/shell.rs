@@ -123,7 +123,7 @@ fn execute(input: &str) {
         }
         "stopwatch" => { commands::stopwatch::run(); }
         "gfx" => { commands::gfx::run(); }
-        "cliff" => { commands::cliff::run(); }
+        "cliff" => { commands::cliff::run(args); }
         "nova" => {
             unsafe { commands::nova_ai::BC(args); }
         }
