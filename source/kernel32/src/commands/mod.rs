@@ -4,6 +4,7 @@
 
 pub mod calc;
 pub mod cliff;
+pub mod cliff_gfx;
 pub mod echo;
 pub mod help;
 pub mod matrix;

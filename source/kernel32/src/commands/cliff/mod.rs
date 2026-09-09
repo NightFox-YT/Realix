@@ -23,13 +23,15 @@
 //    поверх, "новое окно" по '\'/'`' - см. Layer/Action ниже); остальные
 //    приложения используют только один уровень стека
 
-mod calc_app;
-mod clock;
-mod editor;
-mod my_pc;
-mod realx;
+// pub(crate) - переиспользуются commands::cliff_gfx (те же типы состояния
+// приложений, другой рисующий слой - см. её заголовок)
+pub(crate) mod calc_app;
+pub(crate) mod clock;
+pub(crate) mod editor;
+pub(crate) mod my_pc;
+pub(crate) mod realx;
 mod terminax;
-mod textz;
+pub(crate) mod textz;
 
 use crate::drivers::keyboard::{self, Direction, Key};
 use crate::drivers::vga::{self, Color};
