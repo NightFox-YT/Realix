@@ -18,22 +18,43 @@ pub const SCANCODE_RELEASE: u8 = 0x80;
 const SHIFT_LEFT_MAKE: u8 = 0x2A;
 const SHIFT_RIGHT_MAKE: u8 = 0x36;
 
+// Make-код Ctrl - левый идёт обычным (не-расширенным) байтом 0x1D, правый -
+// расширенным (0xE0 0x1D), но сам байт совпадает - для простого "нажат ли
+// Ctrl" разницу можно не делать (см. read_key: проверяется независимо от
+// текущего значения `extended`)
+const CTRL_MAKE: u8 = 0x1D;
+
+// Скан-коды W/A/S/D - используются как управление окнами Cliff (Ctrl+WASD
+// двигает активное окно, Ctrl+Shift+WASD - меняет его размер), см.
+// Key::WindowMove/WindowResize ниже. Обычная печать 'w'/'a'/'s'/'d' (без
+// Ctrl) не затронута - перехват происходит только при зажатом Ctrl
+const SCANCODE_W: u8 = 0x11;
+const SCANCODE_A: u8 = 0x1E;
+const SCANCODE_S: u8 = 0x1F;
+const SCANCODE_D: u8 = 0x20;
+
 // Кольцевой буфер
 static mut QUEUE: [u8; QUEUE_SIZE] = [0; QUEUE_SIZE];
 static HEAD: AtomicUsize = AtomicUsize::new(0);
 static TAIL: AtomicUsize = AtomicUsize::new(0);
 
-// Состояние Shift (переживает между отдельными вызовами read_key - клавиша
-// может быть зажата, пока читаются несколько символов подряд)
+// Состояние Shift/Ctrl (переживает между отдельными вызовами read_key -
+// клавиша может быть зажата, пока читаются несколько символов подряд)
 static SHIFT: AtomicBool = AtomicBool::new(false);
+static CTRL: AtomicBool = AtomicBool::new(false);
+
+/// Направление - для Key::WindowMove/WindowResize (см. ниже)
+#[derive(Clone, Copy, PartialEq)]
+pub enum Direction { Up, Down, Left, Right }
 
 /// Клавиша
 #[derive(Clone, Copy)]
 pub enum Key {
     Char(u8), Up, Down, Left, Right, Escape, F7,
-    // Стрелки с зажатым Shift - отдельные варианты, а не Key::Up + отдельный
-    // флаг: сохраняет остальной код (Cliff и т.п.) простым матчем по Key
-    ShiftUp, ShiftDown, ShiftLeft, ShiftRight,
+    // Ctrl+WASD / Ctrl+Shift+WASD - управление окнами (см. SCANCODE_W и
+    // остальные выше); не пересекается с обычной печатью 'w'/'a'/'s'/'d'
+    WindowMove(Direction),
+    WindowResize(Direction),
 }
 
 /// Перевод scancode в ASCII (с учётом текущего состояния Shift)
@@ -112,12 +133,12 @@ fn scancode_to_key(scancode: u8, shift: bool) -> Option<Key> {
 }
 
 /// Перевод расширенного scancode (с префиксом 0xE0)
-fn extended_to_key(scancode: u8, shift: bool) -> Option<Key> {
+fn extended_to_key(scancode: u8) -> Option<Key> {
     match scancode {
-        0x48 => Some(if shift { Key::ShiftUp } else { Key::Up }),
-        0x50 => Some(if shift { Key::ShiftDown } else { Key::Down }),
-        0x4B => Some(if shift { Key::ShiftLeft } else { Key::Left }),
-        0x4D => Some(if shift { Key::ShiftRight } else { Key::Right }),
+        0x48 => Some(Key::Up),
+        0x50 => Some(Key::Down),
+        0x4B => Some(Key::Left),
+        0x4D => Some(Key::Right),
         _ => None,
     }
 }
@@ -178,17 +199,45 @@ pub fn read_key() -> Key {
                 continue;
             }
 
+            // Ctrl - как и Shift, сам не производит символа. Левый/правый
+            // делят один и тот же байт (0x1D) - различать их не нужно,
+            // достаточно знать "зажат ли Ctrl вообще" (см. константу выше)
+            if bare_scancode == CTRL_MAKE {
+                CTRL.store(scancode & SCANCODE_RELEASE == 0, Relaxed);
+                extended = false;
+                continue;
+            }
+
             // Игнорируем отпускание остальных клавиш (бит 7 = 1)
             if scancode & SCANCODE_RELEASE != 0 {
                 extended = false;
                 continue;
             }
 
+            // Ctrl+WASD - управление окнами Cliff, перехватывается раньше
+            // обычной раскладки (иначе W/A/S/D печатались бы как буквы)
+            if !extended && CTRL.load(Relaxed) {
+                let direction = match scancode {
+                    SCANCODE_W => Some(Direction::Up),
+                    SCANCODE_A => Some(Direction::Left),
+                    SCANCODE_S => Some(Direction::Down),
+                    SCANCODE_D => Some(Direction::Right),
+                    _ => None,
+                };
+                if let Some(direction) = direction {
+                    return if SHIFT.load(Relaxed) {
+                        Key::WindowResize(direction)
+                    } else {
+                        Key::WindowMove(direction)
+                    };
+                }
+            }
+
             // Распознаём функциональную клавишу
             let shift: bool = SHIFT.load(Relaxed);
             let key: Option<Key> = if extended {
                 extended = false;
-                extended_to_key(scancode, shift)
+                extended_to_key(scancode)
             } else {
                 scancode_to_key(scancode, shift)
             };

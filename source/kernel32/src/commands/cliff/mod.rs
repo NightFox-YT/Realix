@@ -7,16 +7,18 @@
 // ❗️ Мышь не поддерживается - нет PS/2-драйвера мыши. Навигация клавиатурой:
 //    на столе - стрелки Влево/Вправо выбирают иконку (видно по цвету рамки),
 //    Enter/Space открывают выбранную; Escape на столе выходит из Cliff.
-//    В приложении Calc - стрелки двигают окно; в TextZ/RealX IDE - стрелки
-//    двигают курсор редактирования (окно на месте - слишком большое, чтобы
-//    таскать было практично). Escape в приложении закрывает его окно.
-//    Shift+стрелки в любом приложении - изменение размера окна (см.
-//    apply_resize/resize_bounds); TextZ/RealX IDE ограничены снизу видом
-//    (клетка редактора не может уменьшиться до нуля) и сверху полным
-//    размером буфера (больше показывать всё равно нечего - см. editor.rs).
-//    Уменьшенное окно редактора показывает viewport вокруг курсора
-//    (scroll_offset), а не весь буфер - Docs/Output (без курсора) всегда
-//    показывают буфер с начала
+//    В приложении - стрелки - это курсор/ввод (Calc: цифры и операторы;
+//    TextZ/RealX IDE: курсор редактирования); Escape закрывает окно.
+//    Управление ЛЮБЫМ окном (любое приложение, единообразно) - Ctrl+WASD:
+//    Ctrl+W/A/S/D двигает окно, Ctrl+Shift+W/A/S/D меняет его размер (см.
+//    keyboard::Key::WindowMove/WindowResize, apply_move/apply_resize,
+//    resize_bounds). Именно Ctrl (не голый WASD) - иначе нельзя было бы
+//    печатать буквы w/a/s/d в TextZ/RealX IDE. TextZ/RealX IDE ограничены
+//    снизу видом (клетка редактора не может уменьшиться до нуля) и сверху
+//    полным размером буфера (больше показывать всё равно нечего - см.
+//    editor.rs). Уменьшенное окно редактора показывает viewport вокруг
+//    курсора (scroll_offset), а не весь буфер - Docs/Output (без курсора)
+//    всегда показывают буфер с начала
 // ❗️ До двух окон одновременно в стеке (RealX: IDE внизу + Docs/Output
 //    поверх, "новое окно" по '\'/'`' - см. Layer/Action ниже); остальные
 //    приложения используют только один уровень стека
@@ -26,7 +28,7 @@ mod editor;
 mod realx;
 mod textz;
 
-use crate::drivers::keyboard::{self, Key};
+use crate::drivers::keyboard::{self, Direction, Key};
 use crate::drivers::vga::{self, Color};
 use calc_app::CalcApp;
 use realx::RealXIde;
@@ -183,38 +185,47 @@ fn resize_bounds(layer: &Layer) -> (usize, usize, usize, usize) {
     }
 }
 
-/// Shift+стрелка - изменение размера окна (в пределах min/max для его типа);
-/// после изменения окно подвинуто, чтобы не вылезти за экран. Возвращает
-/// false, если `key` не является клавишей изменения размера (ничего не тронуто)
-fn apply_resize(win: &mut Window, key: Key, min_w: usize, max_w: usize, min_h: usize, max_h: usize) -> bool {
-    match key {
-        Key::ShiftRight => win.width = (win.width + 1).min(max_w),
-        Key::ShiftLeft => win.width = win.width.saturating_sub(1).max(min_w),
-        Key::ShiftDown => win.height = (win.height + 1).min(max_h),
-        Key::ShiftUp => win.height = win.height.saturating_sub(1).max(min_h),
-        _ => return false,
+/// Ctrl+WASD - двигает окно (в пределах экрана, не залезая на строку
+/// подсказки в верхней строке)
+fn apply_move(win: &mut Window, dir: Direction) {
+    match dir {
+        Direction::Up => win.row = win.row.saturating_sub(1).max(1),
+        Direction::Down => win.row = (win.row + 1).min(vga::VGA_TEXT_HEIGHT - win.height),
+        Direction::Left => win.col = win.col.saturating_sub(1),
+        Direction::Right => win.col = (win.col + 1).min(vga::VGA_TEXT_WIDTH - win.width),
+    }
+}
+
+/// Ctrl+Shift+WASD - меняет размер окна (в пределах min/max для его типа);
+/// после изменения окно подвинуто, чтобы не вылезти за экран
+fn apply_resize(win: &mut Window, dir: Direction, min_w: usize, max_w: usize, min_h: usize, max_h: usize) {
+    match dir {
+        Direction::Up => win.height = win.height.saturating_sub(1).max(min_h),
+        Direction::Down => win.height = (win.height + 1).min(max_h),
+        Direction::Left => win.width = win.width.saturating_sub(1).max(min_w),
+        Direction::Right => win.width = (win.width + 1).min(max_w),
     }
 
     win.col = win.col.min(vga::VGA_TEXT_WIDTH.saturating_sub(win.width));
     win.row = win.row.min(vga::VGA_TEXT_HEIGHT.saturating_sub(win.height)).max(1);
-    true
 }
 
 /// Обрабатывает клавишу для верхнего (активного) окна в стеке
 fn handle_top(win: &mut Window, key: Key) -> Action {
-    let (min_w, max_w, min_h, max_h) = resize_bounds(&win.layer);
-    if apply_resize(win, key, min_w, max_w, min_h, max_h) {
-        return Action::None;
+    match key {
+        Key::WindowMove(dir) => { apply_move(win, dir); return Action::None; }
+        Key::WindowResize(dir) => {
+            let (min_w, max_w, min_h, max_h) = resize_bounds(&win.layer);
+            apply_resize(win, dir, min_w, max_w, min_h, max_h);
+            return Action::None;
+        }
+        _ => {}
     }
 
     match &mut win.layer {
         Layer::Calc(calc) => {
             match key {
                 Key::Escape => return Action::Close,
-                Key::Up => win.row = win.row.saturating_sub(1).max(1),
-                Key::Down => win.row = (win.row + 1).min(vga::VGA_TEXT_HEIGHT - win.height),
-                Key::Left => win.col = win.col.saturating_sub(1),
-                Key::Right => win.col = (win.col + 1).min(vga::VGA_TEXT_WIDTH - win.width),
                 Key::Char(b'\x08') => calc.backspace(),
                 Key::Char(b'\n') | Key::Char(b'=') => calc.evaluate(),
                 Key::Char(byte) => calc.push(byte),
@@ -312,7 +323,7 @@ fn draw_desktop(selected: usize) {
     vga::clear_screen();
     vga::set_cursor_pos(PARKED_CURSOR_ROW, PARKED_CURSOR_COL);
 
-    draw_text_at(0, 0, "Cliff - Left/Right: select  Enter/Space: open  Esc: close/exit", Color::LightGray);
+    draw_text_at(0, 0, "Select:LR Open:Enter/Space Close:Esc Move:Ctrl+WASD Resize:Ctrl+Shift+WASD", Color::LightGray);
 
     for (i, icon) in ICONS.iter().enumerate() {
         let col = ICON_START_COL + i * (ICON_W + ICON_GAP);
