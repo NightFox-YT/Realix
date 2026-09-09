@@ -237,6 +237,22 @@ pub fn text_print_char(char_byte: u8, color: Color) {
     update_cursor();
 }
 
+/// Перемещение аппаратного курсора в произвольную позицию, БЕЗ изменения
+/// сохранённой позиции печати (CURSOR_ROW/COL) - для приложений типа Cliff,
+/// рисующих напрямую через write_char_at и хотящих показать текстовый
+/// курсор (напр. редактор TextZ/RealX IDE). Безопасно, т.к. такие приложения
+/// не вызывают print_char/print_line - CURSOR_ROW/COL при выходе всё равно
+/// сбрасываются в (0,0) через text_clear_screen()
+pub fn set_cursor_pos(row: usize, col: usize) {
+    let pos: u16 = (row * VGA_TEXT_WIDTH + col) as u16;
+    unsafe {
+        outb(VGA_CRTC_INDEX, VGA_CURSOR_LOW);
+        outb(VGA_CRTC_DATA, (pos & 0xFF) as u8);
+        outb(VGA_CRTC_INDEX, VGA_CURSOR_HIGH);
+        outb(VGA_CRTC_DATA, (pos >> 8) as u8);
+    }
+}
+
 /// Вывод символа в определённой позиции
 pub fn write_char_at(row: usize, col: usize, char_byte: u8, color: Color) {
     // Проверка, что символ находитсья в пределах экрана
