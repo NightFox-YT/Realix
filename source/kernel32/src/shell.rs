@@ -91,7 +91,9 @@ impl History {
 
 /// Функция выполнения команды
 /// ! Гарантируется, что переданный указатель содержит валидную строку
-fn execute(input: &str) {
+/// pub(crate) - переиспользуется commands::cliff::terminax (Cliff-приложение
+/// "тот же самый shell в окне")
+pub(crate) fn execute(input: &str) {
     // Форматируем введённую строку
     let input: &str = input.trim();
 

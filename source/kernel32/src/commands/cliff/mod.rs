@@ -24,29 +24,44 @@
 //    приложения используют только один уровень стека
 
 mod calc_app;
+mod clock;
 mod editor;
+mod my_pc;
 mod realx;
+mod terminax;
 mod textz;
 
 use crate::drivers::keyboard::{self, Direction, Key};
 use crate::drivers::vga::{self, Color};
 use calc_app::CalcApp;
+use clock::ClockApp;
+use my_pc::MyPcApp;
 use realx::RealXIde;
 use realx::lang::RealXOutput;
 use textz::TextZApp;
 
-// Иконки рабочего стола
+// Иконки рабочего стола - последние две (Terminax/Nova) не являются
+// оконными приложениями (см. Layer/open_icon ниже - для них Enter/Space
+// в run() не создаёт Window, а напрямую вызывает полноэкранный режим)
 struct IconDef { label: &'static str }
-const ICONS: [IconDef; 3] = [
+const ICONS: [IconDef; 7] = [
     IconDef { label: "CALC" },
     IconDef { label: "TEXTZ" },
     IconDef { label: "REALX" },
+    IconDef { label: "CLOCK" },
+    IconDef { label: "MY PC" },
+    IconDef { label: "TERMNX" },
+    IconDef { label: "NOVA" },
 ];
-const ICON_W: usize = 10;
+const TERMINAX_ICON: usize = 5;
+const NOVA_ICON: usize = 6;
+
+const ICON_W: usize = 9;
 const ICON_H: usize = 3;
-const ICON_GAP: usize = 2;
+const ICON_GAP: usize = 1;
 const ICON_ROW: usize = 2;
 const ICON_START_COL: usize = 2;
+const ICONS_PER_ROW: usize = 6;
 
 // Позиции окон по умолчанию (Calc - маленькое и подвижное; TextZ/RealX -
 // побольше, стрелки внутри них двигают курсор, а не окно)
@@ -78,6 +93,8 @@ enum Layer {
     RealXIde(RealXIde),
     RealXDocs,
     RealXOutput(RealXOutput),
+    Clock(ClockApp),
+    MyPc(MyPcApp),
 }
 
 struct Window {
@@ -108,16 +125,34 @@ pub fn run() {
             match keyboard::read_key() {
                 Key::Escape => break,
                 Key::Left => {
-                    selected = selected.saturating_sub(1);
+                    if selected % ICONS_PER_ROW > 0 { selected -= 1; }
                     redraw_all(selected, &stack, depth);
                 }
                 Key::Right => {
-                    selected = (selected + 1).min(ICONS.len() - 1);
+                    if selected % ICONS_PER_ROW < ICONS_PER_ROW - 1 && selected + 1 < ICONS.len() {
+                        selected += 1;
+                    }
+                    redraw_all(selected, &stack, depth);
+                }
+                Key::Up => {
+                    if selected >= ICONS_PER_ROW { selected -= ICONS_PER_ROW; }
+                    redraw_all(selected, &stack, depth);
+                }
+                Key::Down => {
+                    if selected + ICONS_PER_ROW < ICONS.len() { selected += ICONS_PER_ROW; }
                     redraw_all(selected, &stack, depth);
                 }
                 Key::Char(b'\n') | Key::Char(b' ') => {
-                    stack[0] = Some(open_icon(selected));
-                    depth = 1;
+                    // Terminax/Nova - полноэкранные режимы, не окна Cliff
+                    // (см. заголовок файла) - вызываются напрямую, без Window
+                    if selected == TERMINAX_ICON {
+                        terminax::run();
+                    } else if selected == NOVA_ICON {
+                        unsafe { crate::commands::nova_ai::BC("-a"); }
+                    } else {
+                        stack[0] = Some(open_icon(selected));
+                        depth = 1;
+                    }
                     redraw_all(selected, &stack, depth);
                 }
                 _ => {}
@@ -156,6 +191,7 @@ pub fn run() {
     vga::print_line("Left Cliff.\n", Color::LightGray);
 }
 
+/// Только для иконок 0-4 - Terminax/Nova (5/6) не создают Window (см. run())
 fn open_icon(selected: usize) -> Window {
     match selected {
         0 => Window {
@@ -168,10 +204,20 @@ fn open_icon(selected: usize) -> Window {
             width: EDITOR_MAX_W, height: EDITOR_MAX_H,
             layer: Layer::TextZ(TextZApp::new()),
         },
-        _ => Window {
+        2 => Window {
             row: APP_ROW, col: APP_COL,
             width: EDITOR_MAX_W, height: EDITOR_MAX_H,
             layer: Layer::RealXIde(RealXIde::new()),
+        },
+        3 => Window {
+            row: APP_ROW, col: APP_COL,
+            width: EDITOR_MAX_W, height: EDITOR_MAX_H,
+            layer: Layer::Clock(ClockApp::new()),
+        },
+        _ => Window {
+            row: APP_ROW, col: APP_COL,
+            width: EDITOR_MAX_W, height: EDITOR_MAX_H,
+            layer: Layer::MyPc(MyPcApp::new()),
         },
     }
 }
@@ -180,7 +226,8 @@ fn open_icon(selected: usize) -> Window {
 fn resize_bounds(layer: &Layer) -> (usize, usize, usize, usize) {
     match layer {
         Layer::Calc(_) => (calc_app::MIN_W, calc_app::MAX_W, calc_app::MIN_H, calc_app::MAX_H),
-        Layer::TextZ(_) | Layer::RealXIde(_) | Layer::RealXDocs | Layer::RealXOutput(_) =>
+        Layer::TextZ(_) | Layer::RealXIde(_) | Layer::RealXDocs | Layer::RealXOutput(_)
+        | Layer::Clock(_) | Layer::MyPc(_) =>
             (EDITOR_MIN_W, EDITOR_MAX_W, EDITOR_MIN_H, EDITOR_MAX_H),
     }
 }
@@ -262,6 +309,9 @@ fn handle_top(win: &mut Window, key: Key) -> Action {
         Layer::RealXOutput(_) => {
             if let Key::Escape = key { return Action::Close; }
         }
+        Layer::Clock(_) | Layer::MyPc(_) => {
+            if let Key::Escape = key { return Action::Close; }
+        }
     }
     Action::None
 }
@@ -326,12 +376,13 @@ fn draw_desktop(selected: usize) {
     draw_text_at(0, 0, "Select:LR Open:Enter/Space Close:Esc Move:Ctrl+WASD Resize:Ctrl+Shift+WASD", Color::LightGray);
 
     for (i, icon) in ICONS.iter().enumerate() {
-        let col = ICON_START_COL + i * (ICON_W + ICON_GAP);
+        let col = ICON_START_COL + (i % ICONS_PER_ROW) * (ICON_W + ICON_GAP);
+        let row = ICON_ROW + (i / ICONS_PER_ROW) * (ICON_H + 1);
         let border = if i == selected { Color::Yellow } else { Color::DarkGray };
-        draw_box_text(ICON_ROW, col, ICON_W, ICON_H, border);
+        draw_box_text(row, col, ICON_W, ICON_H, border);
 
         let label_col = col + (ICON_W - icon.label.len()) / 2;
-        draw_text_at(ICON_ROW + 1, label_col, icon.label, Color::White);
+        draw_text_at(row + 1, label_col, icon.label, Color::White);
     }
 }
 
@@ -345,6 +396,22 @@ fn draw_window(win: &Window) {
         Layer::RealXOutput(out) => {
             let border = if out.error { Color::LightRed } else { Color::LightGreen };
             draw_output_window(row, col, w, h, border, out);
+        }
+        Layer::Clock(clock) => {
+            let (bufs, lens, count) = clock.lines();
+            let mut refs: [&str; clock::LINE_COUNT] = [""; clock::LINE_COUNT];
+            for i in 0..count {
+                refs[i] = core::str::from_utf8(&bufs[i][..lens[i]]).unwrap_or("");
+            }
+            draw_static_window(row, col, w, h, "CLOCK", Color::Cyan, &refs[..count]);
+        }
+        Layer::MyPc(my_pc) => {
+            let (bufs, lens, count) = my_pc.lines();
+            let mut refs: [&str; my_pc::LINE_COUNT] = [""; my_pc::LINE_COUNT];
+            for i in 0..count {
+                refs[i] = core::str::from_utf8(&bufs[i][..lens[i]]).unwrap_or("");
+            }
+            draw_static_window(row, col, w, h, "MY PC", Color::Cyan, &refs[..count]);
         }
     }
 }
