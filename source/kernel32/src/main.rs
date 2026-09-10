@@ -142,6 +142,7 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
         if video_width != 0 {
             vga::set_video_geometry(2, video_stride as usize, video_lfb_addr as usize);
         }
+        drivers::mouse::init();
         commands::cliff_gfx::run();
     }
 

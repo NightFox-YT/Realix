@@ -32,6 +32,7 @@ use crate::commands::cliff::realx::lang::RealXOutput;
 use crate::commands::cliff::realx::{self, RealXIde};
 use crate::commands::cliff::textz::TextZApp;
 use crate::drivers::keyboard::{self, Direction, Key};
+use crate::drivers::mouse;
 use crate::drivers::vga::{self, Color};
 use paint::PaintApp;
 
@@ -66,8 +67,11 @@ const ICON_START_COL: usize = 1;
 const ICONS_PER_ROW: usize = 5;
 
 // Периодическая перерисовка даже без нажатий - см. cliff::IDLE_REDRAW_TICKS
-// (тот же принцип, то же значение)
-const IDLE_REDRAW_TICKS: u32 = 2000;
+// (тот же механизм read_key_timeout). Здесь НАМНОГО короче (~30мс вместо
+// ~20сек) - главная причина уже не часы на панели, а курсор мыши: он должен
+// обновляться быстро, а read_key_timeout - единственное место, где цикл
+// вообще просыпается и перечитывает drivers::mouse::poll() (см. run())
+const IDLE_REDRAW_TICKS: u32 = 3;
 
 const CALC_DEFAULT_ROW: usize = 6;
 const CALC_DEFAULT_COL: usize = 15;
@@ -134,50 +138,87 @@ pub fn run() -> ! {
     let mut stack: [Option<Window>; 2] = [None, None];
     let mut depth: usize = 0;
 
-    redraw_all(selected, &stack, depth);
+    let mut mouse_x: i32 = (vga::VGA_VIDEO_WIDTH / 2) as i32;
+    let mut mouse_y: i32 = (vga::VGA_VIDEO_HEIGHT / 2) as i32;
+    let mut mouse_was_down = false;
+
+    redraw_all(selected, &stack, depth, mouse_x, mouse_y);
 
     loop {
+        // Таймаут короткий (в отличие от текстового Cliff) - без него
+        // движение мыши было бы почти невидимо: IRQ12 будит hlt в
+        // read_key_timeout, но сам цикл там смотрит только очередь
+        // клавиатуры, так что без частого таймаута курсор обновлялся бы
+        // только раз в IDLE_REDRAW_TICKS (было ~20 сек, для мыши это
+        // неприемлемо) или когда ЗАОДНО пришла клавиша
+        let key = keyboard::read_key_timeout(IDLE_REDRAW_TICKS);
+
+        // Опрос мыши - независимо от того, что разбудило цикл (клавиша,
+        // движение мыши или таймаут). Y инвертирован: у PS/2 положительный
+        // dy - движение ВВЕРХ, а экранные координаты растут вниз
+        let (dx, dy, left_down) = mouse::poll();
+        mouse_x = (mouse_x + dx).clamp(0, vga::VGA_VIDEO_WIDTH as i32 - 1);
+        mouse_y = (mouse_y - dy).clamp(0, vga::VGA_VIDEO_HEIGHT as i32 - 1);
+        let mouse_clicked = left_down && !mouse_was_down;
+        mouse_was_down = left_down;
+
         if depth == 0 {
-            // Таймаут - чтобы часы на панели не "застревали" на минуте
-            // последнего нажатия (см. IDLE_REDRAW_TICKS)
-            let key = match keyboard::read_key_timeout(IDLE_REDRAW_TICKS) {
-                Some(key) => key,
-                None => { redraw_all(selected, &stack, depth); continue; }
-            };
+            if mouse_clicked {
+                if let Some(icon) = icon_at_point(mouse_x, mouse_y) {
+                    // Клик по уже выбранной иконке - открыть (как
+                    // Enter/Space); по другой - просто выбрать её (как
+                    // двойной клик на обычном столе, но без учёта времени
+                    // между кликами - тут нет часов для этого)
+                    if icon == selected {
+                        stack[0] = Some(open_icon(selected));
+                        depth = 1;
+                    } else {
+                        selected = icon;
+                    }
+                }
+            }
 
             match key {
-                Key::Escape => break,
-                Key::Left => {
+                Some(Key::Escape) => break,
+                Some(Key::Left) => {
                     if selected % ICONS_PER_ROW > 0 { selected -= 1; }
-                    redraw_all(selected, &stack, depth);
                 }
-                Key::Right => {
+                Some(Key::Right) => {
                     if selected % ICONS_PER_ROW < ICONS_PER_ROW - 1 && selected + 1 < ICONS.len() {
                         selected += 1;
                     }
-                    redraw_all(selected, &stack, depth);
                 }
-                Key::Up => {
+                Some(Key::Up) => {
                     if selected >= ICONS_PER_ROW { selected -= ICONS_PER_ROW; }
-                    redraw_all(selected, &stack, depth);
                 }
-                Key::Down => {
+                Some(Key::Down) => {
                     if selected + ICONS_PER_ROW < ICONS.len() { selected += ICONS_PER_ROW; }
-                    redraw_all(selected, &stack, depth);
                 }
-                Key::Char(b'\n') | Key::Char(b' ') => {
+                Some(Key::Char(b'\n')) | Some(Key::Char(b' ')) => {
                     stack[0] = Some(open_icon(selected));
                     depth = 1;
-                    redraw_all(selected, &stack, depth);
                 }
                 _ => {}
             }
         } else {
-            let key = match keyboard::read_key_timeout(IDLE_REDRAW_TICKS) {
-                Some(key) => key,
-                None => { redraw_all(selected, &stack, depth); continue; }
+            let win = stack[depth - 1].as_mut().unwrap();
+
+            // Клик на "[X]" верхнего окна закрывает его - остальная часть
+            // окна (перемещение мышью, клики по содержимому/кнопкам
+            // приложений) пока не реализована, см. заголовок файла
+            // Paint не рисует "[X]" (закрывается только по Escape - см.
+            // draw_paint_window) - без этой проверки клик в той же области
+            // (где у Paint просто текстовая подсказка) закрывал бы его
+            // без всякой видимой кнопки
+            let has_close_button = !matches!(win.layer, Layer::Paint(_));
+
+            let action = if mouse_clicked && has_close_button && close_button_hit(win, mouse_x, mouse_y) {
+                Action::Close
+            } else if let Some(key) = key {
+                handle_top(win, key)
+            } else {
+                Action::None
             };
-            let action = handle_top(stack[depth - 1].as_mut().unwrap(), key);
 
             match action {
                 Action::None => {}
@@ -200,9 +241,9 @@ pub fn run() -> ! {
                     depth += 1;
                 }
             }
-
-            redraw_all(selected, &stack, depth);
         }
+
+        redraw_all(selected, &stack, depth, mouse_x, mouse_y);
     }
 
     halt_with_message();
@@ -425,13 +466,66 @@ fn gfx_read_input(out: &mut RealXOutput) -> ([u8; realx::lang::INPUT_CAP], usize
     (buf, len)
 }
 
-fn redraw_all(selected: usize, stack: &[Option<Window>; 2], depth: usize) {
+/// Позиция иконки в сетке (grid row, grid col) по её индексу - общая формула
+/// для отрисовки (draw_desktop) и попадания курсора (icon_at_point)
+fn icon_grid_pos(i: usize) -> (usize, usize) {
+    let col = ICON_START_COL + (i % ICONS_PER_ROW) * (ICON_W + ICON_GAP);
+    let row = ICON_ROW + (i / ICONS_PER_ROW) * (ICON_H + 2);
+    (row, col)
+}
+
+fn point_in_rect(px: i32, py: i32, x0: usize, y0: usize, w: usize, h: usize) -> bool {
+    px >= x0 as i32 && px < (x0 + w) as i32 && py >= y0 as i32 && py < (y0 + h) as i32
+}
+
+/// Иконка под точкой курсора (мышь) - хитбокс включает подпись под рамкой
+/// (ICON_H+1 строк), не только саму рамку
+fn icon_at_point(px: i32, py: i32) -> Option<usize> {
+    for i in 0..ICONS.len() {
+        let (row, col) = icon_grid_pos(i);
+        if point_in_rect(px, py, col * CELL_W, row * CELL_H, ICON_W * CELL_W, (ICON_H + 1) * CELL_H) {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// true, если точка курсора попадает в кнопку "[X]" верхнего окна (см.
+/// draw_calc_window/draw_editor_window/... - все рисуют её в одном месте:
+/// строка row+1, последние 3 знакоместа с правого края рамки)
+fn close_button_hit(win: &Window, px: i32, py: i32) -> bool {
+    let x0 = (win.col + win.width - 4) * CELL_W;
+    let y0 = (win.row + 1) * CELL_H;
+    point_in_rect(px, py, x0, y0, 3 * CELL_W, CELL_H)
+}
+
+const CURSOR_SIZE: usize = 10;
+
+/// Курсор мыши - сплошной треугольник с чёрной обводкой (видна на любом
+/// фоне), остриём в точке (x,y). Рисуется поверх всего остального кадра
+/// (см. redraw_all) - как и все остальные элементы Cliff, каждый кадр
+/// заново, поэтому отдельно стирать предыдущую позицию не нужно
+fn draw_cursor(x: i32, y: i32) {
+    if x < 0 || y < 0 {
+        return;
+    }
+    let (x, y) = (x as usize, y as usize);
+    for row in 0..CURSOR_SIZE {
+        for col in 0..=row {
+            let color = if col == 0 || col == row { Color::Black } else { Color::White };
+            vga::set_pixel(x + col, y + row, color);
+        }
+    }
+}
+
+fn redraw_all(selected: usize, stack: &[Option<Window>; 2], depth: usize, mouse_x: i32, mouse_y: i32) {
     draw_desktop(selected);
     for slot in stack.iter().take(depth) {
         if let Some(win) = slot {
             draw_window(win);
         }
     }
+    draw_cursor(mouse_x, mouse_y);
 }
 
 fn draw_desktop(selected: usize) {
@@ -439,8 +533,7 @@ fn draw_desktop(selected: usize) {
     draw_text_at(0, 0, "Arrows:select Enter:open Esc:halt", Color::White);
 
     for (i, icon) in ICONS.iter().enumerate() {
-        let col = ICON_START_COL + (i % ICONS_PER_ROW) * (ICON_W + ICON_GAP);
-        let row = ICON_ROW + (i / ICONS_PER_ROW) * (ICON_H + 2);
+        let (row, col) = icon_grid_pos(i);
         let selected_here = i == selected;
 
         // Выбранная иконка - залитый фон (в отличие от текстового Cliff,

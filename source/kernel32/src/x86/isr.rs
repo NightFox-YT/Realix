@@ -7,7 +7,7 @@
 use core::arch::global_asm;
 
 use crate::drivers::vga::{self, Color};
-use crate::drivers::{keyboard, pit};
+use crate::drivers::{keyboard, mouse, pit};
 use crate::halt_loop;
 use crate::x86::idt::{interrupts_disable, interrupts_enable};
 use crate::x86::{gdt, pic};
@@ -16,6 +16,7 @@ use crate::utils::inb;
 // Номера обрабатываемых IRQ
 const IRQ_TIMER: u8 = 0;
 const IRQ_KEYBOARD: u8 = 1;
+const IRQ_MOUSE: u8 = 12;
 
 /// Состояние процессора, сформированное ассемблерной заглушкой.
 /// (Порядок полей соответствует обратному порядку PUSH)
@@ -148,6 +149,12 @@ pub extern "C" fn irq_handler(regs: &Registers) {
         IRQ_KEYBOARD => {
             let scancode: u8 = unsafe { inb(keyboard::KEYBOARD_DATA_PORT) };
             keyboard::on_scancode(scancode);
+        }
+        IRQ_MOUSE => {
+            // Тот же порт данных 8042, что и клавиатура - IRQ определяет,
+            // чей это байт (мыши или клавиатуры), а не сам порт
+            let byte: u8 = unsafe { inb(keyboard::KEYBOARD_DATA_PORT) };
+            mouse::on_byte(byte);
         }
         _ => { /* Остальные IRQ сейчас замаскированы */ }
     }
