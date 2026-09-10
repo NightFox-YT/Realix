@@ -685,16 +685,25 @@ fn draw_wallpaper() {
     let colors = [Color::Black, Color::Blue, Color::Magenta, Color::LightBlue];
     let bands = colors.len() - 1;
 
-    for y in 0..vga::video_height() {
+    // extended_video_height() (не video_height()) - и set_pixel_extended
+    // (не set_pixel) - чтобы фон заливал ВЕСЬ настоящий экран, а не
+    // обрывался на границе "логического" холста (см. её заголовок в vga.rs
+    // - для 16:9-режима это разница между сплошным фоном и чёрной полосой
+    // на нижних 120 строках). Считаем градиент по ТОЙ ЖЕ высоте, что и
+    // заливаем, поэтому переход плавный по всему экрану, а не только по
+    // верхней "интерактивной" части
+    let height = vga::extended_video_height();
+
+    for y in 0..height {
         // Положение по вертикали в [0, bands) как fixed-point (шаг 1/256)
-        let pos = y * bands * 256 / vga::video_height();
+        let pos = y * bands * 256 / height;
         let band = (pos / 256).min(bands - 1);
         let frac = pos % 256; // насколько близко к следующему цвету полосы
 
         for x in 0..vga::video_width() {
             let dither = (x * 41 + y * 23) % 256;
             let color = if dither < frac { colors[band + 1] } else { colors[band] };
-            vga::set_pixel(x, y, color);
+            vga::set_pixel_extended(x, y, color);
         }
     }
 
