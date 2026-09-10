@@ -349,9 +349,10 @@ fn handle_top(win: &mut Window, key: Key) -> Action {
             Key::Char(b'\x08') => ide.editor.backspace(),
             Key::Char(b'\n') => ide.editor.newline(),
             Key::Char(b'\\') => return Action::OpenDocs,
-            // (0,0,false) - текстовый Cliff не читает мышь физически, см.
-            // realx::lang::run про mouse_x()/mouse_y()/mouse_down()
-            Key::Char(b'`') => return Action::OpenOutput(realx::lang::run(&ide.editor, (0, 0, false), realx_read_input)),
+            // (0,0,false)/false - текстовый Cliff не читает мышь физически
+            // и не может рисовать пикселями, см. realx::lang::run про
+            // mouse_x()/mouse_y()/mouse_down()/pixel()/cls()
+            Key::Char(b'`') => return Action::OpenOutput(realx::lang::run(&ide.editor, (0, 0, false), false, realx_read_input)),
             Key::Char(byte) if (0x20..=0x7E).contains(&byte) => ide.editor.type_char(byte),
             _ => {}
         },

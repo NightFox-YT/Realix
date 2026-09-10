@@ -544,7 +544,7 @@ fn handle_top(win: &mut Window, key: Key, mouse: (i32, i32, bool)) -> Action {
             Key::Char(b'\x08') => ide.editor.backspace(),
             Key::Char(b'\n') => ide.editor.newline(),
             Key::Char(b'\\') => return Action::OpenDocs,
-            Key::Char(b'`') => return Action::OpenOutput(realx::lang::run(&ide.editor, mouse, gfx_read_input)),
+            Key::Char(b'`') => return Action::OpenOutput(realx::lang::run(&ide.editor, mouse, true, gfx_read_input)),
             Key::Char(byte) if (0x20..=0x7E).contains(&byte) => ide.editor.type_char(byte),
             _ => {}
         },

@@ -14,10 +14,14 @@
 //    - Сравнение (== != < <= > >=) - только между двумя int или двумя str
 //      (лексикографически); смешивать типы - ошибка
 //    - До 16 переменных, имя до 8 символов
-//    - if/while - ровно одно условие сравнения, без elif/else, без вложенных
-//      выражений сложнее вида (a + b * c) со скобками
+//    - Условия (if/elif/while) - цепочка сравнений через and/or/not (без
+//      скобок вокруг них - `not` берёт ровно следующее сравнение, `and`
+//      сильнее `or`), каждое отдельное сравнение - ровно один оператор
+//      (==,!=,<,<=,>,>=) без вложенных выражений сложнее вида (a+b*c) со
+//      скобками. if поддерживает elif/else (см. skip_to_next_branch_or_end);
+//      у while - только само условие, elif/else к нему не относятся
 //    - Нет пользовательских функций (def) - только print/input, условия,
-//      циклы и присваивания
+//      циклы, присваивания и встроенные вызовы ниже
 //    - input() блокирует выполнение и рисует поле ввода прямо в открытом
 //      окне вывода (см. cliff::realx_read_input) - реентерабельности нет,
 //      это обычный синхронный вызов клавиатуры, как и везде в kernel32
@@ -29,10 +33,24 @@
 //      цикла while потребовало бы опроса драйвера мыши прямо во время
 //      исполнения, а это конфликтовало бы с тем же опросом в главном цикле
 //      Cliff (см. её же заголовок про то, что это "съело" бы курсор)
+//    - pixel(x,y,c)/cls(c) - тоже только графический Cliff (см. параметр
+//      `graphics` в run()) - в текстовом это молчаливый no-op, а не ошибка
+//      (та же идея, что у mouse_*() выше); c - индекс палитры VGA, 0-15
+//      (см. int_to_color)
+//    - beep(hz,ms)/wait(ms) - работают в обоих Cliff (звук и таймер не
+//      завязаны на видеорежим); ms ограничен MAX_WAIT_MS за один вызов -
+//      иначе опечатка в программе могла бы "подвесить" весь Cliff (внутри
+//      pit::sleep - busy-wait, не прерывается)
+//    - rnd(max)/ticks() - псевдослучайное целое [0,max) и счётчик тиков PIT
+//      с загрузки. Не настоящий RNG (в kernel32 нет источника энтропии) -
+//      простой LCG (EvalCtx.rng), заново засеиваемый тиками при каждом
+//      запуске программы, а не при каждом вызове rnd() (иначе несколько
+//      rnd() в одном выражении вернули бы одно и то же значение)
 //    - Защита от зависания: программа обрывается с ошибкой после
 //      MAX_STEPS выполненных строк (напр. `while 1 == 1:` без выхода)
 
 use super::super::editor::{Editor, LINE_LEN, MAX_LINES};
+use crate::drivers::{pit, speaker, vga};
 
 // Максимум переменных и длина имени переменной
 const MAX_VARS: usize = 16;
@@ -43,6 +61,9 @@ const MAX_BLOCK_DEPTH: usize = 6;
 
 // Предел выполненных "шагов" (строк) - защита от бесконечного цикла
 const MAX_STEPS: usize = 200_000;
+
+// Верхняя граница одного вызова wait()/beep() (мс) - см. заголовок файла
+const MAX_WAIT_MS: u32 = 10_000;
 
 // Вместимость строкового значения и ввода input() - размер строки вывода
 pub const STR_CAP: usize = LINE_LEN;
@@ -69,6 +90,19 @@ fn as_int(v: Value) -> Result<i64, ()> {
         Value::Int(n) => Ok(n),
         Value::Str(..) => Err(()),
     }
+}
+
+/// Индекс палитры VGA (0-15, см. drivers::vga::Color) - вне диапазона None,
+/// вызывающая сторона (pixel/cls) тогда молча ничего не рисует, а не падает
+/// с ошибкой (тот же принцип, что у graphics-gating - см. заголовок файла)
+fn int_to_color(n: i64) -> Option<vga::Color> {
+    use vga::Color::*;
+    Some(match n {
+        0 => Black, 1 => Blue, 2 => Green, 3 => Cyan, 4 => Red, 5 => Magenta,
+        6 => Brown, 7 => LightGray, 8 => DarkGray, 9 => LightBlue, 10 => LightGreen,
+        11 => LightCyan, 12 => LightRed, 13 => Pink, 14 => Yellow, 15 => White,
+        _ => return None,
+    })
 }
 
 /// "+" - сложение для пары int, конкатенация для пары str; смешивать типы
@@ -232,6 +266,21 @@ impl<'a> Lexer<'a> {
             false
         }
     }
+
+    /// Как consume_str, но только если ПОСЛЕ совпадения дальше не идёт
+    /// буква/цифра/'_' - иначе "and"/"or"/"not" совпали бы с ПРЕФИКСОМ
+    /// имени переменной (напр. "andy" не должно съесть "and")
+    fn consume_keyword(&mut self, kw: &[u8]) -> bool {
+        self.skip_ws();
+        if self.bytes[self.pos..].starts_with(kw) {
+            let next = self.bytes.get(self.pos + kw.len()).copied();
+            if !matches!(next, Some(b) if b.is_ascii_alphanumeric() || b == b'_') {
+                self.pos += kw.len();
+                return true;
+            }
+        }
+        false
+    }
 }
 
 fn parse_i64(bytes: &[u8]) -> Result<i64, ()> {
@@ -280,6 +329,11 @@ struct EvalCtx<'a> {
     // накопленное смещение, которое нужно ГЛАВНОМУ циклу Cliff для
     // курсора - та же идея, что у read_input/клавиатуры (см. заголовок файла)
     mouse: (i32, i32, bool),
+    // Состояние LCG для rnd() - ссылка на переменную в run() (не значение
+    // здесь), т.к. EvalCtx пересоздаётся заново на каждый вызов/statement -
+    // без общей ссылки каждый rnd() засеивался бы заново и в пределах ОДНОГО
+    // выражения возвращал бы одно и то же (см. заголовок файла)
+    rng: &'a mut u32,
 }
 
 fn parse_expr(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
@@ -314,6 +368,12 @@ fn parse_term(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
                 let rhs = as_int(parse_factor(lex, ctx)?)?;
                 if rhs == 0 { return Err(()); }
                 value = Value::Int(as_int(value)? / rhs);
+            }
+            Some(b'%') => {
+                lex.pos += 1;
+                let rhs = as_int(parse_factor(lex, ctx)?)?;
+                if rhs == 0 { return Err(()); }
+                value = Value::Int(as_int(value)?.checked_rem(rhs).ok_or(())?);
             }
             _ => break,
         }
@@ -353,6 +413,18 @@ fn parse_factor(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
             } else if name == b"mouse_down" {
                 parse_zero_arg_call(lex)?;
                 Ok(Value::Int(if ctx.mouse.2 { 1 } else { 0 }))
+            } else if name == b"ticks" {
+                parse_zero_arg_call(lex)?;
+                Ok(Value::Int(pit::get_ticks() as i64))
+            } else if name == b"rnd" {
+                if !lex.consume_byte(b'(') { return Err(()); }
+                let max = as_int(parse_expr(lex, ctx)?)?;
+                if !lex.consume_byte(b')') { return Err(()); }
+                if max <= 0 { return Err(()); }
+                // Простой LCG (константы Numerical Recipes) - достаточно
+                // для игр/анимаций, не для чего-то криптографического
+                *ctx.rng = ctx.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                Ok(Value::Int((*ctx.rng >> 8) as i64 % max))
             } else {
                 ctx.vars.get(name).ok_or(())
             }
@@ -366,6 +438,20 @@ fn parse_zero_arg_call(lex: &mut Lexer) -> Result<(), ()> {
     if !lex.consume_byte(b'(') { return Err(()); }
     if !lex.consume_byte(b')') { return Err(()); }
     Ok(())
+}
+
+/// Разбор ровно N целочисленных аргументов вызова statement-функции вида
+/// `name(a, b, c)` (pixel/cls/beep/wait - см. их заголовки в run()) -
+/// строки как аргумент - ошибка (as_int), как и везде в RealX
+fn parse_int_args<const N: usize>(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<[i64; N], ()> {
+    if !lex.consume_byte(b'(') { return Err(()); }
+    let mut args = [0i64; N];
+    for i in 0..N {
+        if i > 0 && !lex.consume_byte(b',') { return Err(()); }
+        args[i] = as_int(parse_expr(lex, ctx)?)?;
+    }
+    if !lex.consume_byte(b')') { return Err(()); }
+    Ok(args)
 }
 
 /// input() / input("подсказка") - подсказка (если есть) выводится как
@@ -387,8 +473,45 @@ fn parse_input_call(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
     Ok(Value::from_bytes(&buf[..len]))
 }
 
-/// Разбор условия сравнения `<expr> <op> <expr>` - ровно один оператор
+/// Условие if/elif/while - цепочка сравнений через and/or/not (см.
+/// заголовок файла) - точка входа в грамматику ниже (or - самый слабый
+/// приоритет, потом and, потом not, потом само сравнение)
 fn parse_condition(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<bool, ()> {
+    parse_bool_or(lex, ctx)
+}
+
+fn parse_bool_or(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<bool, ()> {
+    let mut value = parse_bool_and(lex, ctx)?;
+    while lex.consume_keyword(b"or") {
+        let rhs = parse_bool_and(lex, ctx)?;
+        value = value || rhs;
+    }
+    Ok(value)
+}
+
+fn parse_bool_and(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<bool, ()> {
+    let mut value = parse_bool_not(lex, ctx)?;
+    while lex.consume_keyword(b"and") {
+        let rhs = parse_bool_not(lex, ctx)?;
+        value = value && rhs;
+    }
+    Ok(value)
+}
+
+/// "not" применяется ровно к следующему сравнению (без скобок вокруг
+/// произвольной под-цепочки - см. заголовок файла) - "not x == 0 and y == 0"
+/// разбирается как "(not (x == 0)) and (y == 0)"
+fn parse_bool_not(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<bool, ()> {
+    if lex.consume_keyword(b"not") {
+        Ok(!parse_comparison(lex, ctx)?)
+    } else {
+        parse_comparison(lex, ctx)
+    }
+}
+
+/// Одно сравнение `<expr> <op> <expr>` - ровно один оператор, без
+/// вложенных and/or/not (те - только на уровнях above, см. заголовок файла)
+fn parse_comparison(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<bool, ()> {
     let lhs = parse_expr(lex, ctx)?;
     lex.skip_ws();
 
@@ -448,19 +571,65 @@ impl RealXOutput {
     }
 }
 
-/// true, если строка начинается с ключевого слова if/while как отдельным
-/// токеном (а не просто текстовым префиксом - напр. "ifoo = 1" не в счёт)
-fn opens_block(trimmed: &str) -> bool {
-    for kw in ["if", "while"] {
-        let bytes = trimmed.as_bytes();
-        if bytes.len() > kw.len() && &bytes[..kw.len()] == kw.as_bytes() {
-            let next = bytes[kw.len()];
-            if !next.is_ascii_alphanumeric() && next != b'_' {
-                return true;
-            }
-        }
+/// true, если строка начинается с ключевого слова `kw` как отдельным
+/// токеном (а не просто текстовым префиксом - напр. "ifoo = 1" не в счёт
+/// для kw="if")
+fn starts_with_keyword(trimmed: &str, kw: &str) -> bool {
+    let bytes = trimmed.as_bytes();
+    let kwb = kw.as_bytes();
+    if bytes.len() > kwb.len() && &bytes[..kwb.len()] == kwb {
+        let next = bytes[kwb.len()];
+        !next.is_ascii_alphanumeric() && next != b'_'
+    } else {
+        false
     }
-    false
+}
+
+/// true, если строка начинается с ключевого слова if/while (открывает новый
+/// блок, нуждающийся в своём `end`) - elif/else НЕ считаются (они не
+/// открывают новый блок, а продолжают уже открытый `if`, см.
+/// skip_to_next_branch_or_end/run())
+fn opens_block(trimmed: &str) -> bool {
+    starts_with_keyword(trimmed, "if") || starts_with_keyword(trimmed, "while")
+}
+
+/// Строка целиком - "elif <условие>:" (elif - именно ключевое слово, не
+/// префикс, см. starts_with_keyword)
+fn is_elif_line(trimmed: &str) -> bool {
+    starts_with_keyword(trimmed, "elif")
+}
+
+/// Строка целиком - "else:" (без условия - другого написания не допускаем,
+/// проще и однозначнее для построчного интерпретатора)
+fn is_else_line(trimmed: &str) -> bool {
+    trimmed == "else:"
+}
+
+/// От строки `from_line` вперёд ищет ближайшую elif/else СВОЕЙ же цепочки
+/// if (та же глубина вложенности - elif/else внутри вложенного if/while
+/// игнорируются, они принадлежат ТОМУ блоку, не этому - см. depth==0 ниже)
+/// или, если такой нет, `end`, закрывающий саму цепочку. None - `end` не
+/// нашёлся вообще (незакрытый блок). Используется дважды в run(): чтобы
+/// найти следующую ветку, когда условие текущей if/elif ложно, И чтобы
+/// пропустить оставшиеся ветки целиком, когда взятая ветка доисполнилась
+fn skip_to_next_branch_or_end(source: &Editor, from_line: usize) -> Option<(usize, bool)> {
+    let mut depth = 0usize;
+    let mut i = from_line + 1;
+    while i < MAX_LINES {
+        let trimmed = source.line_str(i).trim();
+        if depth == 0 && (is_elif_line(trimmed) || is_else_line(trimmed)) {
+            return Some((i, true));
+        } else if opens_block(trimmed) {
+            depth += 1;
+        } else if trimmed == "end" {
+            if depth == 0 {
+                return Some((i, false));
+            }
+            depth -= 1;
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Ищет строку с соответствующим `end` для блока if/while, открытого на
@@ -488,10 +657,12 @@ fn skip_to_matching_end(source: &Editor, open_line: usize) -> Option<usize> {
 /// см. EvalCtx/cliff::realx_read_input - вызывается при каждом input().
 /// `mouse` - снимок (x, y, зажата ли ЛКМ) на момент запуска, см. EvalCtx.mouse
 /// и mouse_x()/mouse_y()/mouse_down() в parse_factor - текстовый Cliff
-/// передаёт (0,0,false), там нет мыши
+/// передаёт (0,0,false), там нет мыши. `graphics` - только pixel()/cls()
+/// (см. их обработку ниже) - текстовый Cliff передаёт false, там нет пикселей
 pub fn run(
     source: &Editor,
     mouse: (i32, i32, bool),
+    graphics: bool,
     mut read_input: impl FnMut(&mut RealXOutput) -> ([u8; INPUT_CAP], usize),
 ) -> RealXOutput {
     let mut out = RealXOutput::new();
@@ -500,6 +671,9 @@ pub fn run(
     let mut depth = 0usize;
     let mut pc = 0usize;
     let mut steps = 0usize;
+    // Затравка LCG для rnd() - тики PIT с загрузки (| 1, чтобы не начать с 0
+    // - a * 0 + c со временем всё равно "разболтается", но незачем ждать)
+    let mut rng_state: u32 = pit::get_ticks() | 1;
 
     while pc < MAX_LINES {
         steps += 1;
@@ -537,7 +711,7 @@ pub fn run(
                 return out;
             }
             let value = {
-                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse };
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse, rng: &mut rng_state };
                 parse_expr(&mut lex, &mut ctx)
             };
             match value {
@@ -554,10 +728,9 @@ pub fn run(
                 return out;
             }
             pc += 1;
-        } else if ident == b"if" || ident == b"while" {
-            let is_while = ident == b"while";
+        } else if ident == b"while" {
             let cond = {
-                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse };
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse, rng: &mut rng_state };
                 parse_condition(&mut lex, &mut ctx)
             };
             let cond = match cond {
@@ -575,7 +748,7 @@ pub fn run(
                     out.error = true;
                     return out;
                 }
-                block_stack[depth] = (pc, is_while);
+                block_stack[depth] = (pc, true);
                 depth += 1;
                 pc += 1;
             } else {
@@ -587,6 +760,157 @@ pub fn run(
                         return out;
                     }
                 }
+            }
+        } else if ident == b"if" {
+            // chain_start - строка САМОГО ПЕРВОГО "if" цепочки (не текущей
+            // проверяемой elif) - именно она нужна block_stack, чтобы позже
+            // (см. ветку "elif"/"else" ниже) найти ЕДИНЫЙ конечный `end`
+            // цепочки через skip_to_matching_end, независимо от того, какая
+            // ветка была взята
+            let chain_start = pc;
+            let mut cond_pc = pc;
+            // Some(line) - взята ветка, начинающаяся ПОСЛЕ этой строки;
+            // None - ни одна ветка не подошла, дошли до конечного `end`
+            let mut taken: Option<usize> = None;
+            let mut end_line: usize = 0;
+
+            loop {
+                let cond_trimmed = source.line_str(cond_pc).trim();
+                let mut cond_lex = Lexer::new(cond_trimmed.as_bytes());
+                cond_lex.read_ident(); // "if" или "elif" - уже знаем, что это одно из них
+
+                let cond = {
+                    let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse, rng: &mut rng_state };
+                    parse_condition(&mut cond_lex, &mut ctx)
+                };
+                let cond = match cond {
+                    Ok(c) => c,
+                    Err(()) => { out.push_error(cond_pc); return out; }
+                };
+                if !cond_lex.consume_byte(b':') {
+                    out.push_error(cond_pc);
+                    return out;
+                }
+
+                if cond {
+                    taken = Some(cond_pc);
+                    break;
+                }
+
+                match skip_to_next_branch_or_end(source, cond_pc) {
+                    Some((next_line, true)) => {
+                        if is_else_line(source.line_str(next_line).trim()) {
+                            taken = Some(next_line);
+                            break;
+                        }
+                        cond_pc = next_line; // elif - проверим его условие следующим витком
+                    }
+                    Some((next_line, false)) => { end_line = next_line; break; }
+                    None => {
+                        out.push(b"Error: missing 'end'");
+                        out.error = true;
+                        return out;
+                    }
+                }
+            }
+
+            if let Some(branch_line) = taken {
+                if depth >= MAX_BLOCK_DEPTH {
+                    out.push(b"Error: blocks nested too deep");
+                    out.error = true;
+                    return out;
+                }
+                block_stack[depth] = (chain_start, false);
+                depth += 1;
+                pc = branch_line + 1;
+            } else {
+                pc = end_line + 1;
+            }
+        } else if ident == b"elif" || ident == b"else" {
+            // PC естественно дошёл сюда построчным выполнением - значит,
+            // взятая ранее ветка ЭТОЙ ЖЕ цепочки только что доисполнилась
+            // (см. "if" выше - переходы НА elif/else для ПРОВЕРКИ условия
+            // никогда не проходят через обычный шаг pc += 1 / этот match,
+            // они целиком внутри цикла выше). Остаток цепочки нужно
+            // пропустить целиком - остальные ветки не должны выполняться
+            if depth == 0 {
+                out.push_error(pc);
+                return out;
+            }
+            let (chain_start, is_while) = block_stack[depth - 1];
+            if is_while {
+                // "лишний" elif/else внутри while без своего if - ошибка
+                out.push_error(pc);
+                return out;
+            }
+            depth -= 1;
+            match skip_to_matching_end(source, chain_start) {
+                Some(line) => pc = line + 1,
+                None => {
+                    out.push(b"Error: missing 'end'");
+                    out.error = true;
+                    return out;
+                }
+            }
+        } else if ident == b"pixel" {
+            let args = {
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse, rng: &mut rng_state };
+                parse_int_args::<3>(&mut lex, &mut ctx)
+            };
+            match args {
+                Ok([x, y, c]) => {
+                    if graphics && x >= 0 && y >= 0 {
+                        if let Some(color) = int_to_color(c) {
+                            vga::set_pixel(x as usize, y as usize, color);
+                        }
+                    }
+                    pc += 1;
+                }
+                Err(()) => { out.push_error(pc); return out; }
+            }
+        } else if ident == b"cls" {
+            let args = {
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse, rng: &mut rng_state };
+                parse_int_args::<1>(&mut lex, &mut ctx)
+            };
+            match args {
+                Ok([c]) => {
+                    if graphics {
+                        if let Some(color) = int_to_color(c) {
+                            vga::fill_screen(color);
+                        }
+                    }
+                    pc += 1;
+                }
+                Err(()) => { out.push_error(pc); return out; }
+            }
+        } else if ident == b"beep" {
+            let args = {
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse, rng: &mut rng_state };
+                parse_int_args::<2>(&mut lex, &mut ctx)
+            };
+            match args {
+                Ok([freq, ms]) => {
+                    if freq > 0 {
+                        speaker::on(freq as u32);
+                        pit::sleep((ms.max(0) as u32).min(MAX_WAIT_MS));
+                        speaker::off();
+                    }
+                    pc += 1;
+                }
+                Err(()) => { out.push_error(pc); return out; }
+            }
+        } else if ident == b"wait" {
+            let args = {
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse, rng: &mut rng_state };
+                parse_int_args::<1>(&mut lex, &mut ctx)
+            };
+            match args {
+                Ok([ms]) => {
+                    pit::sleep((ms.max(0) as u32).min(MAX_WAIT_MS));
+                    pc += 1;
+                }
+                Err(()) => { out.push_error(pc); return out; }
             }
         } else if ident.is_empty() {
             out.push_error(pc);
@@ -605,7 +929,7 @@ pub fn run(
             }
 
             let rhs = {
-                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse };
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse, rng: &mut rng_state };
                 parse_expr(&mut lex, &mut ctx)
             };
 
