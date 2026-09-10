@@ -45,15 +45,17 @@ use textz::TextZApp;
 // Иконки рабочего стола - последние две (Terminax/Nova) не являются
 // оконными приложениями (см. Layer/open_icon ниже - для них Enter/Space
 // в run() не создаёт Window, а напрямую вызывает полноэкранный режим)
-struct IconDef { label: &'static str }
+// glyph - маленький "пиктограммный" символ внутри рамки иконки, отдельно от
+// label - имени приложения, напечатанного отдельной строкой ПОД рамкой
+struct IconDef { glyph: &'static str, label: &'static str }
 const ICONS: [IconDef; 7] = [
-    IconDef { label: "CALC" },
-    IconDef { label: "TEXTZ" },
-    IconDef { label: "REALX" },
-    IconDef { label: "CLOCK" },
-    IconDef { label: "MY PC" },
-    IconDef { label: "TERMNX" },
-    IconDef { label: "NOVA" },
+    IconDef { glyph: "[=]", label: "CALC" },
+    IconDef { glyph: "[T]", label: "TEXTZ" },
+    IconDef { glyph: "{X}", label: "REALX" },
+    IconDef { glyph: "(O)", label: "CLOCK" },
+    IconDef { glyph: "[#]", label: "MY PC" },
+    IconDef { glyph: ">_", label: "TERMNX" },
+    IconDef { glyph: "(*)", label: "NOVA" },
 ];
 const TERMINAX_ICON: usize = 5;
 const NOVA_ICON: usize = 6;
@@ -406,12 +408,18 @@ fn draw_desktop(selected: usize) {
 
     for (i, icon) in ICONS.iter().enumerate() {
         let col = ICON_START_COL + (i % ICONS_PER_ROW) * (ICON_W + ICON_GAP);
-        let row = ICON_ROW + (i / ICONS_PER_ROW) * (ICON_H + 1);
+        // +2 (не +1): под рамкой теперь ещё и отдельная строка подписи -
+        // см. ICON_H ниже строки рамки
+        let row = ICON_ROW + (i / ICONS_PER_ROW) * (ICON_H + 2);
         let border = if i == selected { Color::Yellow } else { Color::DarkGray };
         draw_box_text(row, col, ICON_W, ICON_H, border);
 
-        let label_col = col + (ICON_W - icon.label.len()) / 2;
-        draw_text_at(row + 1, label_col, icon.label, Color::White);
+        let glyph_col = col + (ICON_W - icon.glyph.len()) / 2;
+        draw_text_at(row + 1, glyph_col, icon.glyph, Color::White);
+
+        // Подпись - отдельной строкой ПОД рамкой, не внутри неё
+        let label_col = col + ICON_W.saturating_sub(icon.label.len()) / 2;
+        draw_text_at(row + ICON_H, label_col, icon.label, Color::LightGray);
     }
 }
 
