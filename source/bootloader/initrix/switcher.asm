@@ -258,7 +258,7 @@ msg_choose_mode:
     db '[?] Select OS Mode:', ENTER
     db '  [1] 16-bit Real Mode (NASM)', ENTER
     db '  [2] 32-bit Protected Mode (Rust)', ENTER
-    db '  [3] 32-bit with Cliff', ENTER, 0
+    db '  [3] 32-bit with Cliff (320x200, 256 colors)', ENTER, 0
 
 msg_timer:       db '  (Auto: 32-bit will be selected in 10 seconds)', 0
 msg_loading_16:  db '[+] Loading 16-bit kernel.', ENTER, 0

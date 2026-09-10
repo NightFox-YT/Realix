@@ -177,6 +177,20 @@ fn is_queue_empty() -> bool {
 
 /// Чтение клавиши
 pub fn read_key() -> Key {
+    read_key_impl(None).expect("read_key_impl(None) всегда возвращает Some")
+}
+
+/// Как read_key(), но возвращает None, если клавиша не появилась за
+/// `timeout_ticks` тиков PIT - используется Cliff для периодической
+/// перерисовки (напр. часы на панели) без участия пользователя. hlt внутри
+/// и так просыпается на каждый тик PIT (нужен для аптайма) - здесь просто
+/// добавлена проверка дедлайна между пробуждениями, ничего больше не меняя
+pub fn read_key_timeout(timeout_ticks: u32) -> Option<Key> {
+    let deadline = crate::drivers::pit::get_ticks().wrapping_add(timeout_ticks);
+    read_key_impl(Some(deadline))
+}
+
+fn read_key_impl(deadline: Option<u32>) -> Option<Key> {
     // Флаг: Предыдущий байт был префиксом 0xE0
     let mut extended: bool = false;
 
@@ -225,11 +239,11 @@ pub fn read_key() -> Key {
                     _ => None,
                 };
                 if let Some(direction) = direction {
-                    return if SHIFT.load(Relaxed) {
+                    return Some(if SHIFT.load(Relaxed) {
                         Key::WindowResize(direction)
                     } else {
                         Key::WindowMove(direction)
-                    };
+                    });
                 }
             }
 
@@ -244,9 +258,18 @@ pub fn read_key() -> Key {
 
             // Возвращаем только распознанные клавиши
             if let Some(key) = key {
-                return key;
+                return Some(key);
             }
         } else {
+            // Дедлайн (см. read_key_timeout) - выходим по таймауту, ничего
+            // не дожидаясь. wrapping_sub + `as i32 <= 0` корректно работает
+            // и в редком случае переполнения счётчика тиков (~497 дней)
+            if let Some(deadline) = deadline {
+                if (crate::drivers::pit::get_ticks().wrapping_sub(deadline) as i32) >= 0 {
+                    return None;
+                }
+            }
+
             // Очередь пуста
             unsafe {
                 asm!("cli");

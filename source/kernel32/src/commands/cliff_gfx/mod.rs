@@ -41,24 +41,33 @@ const CELL_H: usize = font::GLYPH_HEIGHT + 1;
 const GRID_COLS: usize = vga::VGA_VIDEO_WIDTH / CELL_W;
 const GRID_ROWS: usize = vga::VGA_VIDEO_HEIGHT / CELL_H;
 
-struct IconDef { glyph: &'static str, label: &'static str }
+// Иконки рисуются пикселями по номеру (см. draw_icon), а не текстовым
+// глифом - "kind" это просто индекс в draw_icon's match, не связанный с
+// позицией в этом массиве (на случай, если порядок когда-то разъедется)
+struct IconDef { kind: usize, label: &'static str }
 const ICONS: [IconDef; 6] = [
-    IconDef { glyph: "[=]", label: "CALC" },
-    IconDef { glyph: "[T]", label: "TEXTZ" },
-    IconDef { glyph: "{X}", label: "REALX" },
-    IconDef { glyph: "(O)", label: "CLOCK" },
-    IconDef { glyph: "[#]", label: "MY PC" },
-    IconDef { glyph: "[P]", label: "PAINT" },
+    IconDef { kind: 0, label: "CALC" },
+    IconDef { kind: 1, label: "TEXTZ" },
+    IconDef { kind: 2, label: "REALX" },
+    IconDef { kind: 3, label: "CLOCK" },
+    IconDef { kind: 4, label: "MY PC" },
+    IconDef { kind: 5, label: "PAINT" },
 ];
 const PAINT_ICON: usize = 5;
 const ICON_W: usize = 9;
-const ICON_H: usize = 3;
+// 5 (не 3): нужна настоящая графическая область под пиктограмму, а не одна
+// текстовая строка - см. draw_icon (рисует внутри ICON_H-2 "внутренних" строк)
+const ICON_H: usize = 5;
 const ICON_GAP: usize = 1;
 const ICON_ROW: usize = 2;
 const ICON_START_COL: usize = 1;
 // GRID_COLS=53 - 5 иконок ровно влезают в ряд ((ICON_W+ICON_GAP)*5=50);
 // 6-я (Paint) переносится на второй ряд, как и в текстовом Cliff
 const ICONS_PER_ROW: usize = 5;
+
+// Периодическая перерисовка даже без нажатий - см. cliff::IDLE_REDRAW_TICKS
+// (тот же принцип, то же значение)
+const IDLE_REDRAW_TICKS: u32 = 2000;
 
 const CALC_DEFAULT_ROW: usize = 6;
 const CALC_DEFAULT_COL: usize = 15;
@@ -129,7 +138,14 @@ pub fn run() -> ! {
 
     loop {
         if depth == 0 {
-            match keyboard::read_key() {
+            // Таймаут - чтобы часы на панели не "застревали" на минуте
+            // последнего нажатия (см. IDLE_REDRAW_TICKS)
+            let key = match keyboard::read_key_timeout(IDLE_REDRAW_TICKS) {
+                Some(key) => key,
+                None => { redraw_all(selected, &stack, depth); continue; }
+            };
+
+            match key {
                 Key::Escape => break,
                 Key::Left => {
                     if selected % ICONS_PER_ROW > 0 { selected -= 1; }
@@ -157,7 +173,10 @@ pub fn run() -> ! {
                 _ => {}
             }
         } else {
-            let key = keyboard::read_key();
+            let key = match keyboard::read_key_timeout(IDLE_REDRAW_TICKS) {
+                Some(key) => key,
+                None => { redraw_all(selected, &stack, depth); continue; }
+            };
             let action = handle_top(stack[depth - 1].as_mut().unwrap(), key);
 
             match action {
@@ -432,8 +451,13 @@ fn draw_desktop(selected: usize) {
         let border = if selected_here { Color::Yellow } else { Color::LightGray };
         draw_box(row, col, ICON_W, ICON_H, border);
 
-        let glyph_col = col + (ICON_W - icon.glyph.len()) / 2;
-        draw_text_at(row + 1, glyph_col, icon.glyph, Color::White);
+        // Пиктограмма - в "внутренних" строках рамки (между верхней и
+        // нижней границей, т.е. ICON_H-2 строк по высоте)
+        let content_x0 = col * CELL_W + 4;
+        let content_y0 = row * CELL_H + CELL_H;
+        let content_w = ICON_W * CELL_W - 8;
+        let content_h = (ICON_H - 2) * CELL_H;
+        draw_icon(icon.kind, content_x0, content_y0, content_w, content_h);
 
         // Подпись - отдельной строкой ПОД рамкой, не внутри неё
         let label_col = col + ICON_W.saturating_sub(icon.label.len()) / 2;
@@ -454,23 +478,20 @@ fn draw_taskbar() {
     font::draw_text(3, text_y, "CLIFF", Color::Yellow);
 
     let now = crate::drivers::rtc::now();
-    let mut buf = [0u8; 8];
+    let mut buf = [0u8; 5];
     let clock = format_hms(&now, &mut buf);
     let clock_x = vga::VGA_VIDEO_WIDTH - clock.len() * CELL_W - 3;
     font::draw_text(clock_x, text_y, clock, Color::White);
 }
 
 /// "HH:MM:SS" в буфер фиксированного размера
-fn format_hms<'a>(now: &crate::drivers::rtc::DateTime, buf: &'a mut [u8; 8]) -> &'a str {
+fn format_hms<'a>(now: &crate::drivers::rtc::DateTime, buf: &'a mut [u8; 5]) -> &'a str {
     buf[0] = b'0' + now.hour / 10;
     buf[1] = b'0' + now.hour % 10;
     buf[2] = b':';
     buf[3] = b'0' + now.minute / 10;
     buf[4] = b'0' + now.minute % 10;
-    buf[5] = b':';
-    buf[6] = b'0' + now.second / 10;
-    buf[7] = b'0' + now.second % 10;
-    core::str::from_utf8(buf).unwrap_or("--:--:--")
+    core::str::from_utf8(buf).unwrap_or("--:--")
 }
 
 /// Обои рабочего стола - стилизованный закат (небо/солнце/горизонт/земля)
@@ -528,6 +549,63 @@ fn draw_disc(cx: usize, cy: usize, r: usize, color: Color) {
                     vga::set_pixel(x as usize, y as usize, color);
                 }
             }
+        }
+    }
+}
+
+/// Пиктограмма приложения - настоящий рисунок из примитивов (прямоугольники/
+/// линии/круг - см. draw_disc), а не текстовый символ. `x0,y0,w,h` - зона
+/// внутри рамки иконки (см. draw_desktop), формы рисуются с запасом от края,
+/// координаты подобраны вручную под típичный размер зоны (~46x24px)
+fn draw_icon(kind: usize, x0: usize, y0: usize, w: usize, h: usize) {
+    let cx = x0 + w / 2;
+    let cy = y0 + h / 2;
+
+    match kind {
+        0 => {
+            // CALC - корпус, экран, два ряда кнопок
+            vga::draw_rect(x0 + 4, x0 + w - 5, y0 + 1, y0 + h - 2, Color::LightGray);
+            vga::draw_rect(x0 + 7, x0 + w - 8, y0 + 3, y0 + 7, Color::LightGreen);
+            vga::draw_rect(x0 + 7, x0 + 13, y0 + h - 7, y0 + h - 4, Color::White);
+            vga::draw_rect(x0 + 16, x0 + 22, y0 + h - 7, y0 + h - 4, Color::White);
+        }
+        1 => {
+            // TEXTZ - лист бумаги с тремя строками текста
+            vga::draw_rect(x0 + 8, x0 + w - 9, y0 + 1, y0 + h - 2, Color::White);
+            vga::draw_hline(x0 + 11, x0 + w - 12, y0 + 5, Color::DarkGray);
+            vga::draw_hline(x0 + 11, x0 + w - 12, y0 + 9, Color::DarkGray);
+            vga::draw_hline(x0 + 11, x0 + w - 15, y0 + 13, Color::DarkGray);
+        }
+        2 => {
+            // REALX - угловые скобки "< >" (как в коде)
+            vga::draw_hline(x0 + 6, x0 + 12, y0 + 3, Color::LightGreen);
+            vga::draw_vline(x0 + 6, y0 + 3, y0 + h - 4, Color::LightGreen);
+            vga::draw_hline(x0 + 6, x0 + 12, y0 + h - 4, Color::LightGreen);
+            vga::draw_hline(x0 + w - 13, x0 + w - 7, y0 + 3, Color::LightGreen);
+            vga::draw_vline(x0 + w - 7, y0 + 3, y0 + h - 4, Color::LightGreen);
+            vga::draw_hline(x0 + w - 13, x0 + w - 7, y0 + h - 4, Color::LightGreen);
+        }
+        3 => {
+            // CLOCK - циферблат с двумя стрелками
+            let r = (h / 2).saturating_sub(1);
+            draw_disc(cx, cy, r, Color::LightCyan);
+            vga::draw_vline(cx, cy.saturating_sub(r.saturating_sub(2)), cy, Color::Black);
+            vga::draw_hline(cx, cx + r.saturating_sub(3), cy, Color::Black);
+        }
+        4 => {
+            // MY PC - монитор на подставке
+            vga::draw_rect(x0 + 5, x0 + w - 6, y0 + 1, y0 + h - 6, Color::Blue);
+            vga::draw_rect(x0 + w / 2 - 3, x0 + w / 2 + 2, y0 + h - 5, y0 + h - 3, Color::DarkGray);
+            vga::draw_hline(x0 + w / 2 - 6, x0 + w / 2 + 5, y0 + h - 2, Color::DarkGray);
+        }
+        _ => {
+            // PAINT - палитра с мазками цвета
+            let r = (h / 2).saturating_sub(1);
+            draw_disc(cx, cy, r, Color::Brown);
+            vga::set_pixel(cx - 6, cy - 3, Color::Red);
+            vga::set_pixel(cx, cy - 5, Color::Yellow);
+            vga::set_pixel(cx + 6, cy - 3, Color::LightGreen);
+            vga::set_pixel(cx, cy + 4, Color::Blue);
         }
     }
 }

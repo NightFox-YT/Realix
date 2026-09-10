@@ -56,8 +56,6 @@ impl ClockApp {
             w.push_num2(now.hour);
             w.push_byte(b':');
             w.push_num2(now.minute);
-            w.push_byte(b':');
-            w.push_num2(now.second);
             lens[count] = w.pos;
         }
         count += 1;

@@ -68,6 +68,13 @@ const ICON_ROW: usize = 2;
 const ICON_START_COL: usize = 2;
 const ICONS_PER_ROW: usize = 6;
 
+// Периодическая перерисовка даже без нажатий (см. keyboard::read_key_timeout)
+// - иначе часы на панели "застревали" бы на минуте последнего нажатия.
+// 2000 тиков PIT (100Гц) = ~20 сек - запас на случай, если таймаут сработал
+// сразу после смены минуты (иначе воспринимаемая задержка могла бы быть
+// почти вдвое дольше самого периода проверки)
+const IDLE_REDRAW_TICKS: u32 = 2000;
+
 // Позиции окон по умолчанию (Calc - маленькое и подвижное; TextZ/RealX -
 // побольше, стрелки внутри них двигают курсор, а не окно)
 const CALC_DEFAULT_ROW: usize = 8;
@@ -127,7 +134,15 @@ pub fn run() {
 
     loop {
         if depth == 0 {
-            match keyboard::read_key() {
+            // Таймаут (не только реальная клавиша) - чтобы часы на панели
+            // не "застревали" на минуте, в которую последний раз нажимали
+            // клавишу (см. IDLE_REDRAW_TICKS)
+            let key = match keyboard::read_key_timeout(IDLE_REDRAW_TICKS) {
+                Some(key) => key,
+                None => { redraw_all(selected, &stack, depth); continue; }
+            };
+
+            match key {
                 Key::Escape => break,
                 Key::Left => {
                     if selected % ICONS_PER_ROW > 0 { selected -= 1; }
@@ -163,7 +178,10 @@ pub fn run() {
                 _ => {}
             }
         } else {
-            let key = keyboard::read_key();
+            let key = match keyboard::read_key_timeout(IDLE_REDRAW_TICKS) {
+                Some(key) => key,
+                None => { redraw_all(selected, &stack, depth); continue; }
+            };
             let action = handle_top(stack[depth - 1].as_mut().unwrap(), key);
 
             match action {
@@ -441,22 +459,19 @@ fn draw_taskbar() {
     draw_text_at(row, 1, "CLIFF", Color::Yellow);
 
     let now = rtc::now();
-    let mut buf = [0u8; 8];
+    let mut buf = [0u8; 5];
     let clock = format_hms(&now, &mut buf);
     draw_text_at(row, vga::VGA_TEXT_WIDTH - clock.len() - 1, clock, Color::White);
 }
 
 /// "HH:MM:SS" в буфер фиксированного размера
-fn format_hms<'a>(now: &rtc::DateTime, buf: &'a mut [u8; 8]) -> &'a str {
+fn format_hms<'a>(now: &rtc::DateTime, buf: &'a mut [u8; 5]) -> &'a str {
     buf[0] = b'0' + now.hour / 10;
     buf[1] = b'0' + now.hour % 10;
     buf[2] = b':';
     buf[3] = b'0' + now.minute / 10;
     buf[4] = b'0' + now.minute % 10;
-    buf[5] = b':';
-    buf[6] = b'0' + now.second / 10;
-    buf[7] = b'0' + now.second % 10;
-    core::str::from_utf8(buf).unwrap_or("--:--:--")
+    core::str::from_utf8(buf).unwrap_or("--:--")
 }
 
 fn draw_window(win: &Window) {
