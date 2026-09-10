@@ -32,43 +32,12 @@ static CURSOR_COL: AtomicUsize = AtomicUsize::new(0);
 // см. set_scroll_top ниже
 static SCROLL_TOP: AtomicUsize = AtomicUsize::new(0);
 
-// Геометрия видеопамяти для set_pixel/fill_screen (VGA Video) - по
-// умолчанию обычный VGA mode 13h (320x200, фреймбуфер 0xA0000 построчно
-// без отступов). См. set_video_geometry про VBE-режим (переключается один
-// раз при загрузке, не во время работы - см. её заголовок)
-static VIDEO_SCALE: AtomicUsize = AtomicUsize::new(1);
-static VIDEO_REAL_STRIDE: AtomicUsize = AtomicUsize::new(VGA_VIDEO_WIDTH);
-static VIDEO_REAL_BUFFER: AtomicUsize = AtomicUsize::new(0xA0000);
-static VIDEO_REAL_HEIGHT: AtomicUsize = AtomicUsize::new(VGA_VIDEO_HEIGHT);
-
-// "Логический" размер холста, которым оперируют set_pixel/fill_screen и
-// (через video_width/video_height) вся раскладка cliff_gfx - по умолчанию
-// равен VGA_VIDEO_WIDTH/HEIGHT (обычный VGA mode 13h). set_video_geometry
-// может задать другой размер - см. её заголовок про 16:9-режим, где холст
-// РЕАЛЬНО больше (не блочно растянутая версия тех же 320x200 - см. scale)
-static LOGICAL_WIDTH: AtomicUsize = AtomicUsize::new(VGA_VIDEO_WIDTH);
-static LOGICAL_HEIGHT: AtomicUsize = AtomicUsize::new(VGA_VIDEO_HEIGHT);
-
-/// Текущая логическая ширина/высота холста (см. LOGICAL_WIDTH/HEIGHT выше) -
-/// то, чем должна оперировать вся раскладка (cliff_gfx::grid_cols/grid_rows
-/// и т.п.), а не фиксированные VGA_VIDEO_WIDTH/HEIGHT, если нужна поддержка
-/// режимов с другим логическим размером (см. set_video_geometry)
-pub fn video_width() -> usize { LOGICAL_WIDTH.load(Relaxed) }
-pub fn video_height() -> usize { LOGICAL_HEIGHT.load(Relaxed) }
-
-/// Логическая высота холста, РАСШИРЕННАЯ до всей настоящей высоты экрана,
-/// если она больше (напр. VBE-режим 640x480 при 16:9-раскладке 640x360 -
-/// логически используются только верхние 360 строк, но реальных 480; без
-/// этого нижние 120 реальных строк остались бы недоступны set_pixel и
-/// выглядели бы пустой чёрной полосой). Используется ТОЛЬКО для заливки
-/// фона (см. cliff_gfx::draw_wallpaper + set_pixel_extended) - вся
-/// остальная раскладка (окна/иконки/панель) остаётся в пределах
-/// "обычной" video_height(), это не меняется
-pub fn extended_video_height() -> usize {
-    let scale = VIDEO_SCALE.load(Relaxed).max(1);
-    let real_logical = VIDEO_REAL_HEIGHT.load(Relaxed) / scale;
-    LOGICAL_HEIGHT.load(Relaxed).max(real_logical)
-}
+/// Логическая ширина/высота холста, которым оперируют set_pixel/fill_screen
+/// и вся раскладка cliff_gfx (grid_cols/grid_rows и т.п.) - всегда обычный
+/// VGA mode 13h (320x200, фреймбуфер 0xA0000 построчно без отступов), это
+/// единственный поддерживаемый графический режим
+pub fn video_width() -> usize { VGA_VIDEO_WIDTH }
+pub fn video_height() -> usize { VGA_VIDEO_HEIGHT }
 
 // Таблица цветов
 #[allow(dead_code)]
@@ -144,37 +113,10 @@ pub fn set_pixel(x: usize, y: usize, color: Color) {
     write_pixel_unchecked(x, y, color);
 }
 
-/// Как set_pixel, но проверяет границы против extended_video_height() (см.
-/// её заголовок) вместо обычной video_height() - т.е. может рисовать НИЖЕ
-/// "логического" низа холста, вплоть до настоящей высоты экрана. Только
-/// для заливки фона/обоев (cliff_gfx::draw_wallpaper) - вся интерактивная
-/// раскладка (окна, иконки, панель) как и раньше остаётся в пределах
-/// video_height() через обычный set_pixel
-pub fn set_pixel_extended(x: usize, y: usize, color: Color) {
-    if x >= video_width() || y >= extended_video_height() {
-        return;
-    }
-    write_pixel_unchecked(x, y, color);
-}
-
-// По умолчанию (scale=1, real_stride=320, real_buffer=0xA0000) это то же
-// самое, что и раньше - см. set_video_geometry про VBE-режим, где
-// "логический" пиксель (x,y) в реальности рисуется блоком scale x scale
 fn write_pixel_unchecked(x: usize, y: usize, color: Color) {
-    let scale = VIDEO_SCALE.load(Relaxed);
-    let stride = VIDEO_REAL_STRIDE.load(Relaxed);
-    let buffer = VIDEO_REAL_BUFFER.load(Relaxed) as *mut u8;
-
-    let real_x = x * scale;
-    let real_y = y * scale;
-
     unsafe {
-        for dy in 0..scale {
-            for dx in 0..scale {
-                let offset = (real_y + dy) * stride + (real_x + dx);
-                buffer.add(offset).write_volatile(color as u8);
-            }
-        }
+        let offset = y * VGA_VIDEO_WIDTH + x;
+        (0xA0000 as *mut u8).add(offset).write_volatile(color as u8);
     }
 }
 
@@ -185,37 +127,6 @@ pub fn fill_screen(color: Color) {
             set_pixel(x, y, color);
         }
     }
-}
-
-/// Настройка геометрии видеопамяти после boot-time переключения в VBE (см.
-/// switcher.asm: load_kernel32_video_hires, main.rs: kmain) - по умолчанию
-/// (не вызвано) всё работает как раньше: scale=1, real_stride=320,
-/// real_buffer=0xA0000, логический холст VGA_VIDEO_WIDTH x VGA_VIDEO_HEIGHT
-/// (обычный VGA mode 13h)
-/// Параметры:
-///  - scale: во сколько раз один "логический" пиксель больше одного
-///    настоящего пикселя экрана (2 - тот же 320x200-интерфейс Cliff, но
-///    крупнее/чётче; 1 - "натуральный" размер, см. logical_w/h ниже)
-///  - real_stride: байт на строку в настоящем кадровом буфере
-///    (BytesPerScanLine из VBE ModeInfoBlock - не обязательно совпадает
-///    с шириной экрана из-за выравнивания)
-///  - real_buffer: физический адрес настоящего кадрового буфера (LFB)
-///  - real_height: настоящая высота экрана (YResolution из VBE ModeInfoBlock)
-///    - нужна только для extended_video_height() (заливка фона под "логическим"
-///      низом холста, если реальный экран выше - см. её заголовок)
-///  - logical_w/logical_h: логический размер холста (то, что видит вся
-///    раскладка cliff_gfx через video_width/video_height) - НЕ обязан
-///    совпадать с VGA_VIDEO_WIDTH/HEIGHT: при scale=1 больший логический
-///    холст даёт реально больше места (мельче относительно экрана, "по-
-///    настоящему" ощущается как более высокое разрешение), а не только
-///    чёткость того же интерфейса, как при scale=2
-pub fn set_video_geometry(scale: usize, real_stride: usize, real_buffer: usize, real_height: usize, logical_w: usize, logical_h: usize) {
-    VIDEO_SCALE.store(scale, Relaxed);
-    VIDEO_REAL_STRIDE.store(real_stride, Relaxed);
-    VIDEO_REAL_BUFFER.store(real_buffer, Relaxed);
-    VIDEO_REAL_HEIGHT.store(real_height, Relaxed);
-    LOGICAL_WIDTH.store(logical_w, Relaxed);
-    LOGICAL_HEIGHT.store(logical_h, Relaxed);
 }
 
 

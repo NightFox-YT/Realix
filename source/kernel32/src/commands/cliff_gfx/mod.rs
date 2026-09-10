@@ -36,17 +36,12 @@ use crate::drivers::mouse;
 use crate::drivers::vga::{self, Color};
 use paint::PaintApp;
 
-// Размер "клетки" (глиф + межсимвольный интервал) - абсолютный, в пикселях,
-// НЕ зависит от режима (см. grid_cols/grid_rows ниже - это то, что меняется
-// между режимами: при "нативном" 16:9, где логический холст реально больше
-// (см. vga::set_video_geometry), те же клетки просто помещаются в бОльшую
-// сетку - элементы не увеличиваются, их помещается больше)
+// Размер "клетки" (глиф + межсимвольный интервал) - абсолютный, в пикселях
 const CELL_W: usize = font::CHAR_ADVANCE;
 const CELL_H: usize = font::GLYPH_HEIGHT + 1;
 
-/// Сетка в знакоместах - функции, а не const, т.к. зависят от текущей
-/// логической геометрии (vga::video_width/height), которая может быть
-/// разной в разных видеорежимах (см. заголовок CELL_W выше)
+/// Сетка в знакоместах - функции, а не const, просто для симметрии с
+/// vga::video_width/height (единственный источник размера холста)
 fn grid_cols() -> usize { vga::video_width() / CELL_W }
 fn grid_rows() -> usize { vga::video_height() / CELL_H }
 
@@ -70,9 +65,8 @@ const ICON_H: usize = 5;
 const ICON_GAP: usize = 1;
 const ICON_ROW: usize = 2;
 const ICON_START_COL: usize = 1;
-// grid_cols() - минимум 53 (классические режимы) - 5 иконок ровно влезают
-// в ряд ((ICON_W+ICON_GAP)*5=50); 6-я (Paint) переносится на второй ряд,
-// как и в текстовом Cliff (в 16:9-режиме места тем более достаточно)
+// grid_cols() = 53 - 5 иконок ровно влезают в ряд ((ICON_W+ICON_GAP)*5=50);
+// 6-я (Paint) переносится на второй ряд, как и в текстовом Cliff
 const ICONS_PER_ROW: usize = 5;
 
 // Периодическая перерисовка даже без нажатий - см. cliff::IDLE_REDRAW_TICKS
@@ -93,12 +87,10 @@ const EDITOR_MAX_W: usize = editor::LINE_LEN + 4;
 const EDITOR_MIN_H: usize = 7;
 const EDITOR_MAX_H: usize = editor::MAX_LINES + 3;
 
-// Позиции по умолчанию для окон в полный размер (EDITOR_MAX_W=50) - в
-// классических режимах grid_cols() всего 53 столбца, так что col не может
-// превышать 3 (col+width<=grid_cols()) - небольшое смещение по строкам
-// вместо столбцов даёт тот же "слоёный" вид (IDE снизу, Docs/Output чуть
-// выше поверх); в 16:9-режиме места намного больше, но те же отступы всё
-// равно смотрятся нормально - просто ближе к левому краю
+// Позиции по умолчанию для окон в полный размер (EDITOR_MAX_W=50) -
+// grid_cols() всего 53 столбца, так что col не может превышать 3
+// (col+width<=grid_cols()) - небольшое смещение по строкам вместо столбцов
+// даёт тот же "слоёный" вид (IDE снизу, Docs/Output чуть выше поверх)
 const APP_ROW: usize = 1;
 const APP_COL: usize = 1;
 const DOCS_ROW: usize = 3;
@@ -106,14 +98,21 @@ const DOCS_COL: usize = 2;
 const OUTPUT_ROW: usize = 5;
 const OUTPUT_COL: usize = 3;
 
-// Paint - фиксированное окно (не двигается/не меняет размер - см.
-// handle_top), поэтому нет отдельных MIN/MAX, только один размер.
-// Ширина/высота даны с запасом вокруг холста paint::COLS x paint::ROWS
-// клеток по paint::CELL_PX пикселей каждая (см. draw_paint_window)
+// Paint - позиция фиксирована (не двигается - см. handle_top про
+// movable/resizable по отдельности), но МЕНЯЕТСЯ в размере: увеличение
+// открывает больше клеток одного и того же буфера paint::MAX_COLS x
+// paint::MAX_ROWS (см. paint_visible_size), а не создаёт холст заново
 const PAINT_ROW: usize = 1;
 const PAINT_COL: usize = 1;
-const PAINT_WINDOW_W: usize = 38;
-const PAINT_WINDOW_H: usize = 16;
+const PAINT_DEFAULT_W: usize = 38;
+const PAINT_DEFAULT_H: usize = 16;
+const PAINT_MIN_W: usize = 20;
+const PAINT_MIN_H: usize = 8;
+// Верхняя граница - с запасом под paint::MAX_COLS/MAX_ROWS (см. её
+// заголовок и paint_visible_size - формула перевода размера окна в
+// видимые клетки); дальше не пускает всё равно ёмкость самого буфера
+const PAINT_MAX_W: usize = 70;
+const PAINT_MAX_H: usize = 36;
 
 enum Layer {
     Calc(CalcApp),
@@ -141,13 +140,42 @@ enum Action {
     OpenOutput(RealXOutput),
 }
 
+// "Задача" - одно открытое с рабочего стола приложение, со своим собственным
+// маленьким стеком окон (windows/depth - тот же принцип, что был раньше
+// единственным на весь Cliff: второй уровень нужен только RealX IDE для
+// Docs/Output поверх себя, см. handle_top). Несколько задач могут быть
+// открыты ОДНОВРЕМЕННО (см. MAX_TASKS) - это и есть "многозадачность" Cliff:
+// кооперативная, без вытеснения (никакого отдельного потока/треда на задачу
+// нет - каждая просто хранит своё состояние между кадрами, пока не в фокусе,
+// см. run()/redraw_all), но приложения не теряют состояние, пока свёрнуты
+struct Task {
+    windows: [Option<Window>; 2],
+    depth: usize,
+    // Индекс в ICONS - какое приложение это, для подписи кнопки на панели
+    // задач (см. draw_taskbar) и чтобы повторный клик по той же иконке на
+    // рабочем столе переключался на уже открытую задачу, а не плодил вторую
+    icon: usize,
+}
+
+// 4 одновременно открытых задачи - с запасом под все 6 приложений (Paint,
+// самое частое "долгоживущее", + пара более коротких сессий одновременно),
+// но не все 6 сразу - см. open_or_focus_task про вытеснение, если слотов не
+// хватило
+const MAX_TASKS: usize = 4;
+
 /// Точка входа для загрузки через "[3] 32-bit Video Mode" (см. main.rs) -
 /// видеорежим уже включён загрузчиком, здесь только рисуем. Не возвращается
 /// (см. заголовок файла) - при выходе останавливает систему
 pub fn run() -> ! {
     let mut selected: usize = 0;
-    let mut stack: [Option<Window>; 2] = [None, None];
-    let mut depth: usize = 0;
+    let mut tasks: [Option<Task>; MAX_TASKS] = [None, None, None, None];
+    // None - показывается рабочий стол (иконки кликабельны/выбираемы
+    // стрелками); Some(i) - задача tasks[i] в фокусе (получает
+    // клавиатуру/клики, рисуется поверх остальных - см. redraw_all).
+    // Другие открытые задачи продолжают существовать (их состояние не
+    // теряется) и видны на панели задач, просто не интерактивны, пока не
+    // выбраны кликом по своей кнопке там же (см. taskbar_task_hit)
+    let mut focused: Option<usize> = None;
 
     let mut mouse_x: i32 = (vga::video_width() / 2) as i32;
     let mut mouse_y: i32 = (vga::video_height() / 2) as i32;
@@ -157,7 +185,7 @@ pub fn run() -> ! {
     // пока идёт перетаскивание за заголовок - см. цикл ниже. None - не тащим
     let mut dragging: Option<(i32, i32)> = None;
 
-    redraw_all(selected, &stack, depth, mouse_x, mouse_y);
+    redraw_all(selected, &tasks, focused, mouse_x, mouse_y);
 
     loop {
         // Таймаут короткий (в отличие от текстового Cliff) - без него
@@ -177,131 +205,181 @@ pub fn run() -> ! {
         let mouse_clicked = left_down && !mouse_was_down;
         mouse_was_down = left_down;
 
-        if depth == 0 {
-            // Актуально только пока открыто окно - если оно исчезло, пока
-            // шло перетаскивание (напр. закрыли по Escape с клавиатуры,
-            // не отпуская ЛКМ), не даём смещению "просочиться" на СЛЕДУЮЩЕЕ
-            // открытое окно
-            dragging = None;
+        // Панель задач кликабельна ВСЕГДА - и с рабочего стола, и изнутри
+        // задачи (переключиться на другую задачу, не закрывая текущую).
+        // Клик, который попал сюда, дальше НЕ обрабатывается как клик по
+        // иконке/окну (см. переопределение mouse_clicked ниже) - панель
+        // задач "перехватывает" его первой
+        let mut taskbar_consumed = false;
+        if mouse_clicked {
+            if home_button_hit(mouse_x, mouse_y) {
+                focused = None;
+                taskbar_consumed = true;
+            } else if let Some(slot) = taskbar_task_hit(&tasks, mouse_x, mouse_y) {
+                focused = Some(slot);
+                taskbar_consumed = true;
+            }
+        }
+        let mouse_clicked = mouse_clicked && !taskbar_consumed;
 
-            if mouse_clicked {
-                if let Some(icon) = icon_at_point(mouse_x, mouse_y) {
-                    // Клик по уже выбранной иконке - открыть (как
-                    // Enter/Space); по другой - просто выбрать её (как
-                    // двойной клик на обычном столе, но без учёта времени
-                    // между кликами - тут нет часов для этого)
-                    if icon == selected {
-                        stack[0] = Some(open_icon(selected));
-                        depth = 1;
-                    } else {
-                        selected = icon;
+        match focused {
+            None => {
+                // Актуально только пока была задача в фокусе - если фокус
+                // сброшен (напр. кликом по "CLIFF"), пока шло
+                // перетаскивание, не даём смещению "просочиться" на
+                // СЛЕДУЮЩУЮ сфокусированную задачу
+                dragging = None;
+
+                if mouse_clicked {
+                    if let Some(icon) = icon_at_point(mouse_x, mouse_y) {
+                        // Клик по уже выбранной иконке - открыть (как
+                        // Enter/Space); по другой - просто выбрать её (как
+                        // двойной клик на обычном столе, но без учёта
+                        // времени между кликами - тут нет часов для этого)
+                        if icon == selected {
+                            focused = Some(open_or_focus_task(&mut tasks, selected));
+                        } else {
+                            selected = icon;
+                        }
                     }
                 }
-            }
 
-            match key {
-                Some(Key::Escape) => break,
-                Some(Key::Left) => {
-                    if selected % ICONS_PER_ROW > 0 { selected -= 1; }
+                match key {
+                    Some(Key::Escape) => break,
+                    Some(Key::Left) => {
+                        if selected % ICONS_PER_ROW > 0 { selected -= 1; }
+                    }
+                    Some(Key::Right) => {
+                        if selected % ICONS_PER_ROW < ICONS_PER_ROW - 1 && selected + 1 < ICONS.len() {
+                            selected += 1;
+                        }
+                    }
+                    Some(Key::Up) => {
+                        if selected >= ICONS_PER_ROW { selected -= ICONS_PER_ROW; }
+                    }
+                    Some(Key::Down) => {
+                        if selected + ICONS_PER_ROW < ICONS.len() { selected += ICONS_PER_ROW; }
+                    }
+                    Some(Key::Char(b'\n')) | Some(Key::Char(b' ')) => {
+                        focused = Some(open_or_focus_task(&mut tasks, selected));
+                    }
+                    _ => {}
                 }
-                Some(Key::Right) => {
-                    if selected % ICONS_PER_ROW < ICONS_PER_ROW - 1 && selected + 1 < ICONS.len() {
-                        selected += 1;
+            }
+            Some(task_idx) => {
+                let task = tasks[task_idx].as_mut().unwrap();
+                let win = task.windows[task.depth - 1].as_mut().unwrap();
+
+                // Paint не рисует "[X]" (закрывается только по Escape - см.
+                // draw_paint_window) и не двигается (по просьбе - позиция
+                // фиксирована, но РАЗМЕР - нет, см. handle_top); без этой
+                // проверки клик в той же строке (где у Paint просто текстовая
+                // подсказка) закрывал бы его без всякой видимой кнопки, а
+                // перетаскивание двигало бы окно, которое должно быть
+                // неподвижным
+                let movable = !matches!(win.layer, Layer::Paint(_));
+
+                // Рисование в Paint мышью - зажатая ЛКМ над холстом ставит
+                // квадрат под курсором; таскать - рисовать непрерывно.
+                // Клетка вычисляется ДО заимствования win.layer как mut ниже -
+                // paint_cell_at_point берёт весь Window (для col/row/width),
+                // а не только layer
+                let hovered_paint_cell = if left_down { paint_cell_at_point(win, mouse_x, mouse_y) } else { None };
+                if let (Layer::Paint(paint), Some((row, col))) = (&mut win.layer, hovered_paint_cell) {
+                    paint.set_cursor(row, col);
+                    paint.place_square();
+                }
+
+                // Перетаскивание за заголовок (не по "[X]") - начинается кликом
+                // по строке заголовка, продолжается, пока зажата ЛКМ, и
+                // заканчивается её отпусканием. Координаты мыши (пиксели)
+                // пересчитываются в "клетки" (CELL_W/CELL_H) окна, те же
+                // единицы, что и Ctrl+WASD (apply_move)
+                if movable {
+                    if mouse_clicked && title_bar_hit(win, mouse_x, mouse_y) && !close_button_hit(win, mouse_x, mouse_y) {
+                        let offset_x = mouse_x - (win.col * CELL_W) as i32;
+                        let offset_y = mouse_y - (win.row * CELL_H) as i32;
+                        dragging = Some((offset_x, offset_y));
+                    }
+
+                    if let Some((offset_x, offset_y)) = dragging {
+                        if left_down {
+                            let new_col = ((mouse_x - offset_x).max(0) as usize) / CELL_W;
+                            let new_row = ((mouse_y - offset_y).max(0) as usize) / CELL_H;
+                            win.col = new_col.min(grid_cols().saturating_sub(win.width));
+                            win.row = new_row.min(grid_rows().saturating_sub(win.height)).max(1);
+                        } else {
+                            dragging = None;
+                        }
                     }
                 }
-                Some(Key::Up) => {
-                    if selected >= ICONS_PER_ROW { selected -= ICONS_PER_ROW; }
-                }
-                Some(Key::Down) => {
-                    if selected + ICONS_PER_ROW < ICONS.len() { selected += ICONS_PER_ROW; }
-                }
-                Some(Key::Char(b'\n')) | Some(Key::Char(b' ')) => {
-                    stack[0] = Some(open_icon(selected));
-                    depth = 1;
-                }
-                _ => {}
-            }
-        } else {
-            let win = stack[depth - 1].as_mut().unwrap();
 
-            // Paint не рисует "[X]" (закрывается только по Escape - см.
-            // draw_paint_window) и не двигается (по просьбе - окно
-            // фиксировано); без этой проверки клик в той же строке (где у
-            // Paint просто текстовая подсказка) закрывал бы его без всякой
-            // видимой кнопки, а перетаскивание двигало бы окно, которое
-            // должно быть неподвижным
-            let movable = !matches!(win.layer, Layer::Paint(_));
+                let action = if mouse_clicked && movable && close_button_hit(win, mouse_x, mouse_y) {
+                    Action::Close
+                } else if let Some(key) = key {
+                    handle_top(win, key, (mouse_x, mouse_y, left_down))
+                } else {
+                    Action::None
+                };
 
-            // Рисование в Paint мышью - зажатая ЛКМ над холстом ставит
-            // квадрат под курсором; таскать - рисовать непрерывно.
-            // Клетка вычисляется ДО заимствования win.layer как mut ниже -
-            // paint_cell_at_point берёт весь Window (для col/row/width),
-            // а не только layer
-            let hovered_paint_cell = if left_down { paint_cell_at_point(win, mouse_x, mouse_y) } else { None };
-            if let (Layer::Paint(paint), Some((row, col))) = (&mut win.layer, hovered_paint_cell) {
-                paint.set_cursor(row, col);
-                paint.place_square();
-            }
-
-            // Перетаскивание за заголовок (не по "[X]") - начинается кликом
-            // по строке заголовка, продолжается, пока зажата ЛКМ, и
-            // заканчивается её отпусканием. Координаты мыши (пиксели)
-            // пересчитываются в "клетки" (CELL_W/CELL_H) окна, те же
-            // единицы, что и Ctrl+WASD (apply_move)
-            if movable {
-                if mouse_clicked && title_bar_hit(win, mouse_x, mouse_y) && !close_button_hit(win, mouse_x, mouse_y) {
-                    let offset_x = mouse_x - (win.col * CELL_W) as i32;
-                    let offset_y = mouse_y - (win.row * CELL_H) as i32;
-                    dragging = Some((offset_x, offset_y));
-                }
-
-                if let Some((offset_x, offset_y)) = dragging {
-                    if left_down {
-                        let new_col = ((mouse_x - offset_x).max(0) as usize) / CELL_W;
-                        let new_row = ((mouse_y - offset_y).max(0) as usize) / CELL_H;
-                        win.col = new_col.min(grid_cols().saturating_sub(win.width));
-                        win.row = new_row.min(grid_rows().saturating_sub(win.height)).max(1);
-                    } else {
-                        dragging = None;
+                match action {
+                    Action::None => {}
+                    Action::Close => {
+                        task.windows[task.depth - 1] = None;
+                        task.depth -= 1;
+                        if task.depth == 0 {
+                            tasks[task_idx] = None;
+                            focused = None;
+                        }
                     }
-                }
-            }
-
-            let action = if mouse_clicked && movable && close_button_hit(win, mouse_x, mouse_y) {
-                Action::Close
-            } else if let Some(key) = key {
-                handle_top(win, key, (mouse_x, mouse_y, left_down))
-            } else {
-                Action::None
-            };
-
-            match action {
-                Action::None => {}
-                Action::Close => {
-                    stack[depth - 1] = None;
-                    depth -= 1;
-                }
-                Action::OpenDocs => {
-                    stack[depth] = Some(Window {
-                        layer: Layer::RealXDocs, row: DOCS_ROW, col: DOCS_COL,
-                        width: EDITOR_MAX_W, height: EDITOR_MAX_H,
-                    });
-                    depth += 1;
-                }
-                Action::OpenOutput(output) => {
-                    stack[depth] = Some(Window {
-                        layer: Layer::RealXOutput(output), row: OUTPUT_ROW, col: OUTPUT_COL,
-                        width: EDITOR_MAX_W, height: EDITOR_MAX_H,
-                    });
-                    depth += 1;
+                    Action::OpenDocs => {
+                        task.windows[task.depth] = Some(Window {
+                            layer: Layer::RealXDocs, row: DOCS_ROW, col: DOCS_COL,
+                            width: EDITOR_MAX_W, height: EDITOR_MAX_H,
+                        });
+                        task.depth += 1;
+                    }
+                    Action::OpenOutput(output) => {
+                        task.windows[task.depth] = Some(Window {
+                            layer: Layer::RealXOutput(output), row: OUTPUT_ROW, col: OUTPUT_COL,
+                            width: EDITOR_MAX_W, height: EDITOR_MAX_H,
+                        });
+                        task.depth += 1;
+                    }
                 }
             }
         }
 
-        redraw_all(selected, &stack, depth, mouse_x, mouse_y);
+        redraw_all(selected, &tasks, focused, mouse_x, mouse_y);
     }
 
     halt_with_message();
+}
+
+/// Уже открытая задача с той же иконкой - просто в фокус (не плодим вторую
+/// копию того же приложения); иначе - новая задача в свободный слот. Если
+/// свободных слотов не осталось (все MAX_TASKS заняты) - вытесняется
+/// последний слот (простая эвикция, без LRU - для 6 приложений и 4 слотов
+/// это редкий, не особо болезненный случай)
+fn open_or_focus_task(tasks: &mut [Option<Task>; MAX_TASKS], icon: usize) -> usize {
+    for (i, slot) in tasks.iter().enumerate() {
+        if let Some(task) = slot {
+            if task.icon == icon {
+                return i;
+            }
+        }
+    }
+
+    for (i, slot) in tasks.iter_mut().enumerate() {
+        if slot.is_none() {
+            *slot = Some(Task { windows: [Some(open_icon(icon)), None], depth: 1, icon });
+            return i;
+        }
+    }
+
+    let last = MAX_TASKS - 1;
+    tasks[last] = Some(Task { windows: [Some(open_icon(icon)), None], depth: 1, icon });
+    last
 }
 
 fn halt_with_message() -> ! {
@@ -342,21 +420,30 @@ fn open_icon(selected: usize) -> Window {
         },
         _ => Window {
             row: PAINT_ROW, col: PAINT_COL,
-            width: PAINT_WINDOW_W, height: PAINT_WINDOW_H,
+            width: PAINT_DEFAULT_W, height: PAINT_DEFAULT_H,
             layer: Layer::Paint(PaintApp::new()),
         },
     }
 }
 
+/// Верхняя граница размера окна для типа окна, не считая min/max самого
+/// приложения - не даёт окну стать шире/выше текущей сетки экрана (нужно
+/// отдельно от apply_resize/её же min/max, т.к. сетка зависит от видеорежима)
 fn resize_bounds(layer: &Layer) -> (usize, usize, usize, usize) {
     match layer {
         Layer::Calc(_) => (calc_app::MIN_W, calc_app::MAX_W, calc_app::MIN_H, calc_app::MAX_H),
         Layer::TextZ(_) | Layer::RealXIde(_) | Layer::RealXDocs | Layer::RealXOutput(_)
         | Layer::Clock(_) | Layer::MyPc(_) =>
             (EDITOR_MIN_W, EDITOR_MAX_W, EDITOR_MIN_H, EDITOR_MAX_H),
-        // Paint не двигается/не меняет размер (см. handle_top) - min==max
-        // на случай, если сюда всё же дойдёт вызов, ничего не изменится
-        Layer::Paint(_) => (PAINT_WINDOW_W, PAINT_WINDOW_W, PAINT_WINDOW_H, PAINT_WINDOW_H),
+        // Позиция Paint фиксирована (см. handle_top - `movable`), но размер
+        // - нет: рост окна открывает больше клеток того же буфера (см.
+        // paint::MAX_COLS/MAX_ROWS, paint_visible_size) - верхняя граница
+        // ограничена ещё и текущей сеткой экрана (не даёт вылезти за экран,
+        // раз окно нельзя подвинуть, чтобы это исправить)
+        Layer::Paint(_) => (
+            PAINT_MIN_W, PAINT_MAX_W.min(grid_cols().saturating_sub(PAINT_COL)),
+            PAINT_MIN_H, PAINT_MAX_H.min(grid_rows().saturating_sub(PAINT_ROW)),
+        ),
     }
 }
 
@@ -394,13 +481,16 @@ fn arrow_direction(key: Key) -> Option<Direction> {
 }
 
 fn handle_top(win: &mut Window, key: Key, mouse: (i32, i32, bool)) -> Action {
-    // Paint - фиксированное окно (по просьбе - не двигается/не меняет
-    // размер), поэтому Ctrl+WASD для него намеренно пропускается целиком
+    // Paint - позиция фиксирована (по просьбе), но размер - нет: рост окна
+    // открывает больше клеток холста (см. paint.rs, paint_visible_size).
+    // movable/resizable отдельно друг от друга именно из-за Paint - для
+    // всех остальных приложений они всегда совпадают
     let movable = !matches!(win.layer, Layer::Paint(_));
+    let resizable = true;
 
     match key {
         Key::WindowMove(dir) if movable => { apply_move(win, dir); return Action::None; }
-        Key::WindowResize(dir) if movable => {
+        Key::WindowResize(dir) if resizable => {
             let (min_w, max_w, min_h, max_h) = resize_bounds(&win.layer);
             apply_resize(win, dir, min_w, max_w, min_h, max_h);
             return Action::None;
@@ -421,6 +511,10 @@ fn handle_top(win: &mut Window, key: Key, mouse: (i32, i32, bool)) -> Action {
             return Action::None;
         }
     }
+
+    // Нужно ДО заимствования win.layer как mut ниже - Layer::Paint(paint)
+    // не даёт одновременно читать win.width/height через win напрямую
+    let (win_w, win_h) = (win.width, win.height);
 
     match &mut win.layer {
         Layer::Calc(calc) => match key {
@@ -466,9 +560,15 @@ fn handle_top(win: &mut Window, key: Key, mouse: (i32, i32, bool)) -> Action {
         Layer::Paint(paint) => match key {
             Key::Escape => return Action::Close,
             Key::Up => paint.move_up(),
-            Key::Down => paint.move_down(),
+            Key::Down => {
+                let (_, visible_rows) = paint_visible_size(win_w, win_h);
+                paint.move_down(visible_rows);
+            }
             Key::Left => paint.move_left(),
-            Key::Right => paint.move_right(),
+            Key::Right => {
+                let (visible_cols, _) = paint_visible_size(win_w, win_h);
+                paint.move_right(visible_cols);
+            }
             Key::Char(b'\n') => paint.place_square(),
             Key::Char(b' ') => paint.cycle_color(),
             _ => {}
@@ -571,10 +671,24 @@ fn paint_cell_at_point(win: &Window, px: i32, py: i32) -> Option<(usize, usize)>
         return None;
     }
 
+    let (visible_cols, visible_rows) = paint_visible_size(win.width, win.height);
     let cx = (px - canvas_x0) as usize / paint::CELL_PX;
     let cy = (py - canvas_y0) as usize / paint::CELL_PX;
 
-    if cx < paint::COLS && cy < paint::ROWS { Some((cy, cx)) } else { None }
+    if cx < visible_cols && cy < visible_rows { Some((cy, cx)) } else { None }
+}
+
+/// Сколько клеток холста Paint видно (и доступно для рисования) при данном
+/// размере окна - растёт вместе с окном, ограничено ёмкостью буфера
+/// (paint::MAX_COLS/MAX_ROWS). "-2"/"-4" - рамка+отступ по бокам, рамка+
+/// заголовок+строка цвета сверху (см. draw_paint_window - тот же отсчёт
+/// координат холста, canvas_x0/canvas_y0)
+fn paint_visible_size(win_w: usize, win_h: usize) -> (usize, usize) {
+    let content_w_px = win_w.saturating_sub(2) * CELL_W;
+    let content_h_px = win_h.saturating_sub(4) * CELL_H;
+    let cols = (content_w_px / paint::CELL_PX).clamp(1, paint::MAX_COLS);
+    let rows = (content_h_px / paint::CELL_PX).clamp(1, paint::MAX_ROWS);
+    (cols, rows)
 }
 
 const CURSOR_SIZE: usize = 12;
@@ -602,17 +716,37 @@ fn draw_cursor(x: i32, y: i32) {
     }
 }
 
-fn redraw_all(selected: usize, stack: &[Option<Window>; 2], depth: usize, mouse_x: i32, mouse_y: i32) {
-    draw_desktop(selected);
-    for slot in stack.iter().take(depth) {
+/// Рисует ВСЕ открытые задачи (не только сфокусированную) - несфокусированные
+/// первыми, сфокусированная последней (поверх остальных, см. draw_window) -
+/// это то, что делает открытые-но-не-в-фокусе задачи видимыми одновременно
+/// с активной, а не скрытыми, пока не выбраны
+fn redraw_all(selected: usize, tasks: &[Option<Task>; MAX_TASKS], focused: Option<usize>, mouse_x: i32, mouse_y: i32) {
+    draw_desktop(selected, tasks, focused);
+
+    for (i, slot) in tasks.iter().enumerate() {
+        if Some(i) == focused { continue; }
+        if let Some(task) = slot {
+            draw_task_windows(task);
+        }
+    }
+    if let Some(i) = focused {
+        if let Some(task) = &tasks[i] {
+            draw_task_windows(task);
+        }
+    }
+
+    draw_cursor(mouse_x, mouse_y);
+}
+
+fn draw_task_windows(task: &Task) {
+    for slot in task.windows.iter().take(task.depth) {
         if let Some(win) = slot {
             draw_window(win);
         }
     }
-    draw_cursor(mouse_x, mouse_y);
 }
 
-fn draw_desktop(selected: usize) {
+fn draw_desktop(selected: usize, tasks: &[Option<Task>; MAX_TASKS], focused: Option<usize>) {
     draw_wallpaper();
     draw_text_at(0, 0, "Arrows:select Enter:open Esc:halt", Color::White);
 
@@ -641,18 +775,84 @@ fn draw_desktop(selected: usize) {
         draw_text_at(row + ICON_H, label_col, icon.label, Color::LightGray);
     }
 
-    draw_taskbar();
+    draw_taskbar(tasks, focused);
 }
 
-/// Панель внизу экрана - имя системы слева, часы (RTC) справа (см.
-/// commands::cliff::draw_taskbar - тот же принцип, здесь пикселями)
-fn draw_taskbar() {
+// Панель задач - геометрия кнопок (в пикселях). "CLIFF" слева, следом кнопка
+// на каждый слот tasks[] по порядку (даже пустые - позиция кнопки не
+// зависит от того, что открыто в других слотах, иначе кнопки "прыгали" бы
+// при закрытии более ранней задачи). Всё это должно влезать даже в
+// классический 320x200 (grid_cols()=53) - см. проверку при подборе чисел
+// ниже TASKBAR_HOME_W
+const TASKBAR_HOME_W: usize = 7 * CELL_W;
+const TASKBAR_TASKS_X0: usize = 8 * CELL_W;
+const TASKBAR_BUTTON_W: usize = 7 * CELL_W;
+const TASKBAR_BUTTON_GAP: usize = CELL_W;
+const TASKBAR_BUTTON_STRIDE: usize = TASKBAR_BUTTON_W + TASKBAR_BUTTON_GAP;
+
+fn taskbar_panel_y0() -> usize {
+    vga::video_height() - (CELL_H + 4)
+}
+
+fn taskbar_button_rect(i: usize) -> (usize, usize) {
+    let x0 = TASKBAR_TASKS_X0 + i * TASKBAR_BUTTON_STRIDE;
+    (x0, x0 + TASKBAR_BUTTON_W)
+}
+
+/// true - клик по "CLIFF" слева на панели задач (см. run()) - сбрасывает
+/// фокус на рабочий стол, НЕ закрывая открытые задачи (аналог "Показать
+/// рабочий стол"/свернуть всё)
+fn home_button_hit(px: i32, py: i32) -> bool {
+    let y0 = taskbar_panel_y0() as i32;
+    px >= 0 && px < TASKBAR_HOME_W as i32 && py >= y0 && py < vga::video_height() as i32
+}
+
+/// Индекс задачи, чья кнопка на панели задач под точкой курсора (мышь) -
+/// только среди РЕАЛЬНО открытых (пустые слоты не кликабельны, хотя их
+/// позиция зарезервирована - см. taskbar_button_rect)
+fn taskbar_task_hit(tasks: &[Option<Task>; MAX_TASKS], px: i32, py: i32) -> Option<usize> {
+    let y0 = taskbar_panel_y0() as i32;
+    if py < y0 || py >= vga::video_height() as i32 {
+        return None;
+    }
+    for (i, slot) in tasks.iter().enumerate() {
+        if slot.is_some() {
+            let (x0, x1) = taskbar_button_rect(i);
+            if px >= x0 as i32 && px < x1 as i32 {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
+
+/// Панель внизу экрана - "CLIFF" слева (клик - вернуться на рабочий стол, не
+/// закрывая открытые задачи), кнопка на каждую открытую задачу (клик -
+/// переключить фокус на неё, см. Task/MAX_TASKS/run()), часы (RTC) справа
+fn draw_taskbar(tasks: &[Option<Task>; MAX_TASKS], focused: Option<usize>) {
     let panel_h_px = CELL_H + 4;
     let y0 = vga::video_height() - panel_h_px;
     vga::draw_rect(0, vga::video_width() - 1, y0, vga::video_height() - 1, Color::DarkGray);
 
     let text_y = y0 + 2;
-    font::draw_text(3, text_y, "CLIFF", Color::Yellow);
+
+    let home_focused = focused.is_none();
+    if home_focused {
+        vga::draw_rect(0, TASKBAR_HOME_W - 1, y0 + 1, y0 + panel_h_px - 2, Color::Blue);
+    }
+    let home_color = if home_focused { Color::Yellow } else { Color::LightGray };
+    font::draw_text(3, text_y, "CLIFF", home_color);
+
+    for (i, slot) in tasks.iter().enumerate() {
+        if let Some(task) = slot {
+            let (x0, x1) = taskbar_button_rect(i);
+            let focused_here = Some(i) == focused;
+            let fill = if focused_here { Color::Blue } else { Color::Black };
+            vga::draw_rect(x0, x1 - 2, y0 + 1, y0 + panel_h_px - 2, fill);
+            let text_color = if focused_here { Color::Yellow } else { Color::White };
+            font::draw_text(x0 + 2, text_y, ICONS[task.icon].label, text_color);
+        }
+    }
 
     let now = crate::drivers::rtc::now();
     let mut buf = [0u8; 5];
@@ -685,14 +885,7 @@ fn draw_wallpaper() {
     let colors = [Color::Black, Color::Blue, Color::Magenta, Color::LightBlue];
     let bands = colors.len() - 1;
 
-    // extended_video_height() (не video_height()) - и set_pixel_extended
-    // (не set_pixel) - чтобы фон заливал ВЕСЬ настоящий экран, а не
-    // обрывался на границе "логического" холста (см. её заголовок в vga.rs
-    // - для 16:9-режима это разница между сплошным фоном и чёрной полосой
-    // на нижних 120 строках). Считаем градиент по ТОЙ ЖЕ высоте, что и
-    // заливаем, поэтому переход плавный по всему экрану, а не только по
-    // верхней "интерактивной" части
-    let height = vga::extended_video_height();
+    let height = vga::video_height();
 
     for y in 0..height {
         // Положение по вертикали в [0, bands) как fixed-point (шаг 1/256)
@@ -703,7 +896,7 @@ fn draw_wallpaper() {
         for x in 0..vga::video_width() {
             let dither = (x * 41 + y * 23) % 256;
             let color = if dither < frac { colors[band + 1] } else { colors[band] };
-            vga::set_pixel_extended(x, y, color);
+            vga::set_pixel(x, y, color);
         }
     }
 
@@ -827,16 +1020,15 @@ fn draw_window(win: &Window) {
             }
             draw_static_window(row, col, w, h, "MY PC", Color::Cyan, &refs[..count]);
         }
-        Layer::Paint(paint) => draw_paint_window(row, col, paint),
+        Layer::Paint(paint) => draw_paint_window(row, col, w, h, paint),
     }
 }
 
-/// Paint - холст paint::COLS x paint::ROWS квадратов paint::CELL_PX пикселей
-/// каждый, отрисованных заново из состояния (paint.cell()) каждый кадр, плюс
-/// обводка-курсор поверх. Позиция/размер окна фиксированы - см. handle_top
-fn draw_paint_window(row: usize, col: usize, paint: &PaintApp) {
-    let w = PAINT_WINDOW_W;
-    let h = PAINT_WINDOW_H;
+/// Paint - холст paint_visible_size(w, h) квадратов paint::CELL_PX пикселей
+/// каждый (растёт вместе с окном - см. paint_visible_size), отрисованных
+/// заново из состояния (paint.cell()) каждый кадр, плюс обводка-курсор
+/// поверх. Позиция окна фиксирована, размер - нет (см. handle_top)
+fn draw_paint_window(row: usize, col: usize, w: usize, h: usize, paint: &PaintApp) {
     clear_interior(row, col, w, h);
     draw_box(row, col, w, h, Color::White);
 
@@ -854,8 +1046,9 @@ fn draw_paint_window(row: usize, col: usize, paint: &PaintApp) {
     let canvas_x0 = (col + 1) * CELL_W;
     let canvas_y0 = (row + 3) * CELL_H;
 
-    for cy in 0..paint::ROWS {
-        for cx in 0..paint::COLS {
+    let (visible_cols, visible_rows) = paint_visible_size(w, h);
+    for cy in 0..visible_rows {
+        for cx in 0..visible_cols {
             let x0 = canvas_x0 + cx * paint::CELL_PX;
             let y0 = canvas_y0 + cy * paint::CELL_PX;
             let color = paint.cell(cy, cx).unwrap_or(Color::Black);
