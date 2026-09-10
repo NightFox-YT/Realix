@@ -23,6 +23,44 @@ enable_vga_videomode:
     ret
 
 
+; > Восстановление стандартной 16-цветной EGA/VGA палитры (регистры DAC
+; 0-15). mode 13h гарантированно приходит с этой палитрой по умолчанию, но
+; VBE-режимы (см. bios-api/vbe.asm) - нет: BIOS вправе оставить DAC в любом
+; состоянии для них, из-за чего 16-цветные индексы (см. drivers::vga::Color
+; в kernel32 - всегда пишет именно индекс 0-15, никогда RGB напрямую) могли
+; бы показывать совсем не те цвета, которые ожидаются. Вызывается после
+; ЛЮБОГО переключения видеорежима (и mode 13h, и VBE) - для mode 13h это
+; просто явно подтверждает то, что и так должно быть по умолчанию
+set_standard_16_palette:
+    pusha
+    push es
+
+    mov ax, ds
+    mov es, ax
+    mov dx, palette_16_table
+
+    ; Функция BIOS: Set Block of DAC Color Registers (ah=10h, al=12h)
+    ; bx - начальный регистр, cx - кол-во регистров, es:dx - таблица RGB
+    xor bx, bx
+    mov cx, 16
+    mov ax, 0x1012
+    int 0x10
+
+    pop es
+    popa
+    ret
+
+; Стандартная 16-цветная палитра VGA/EGA, R,G,B по 6 бит (0-63) на канал -
+; тот же порядок и те же значения, что подразумевает drivers::vga::Color
+; в kernel32 (Black,Blue,Green,Cyan,Red,Magenta,Brown,LightGray,DarkGray,
+; LightBlue,LightGreen,LightCyan,LightRed,Pink,Yellow,White)
+palette_16_table:
+    db 0,0,0,        0,0,42,      0,42,0,       0,42,42
+    db 42,0,0,       42,0,42,     42,21,0,      42,42,42
+    db 21,21,21,     21,21,63,    21,63,21,     21,63,63
+    db 63,21,21,     63,21,63,    63,63,21,     63,63,63
+
+
 ; > Включение текстового режима (80x25)
 enable_vga_textmode:
     push ax

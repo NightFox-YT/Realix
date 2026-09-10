@@ -122,6 +122,7 @@ load_kernel16:
 load_kernel32_video:
     ; Включение видеорежима
     call enable_vga_videomode
+    call set_standard_16_palette
 
     ; Обнуление сегмента под `PCINFO` для записи
     push es
@@ -143,16 +144,17 @@ load_kernel32_video:
     jmp load_kernel32
 
 
-; > Ветка Protected Mode с Video Mode (32-bit with Cliff, 640x400 VBE)
+; > Ветка Protected Mode с Video Mode (32-bit with Cliff, 640x480 VBE)
 ; Тот же путь, что и load_kernel32_video, но с реальным разрешением в 2 раза
 ; больше в каждую сторону - kernel32 просто рисует каждый "логический"
 ; пиксель как блок 2x2 в настоящем кадровом буфере (см. vga::set_video_geometry,
 ; вызывается в main.rs по PCINFO_VIDEO_WIDTH != 0) - остальной код Cliff не
 ; меняется, весь интерфейс просто рисуется вдвое крупнее и чётче
 load_kernel32_video_hires:
-    mov cx, VBE_MODE_640x400
+    mov cx, VBE_MODE_640x480
     call enable_vbe_videomode
     jc .vbe_failed
+    call set_standard_16_palette
 
     push es
     push ax
@@ -307,12 +309,12 @@ msg_choose_mode:
     db '  [1] 16-bit Real Mode (NASM)', ENTER
     db '  [2] 32-bit Protected Mode (Rust)', ENTER
     db '  [3] 32-bit with Cliff (320x200, 256 colors)', ENTER
-    db '  [4] 32-bit with Cliff (640x400, 256 colors, VBE)', ENTER, 0
+    db '  [4] 32-bit with Cliff (640x480, 256 colors, VBE)', ENTER, 0
 
 msg_timer:       db '  (Auto: 32-bit will be selected in 10 seconds)', 0
 msg_loading_16:  db '[+] Loading 16-bit kernel.', ENTER, 0
 msg_entering_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
-msg_vbe_failed:  db '[!] VBE 640x400 unavailable - falling back to 320x200.', ENTER, 0
+msg_vbe_failed:  db '[!] VBE 640x480 unavailable - falling back to 320x200.', ENTER, 0
 
 ; Переменные
 kernel16_filename: db 'KERNEL16BIN'
