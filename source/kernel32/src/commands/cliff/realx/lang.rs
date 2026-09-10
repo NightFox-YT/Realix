@@ -46,6 +46,9 @@
 //      простой LCG (EvalCtx.rng), заново засеиваемый тиками при каждом
 //      запуске программы, а не при каждом вызове rnd() (иначе несколько
 //      rnd() в одном выражении вернули бы одно и то же значение)
+//    - int(s) - строку в целое (напр. int(input(...))) - input() всегда
+//      возвращает str, иначе с ним нельзя было бы делать арифметику. Не
+//      только цифры (с необяз. ведущим '-') - ошибка, не мусорное значение
 //    - Защита от зависания: программа обрывается с ошибкой после
 //      MAX_STEPS выполненных строк (напр. `while 1 == 1:` без выхода)
 
@@ -425,6 +428,29 @@ fn parse_factor(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
                 // для игр/анимаций, не для чего-то криптографического
                 *ctx.rng = ctx.rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
                 Ok(Value::Int((*ctx.rng >> 8) as i64 % max))
+            } else if name == b"int" {
+                // int(s) - строку в целое (input() всегда возвращает str -
+                // без этого её нельзя было бы использовать в арифметике).
+                // int(n) на уже-int - просто возвращает его же (удобно,
+                // если тип аргумента заранее не известен вызывающему коду)
+                if !lex.consume_byte(b'(') { return Err(()); }
+                let v = parse_expr(lex, ctx)?;
+                if !lex.consume_byte(b')') { return Err(()); }
+                match v {
+                    Value::Int(n) => Ok(Value::Int(n)),
+                    Value::Str(buf, len) => {
+                        let bytes = &buf[..len];
+                        let (neg, digits) = match bytes.first() {
+                            Some(b'-') => (true, &bytes[1..]),
+                            _ => (false, bytes),
+                        };
+                        if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
+                            return Err(());
+                        }
+                        let n = parse_i64(digits)?;
+                        Ok(Value::Int(if neg { -n } else { n }))
+                    }
+                }
             } else {
                 ctx.vars.get(name).ok_or(())
             }

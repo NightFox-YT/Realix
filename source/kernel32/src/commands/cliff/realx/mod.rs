@@ -22,7 +22,7 @@ impl RealXIde {
 pub const DOCS_TEXT: &[&str] = &[
     "RealX - ultra basic, Python-like",
     "x = 5   s = \"hi\"+name   # int / str",
-    "name = input(\"Name: \")  # reads a line",
+    "n = int(input(\"Age: \"))  # input() is str",
     "if x > 3:",
     "    print(x)",
     "elif x == 0:",
@@ -32,6 +32,6 @@ pub const DOCS_TEXT: &[&str] = &[
     "end   # while: only condition, no elif/else",
     "and or not %  == != < <= > >=  += -= *= /=",
     "mouse_x/y() mouse_down() pixel(x,y,c) cls(c)",
-    "beep(hz,ms) wait(ms) ticks() rnd(n) - gfx/hw",
+    "beep(hz,ms) wait(ms) ticks() rnd(n) int(s)",
     "No user functions (def) - Esc closes",
 ];
