@@ -259,6 +259,18 @@ fn apply_resize(win: &mut Window, dir: Direction, min_w: usize, max_w: usize, mi
     win.row = win.row.min(vga::VGA_TEXT_HEIGHT.saturating_sub(win.height)).max(1);
 }
 
+/// Key::Up/Down/Left/Right -> Direction (для окон, где голые стрелки не
+/// заняты ничем другим - см. handle_top)
+fn arrow_direction(key: Key) -> Option<Direction> {
+    match key {
+        Key::Up => Some(Direction::Up),
+        Key::Down => Some(Direction::Down),
+        Key::Left => Some(Direction::Left),
+        Key::Right => Some(Direction::Right),
+        _ => None,
+    }
+}
+
 /// Обрабатывает клавишу для верхнего (активного) окна в стеке
 fn handle_top(win: &mut Window, key: Key) -> Action {
     match key {
@@ -269,6 +281,21 @@ fn handle_top(win: &mut Window, key: Key) -> Action {
             return Action::None;
         }
         _ => {}
+    }
+
+    // Ctrl+WASD двигает ЛЮБОЕ окно (см. выше) и остаётся единственным
+    // способом для TextZ/RealX IDE, чьи голые стрелки - курсор
+    // редактирования. Но Calc/Docs/Output/Clock/My PC стрелками вообще
+    // ничего не делают - им незачем отбирать стрелки под что-то другое,
+    // так что для них голые стрелки тоже двигают окно (более привычно)
+    if matches!(
+        win.layer,
+        Layer::Calc(_) | Layer::RealXDocs | Layer::RealXOutput(_) | Layer::Clock(_) | Layer::MyPc(_)
+    ) {
+        if let Some(dir) = arrow_direction(key) {
+            apply_move(win, dir);
+            return Action::None;
+        }
     }
 
     match &mut win.layer {

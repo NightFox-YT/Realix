@@ -1,12 +1,14 @@
 // © Realix > Cliff: приложение "Terminax" (весь Realix shell из Cliff)
 // ================
-// ❗️ В отличие от Calc/TextZ/RealX/Clock/My PC, это НЕ окно с рамкой -
-// вывод команд (help, meminfo, matrix, calc, ...) идёт через тот же
-// глобальный vga::print_line/print_char, что и обычный shell, а не в
-// свой прямоугольник (шёл бы прямо по всему экрану, а не в рамку) -
-// поэтому Terminax не двигается и не меняет размер (Ctrl+WASD), как
-// остальные приложения. cliff::run обрабатывает его как отдельный
-// полноэкранный режим, а не как Window/Layer в стеке окон
+// ❗️ В отличие от Calc/TextZ/RealX/Clock/My PC, это НЕ окно с рамкой в
+// стеке окон Cliff - вывод команд (help, meminfo, matrix, calc, ...) идёт
+// через тот же глобальный vga::print_line/print_char, что и обычный
+// shell, а не в свой прямоугольник, поэтому Terminax не двигается и не
+// меняет размер (Ctrl+WASD), как остальные приложения - cliff::run
+// обрабатывает его как отдельный почти-полноэкранный режим (см.
+// vga::set_scroll_top - строка 0 зарезервирована под заголовок и не
+// участвует в прокрутке содержимого, поэтому она не "уезжает" как обычная
+// печатаемая строка, в отличие от предыдущей версии без этого резерва)
 // ❗️ Переиспользует shell::execute (та же таблица команд, что и обычный
 // Realix >> ) - собственный, более простой построчный ввод (эхо +
 // backspace + Enter, без истории/F7) вместо shell::read_line, т.к. та
@@ -16,14 +18,13 @@ use crate::drivers::keyboard::{self, Key};
 use crate::drivers::vga::{self, Color};
 
 const INPUT_CAP: usize = 64;
+const TITLE: &str = "TERMINAX - Realix shell  (type 'exit' or Esc to return to Cliff)";
 
 /// Запускает Terminax; возвращается в Cliff по 'exit' или Escape
 pub fn run() {
     vga::clear_screen();
-    vga::print_line(
-        "Terminax - full Realix shell. Type 'exit' or press Esc to return to Cliff.\n\n",
-        Color::LightGray,
-    );
+    vga::set_scroll_top(1);
+    draw_title_bar();
 
     loop {
         vga::print_line("Realix >> ", Color::Green);
@@ -42,6 +43,19 @@ pub fn run() {
             crate::shell::execute(line);
         }
         vga::print_new_line_if_needed();
+    }
+
+    vga::set_scroll_top(0);
+}
+
+/// Заголовок в зарезервированной строке 0 - рисуется один раз, т.к.
+/// set_scroll_top(1) уже защищает эту строку от печати/прокрутки ниже
+fn draw_title_bar() {
+    for col in 0..vga::VGA_TEXT_WIDTH {
+        vga::write_char_at(0, col, b' ', Color::Black);
+    }
+    for (col, &byte) in TITLE.as_bytes().iter().enumerate().take(vga::VGA_TEXT_WIDTH) {
+        vga::write_char_at(0, col, byte, Color::LightCyan);
     }
 }
 

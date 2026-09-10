@@ -27,6 +27,12 @@ const VGA_CURSOR_LOW:  u8 = 0x0F;   // Регистр младшего байт�
 static CURSOR_ROW: AtomicUsize = AtomicUsize::new(0);
 static CURSOR_COL: AtomicUsize = AtomicUsize::new(0);
 
+// Верхняя граница прокрутки/очистки (0 по умолчанию - обычное поведение).
+// Позволяет приложению зарезервировать верхние строки (напр. заголовок
+// Cliff::terminax) так, чтобы text_clear_screen/scroll_up их не трогали -
+// см. set_scroll_top ниже
+static SCROLL_TOP: AtomicUsize = AtomicUsize::new(0);
+
 // Таблица цветов
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -146,41 +152,58 @@ fn clear_cells(start_cell: usize, count: usize) {
 }
 
 
-/// Очистка экрана и сброс курсора в начало
+/// Очистка экрана (от SCROLL_TOP и ниже - см. set_scroll_top) и сброс
+/// курсора в верхний левый угол ОБЛАСТИ (не обязательно строку 0)
 pub fn text_clear_screen() {
-    // "Стираем" экран пробелами с чёрным фоном
-    clear_cells(0, VGA_TEXT_WIDTH * VGA_TEXT_HEIGHT);
+    let top: usize = SCROLL_TOP.load(Relaxed);
 
-    // Сбрасываем позицию курсора
-    CURSOR_ROW.store(0, Relaxed);
+    clear_cells(top * VGA_TEXT_WIDTH, (VGA_TEXT_HEIGHT - top) * VGA_TEXT_WIDTH);
+
+    CURSOR_ROW.store(top, Relaxed);
     CURSOR_COL.store(0, Relaxed);
     update_cursor();
 }
 
 
-/// Поднять все строки на экране на `n` позиций
+/// Резервирует верхние `row` строк экрана от очистки/прокрутки (0 -
+/// обычное поведение на весь экран) - используется приложениями вроде
+/// Cliff::terminax, которым нужна строка заголовка, не участвующая в
+/// прокрутке содержимого. Сбрасывает курсор в начало новой рабочей области
+pub fn set_scroll_top(row: usize) {
+    SCROLL_TOP.store(row.min(VGA_TEXT_HEIGHT - 1), Relaxed);
+    CURSOR_ROW.store(row.min(VGA_TEXT_HEIGHT - 1), Relaxed);
+    CURSOR_COL.store(0, Relaxed);
+    update_cursor();
+}
+
+
+/// Поднять все строки рабочей области (см. SCROLL_TOP) на `n` позиций
 fn scroll_up(lines_count: usize) {
-    // Если кол-во строк для прокрутки больше чем высота VGA
-    if lines_count >= VGA_TEXT_HEIGHT {
-        clear_screen();
+    let top: usize = SCROLL_TOP.load(Relaxed);
+    let usable_height: usize = VGA_TEXT_HEIGHT - top;
+
+    // Если кол-во строк для прокрутки больше чем высота рабочей области
+    if lines_count >= usable_height {
+        text_clear_screen();
         return;
     }
 
-    // Копируем строки `n`..HEIGHT в начало экрана единым блоком (memmove).
+    // Копируем строки `top+n`..HEIGHT в начало рабочей области единым
+    // блоком (memmove); строки выше `top` (если есть) не трогаем
     unsafe {
         core::ptr::copy(
-            VGA_TEXT_BUFFER.add(lines_count * VGA_TEXT_WIDTH * 2),
-            VGA_TEXT_BUFFER,
-            (VGA_TEXT_HEIGHT - lines_count) * VGA_TEXT_WIDTH * 2
+            VGA_TEXT_BUFFER.add((top + lines_count) * VGA_TEXT_WIDTH * 2),
+            VGA_TEXT_BUFFER.add(top * VGA_TEXT_WIDTH * 2),
+            (usable_height - lines_count) * VGA_TEXT_WIDTH * 2
         );
     }
 
-    // "Стираем" последние `n` строк пробелами с чёрным фоном
-    clear_cells((VGA_TEXT_HEIGHT - lines_count) * VGA_TEXT_WIDTH, lines_count * VGA_TEXT_WIDTH);
+    // "Стираем" последние `n` строк рабочей области пробелами
+    clear_cells((top + usable_height - lines_count) * VGA_TEXT_WIDTH, lines_count * VGA_TEXT_WIDTH);
 
-    // Обновляем позицию курсора на `n` строк вверх
+    // Обновляем позицию курсора на `n` строк вверх (не выше `top`)
     let row: usize = CURSOR_ROW.load(Relaxed);
-    CURSOR_ROW.store(row.saturating_sub(lines_count), Relaxed);
+    CURSOR_ROW.store(row.saturating_sub(lines_count).max(top), Relaxed);
     update_cursor();
 }
 
@@ -279,10 +302,11 @@ pub fn text_print_line(line: &str, color: Color) {
 
 /// Стирание последнего символа с переносом курсора назад
 pub fn print_backspace() {
-    // > Обновление позиции курсора
+    // > Обновление позиции курсора (не выше SCROLL_TOP - см. set_scroll_top)
+    let top: usize = SCROLL_TOP.load(Relaxed);
     if CURSOR_COL.load(Relaxed) > 0 {
         CURSOR_COL.fetch_sub(1, Relaxed);
-    } else if CURSOR_ROW.load(Relaxed) > 0 {
+    } else if CURSOR_ROW.load(Relaxed) > top {
         CURSOR_ROW.fetch_sub(1, Relaxed);
         CURSOR_COL.store(VGA_TEXT_WIDTH - 1, Relaxed);
     }

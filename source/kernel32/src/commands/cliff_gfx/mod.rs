@@ -231,6 +231,18 @@ fn apply_resize(win: &mut Window, dir: Direction, min_w: usize, max_w: usize, mi
     win.row = win.row.min(GRID_ROWS.saturating_sub(win.height)).max(1);
 }
 
+/// Key::Up/Down/Left/Right -> Direction (для окон, где голые стрелки не
+/// заняты ничем другим - см. handle_top)
+fn arrow_direction(key: Key) -> Option<Direction> {
+    match key {
+        Key::Up => Some(Direction::Up),
+        Key::Down => Some(Direction::Down),
+        Key::Left => Some(Direction::Left),
+        Key::Right => Some(Direction::Right),
+        _ => None,
+    }
+}
+
 fn handle_top(win: &mut Window, key: Key) -> Action {
     match key {
         Key::WindowMove(dir) => { apply_move(win, dir); return Action::None; }
@@ -240,6 +252,20 @@ fn handle_top(win: &mut Window, key: Key) -> Action {
             return Action::None;
         }
         _ => {}
+    }
+
+    // Ctrl+WASD двигает ЛЮБОЕ окно и остаётся единственным способом для
+    // TextZ/RealX IDE (голые стрелки там - курсор редактирования). Но
+    // Calc/Docs/Output/Clock/My PC стрелками ничего не делают - для них
+    // голые стрелки тоже двигают окно
+    if matches!(
+        win.layer,
+        Layer::Calc(_) | Layer::RealXDocs | Layer::RealXOutput(_) | Layer::Clock(_) | Layer::MyPc(_)
+    ) {
+        if let Some(dir) = arrow_direction(key) {
+            apply_move(win, dir);
+            return Action::None;
+        }
     }
 
     match &mut win.layer {
@@ -360,27 +386,44 @@ fn draw_desktop(selected: usize) {
 /// Обои рабочего стола - стилизованный закат (небо/солнце/горизонт/земля)
 /// несколькими полосами и "звёздами", раскинутыми по детерминированной
 /// формуле (в kernel32 нет источника случайности - см. заголовок файла)
+/// Обои - тёмно-синий/фиолетовый дизерингованный градиент с диагональным
+/// бликом и "глянцевыми" шарами у нижнего правого края (навеяно абстрактными
+/// градиентными обоями). VGA mode 13h здесь ограничен 16 именованными
+/// цветами (Color) - настоящий плавный градиент недоступен без перепрошивки
+/// DAC-палитры, поэтому "дополнительные" оттенки между соседними цветами
+/// градиента симулируются дизерингом (чередованием пикселей по
+/// псевдослучайному, но детерминированному порогу - без RNG в kernel32)
 fn draw_wallpaper() {
-    let w = vga::VGA_VIDEO_WIDTH - 1;
+    let colors = [Color::Black, Color::Blue, Color::Magenta, Color::LightBlue];
+    let bands = colors.len() - 1;
 
-    vga::draw_rect(0, w, 0, 54, Color::Black);       // Ночное небо
-    vga::draw_rect(0, w, 55, 94, Color::Blue);        // Небо
-    vga::draw_rect(0, w, 95, 124, Color::Magenta);    // Закатная дымка
-    vga::draw_rect(0, w, 125, 154, Color::Red);       // Горизонт
-    vga::draw_rect(0, w, 155, 174, Color::Brown);     // Земля
-    vga::draw_rect(0, w, 175, 199, Color::Green);      // Трава
+    for y in 0..vga::VGA_VIDEO_HEIGHT {
+        // Положение по вертикали в [0, bands) как fixed-point (шаг 1/256)
+        let pos = y * bands * 256 / vga::VGA_VIDEO_HEIGHT;
+        let band = (pos / 256).min(bands - 1);
+        let frac = pos % 256; // насколько близко к следующему цвету полосы
 
-    // "Звёзды" в ночном небе - разброс по x с детерминированным y (без RNG)
-    let mut x = 3usize;
-    while x < vga::VGA_VIDEO_WIDTH {
-        let y = (x * 37 + 11) % 50;
-        let color = if x % 21 == 0 { Color::Yellow } else { Color::White };
-        vga::set_pixel(x, y, color);
-        x += 9;
+        for x in 0..vga::VGA_VIDEO_WIDTH {
+            let dither = (x * 41 + y * 23) % 256;
+            let color = if dither < frac { colors[band + 1] } else { colors[band] };
+            vga::set_pixel(x, y, color);
+        }
     }
 
-    // Солнце - у самого горизонта
-    draw_disc(160, 110, 12, Color::Yellow);
+    // Широкий диагональный блик (парабола) через весь экран
+    let cx: isize = 360;
+    let cy: isize = -60;
+    for x in 0..vga::VGA_VIDEO_WIDTH {
+        let dx = x as isize - cx;
+        let y = cy + (dx * dx) / 280;
+        if (0..vga::VGA_VIDEO_HEIGHT as isize).contains(&y) {
+            vga::set_pixel(x, y as usize, Color::LightCyan);
+        }
+    }
+
+    // "Глянцевые" шары у нижнего правого края
+    draw_disc(305, 250, 95, Color::Blue);
+    draw_disc(260, 215, 55, Color::LightBlue);
 }
 
 /// Закрашенный круг (простая проверка расстояния - радиус мал, брутфорс ок)
