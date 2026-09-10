@@ -34,6 +34,15 @@ pub struct PcInfo {
     pub boot_drive_num: u16,
     pub videomode: u16,
     pub memory_map: [pmm::E820Entry; E820_MAX_ENTRIES],
+    // Поля VBE (см. switcher.asm: load_kernel32_video_hires,
+    // shared/config.asm: PCINFO_VIDEO_*) - ДОБАВЛЕНЫ ПОСЛЕ memory_map,
+    // порядок полей здесь должен точно совпадать со смещениями в asm.
+    // video_width == 0 означает "обычный VGA mode 13h" (320x200,
+    // 0xA0000) - остальные поля VBE тогда не заполнены/не имеют смысла
+    pub video_width: u16,
+    pub video_height: u16,
+    pub video_stride: u16,
+    pub video_lfb_addr: u32,
 }
 
 // Доступ-обёртка к элементам структуры
@@ -113,18 +122,26 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     }
 
     // Инициализация аллокатора фреймов по карте памяти E820 из PCINFO
-    let videomode = unsafe {
+    let (videomode, video_width, video_height, video_stride, video_lfb_addr) = unsafe {
         let pcinfo: &PcInfo = &*pcinfo_addr;
         frame_allocator::init(&pcinfo.memory_map);
-        pcinfo.videomode
+        (pcinfo.videomode, pcinfo.video_width, pcinfo.video_height, pcinfo.video_stride, pcinfo.video_lfb_addr)
     };
 
-    // "[3] 32-bit Video Mode" - BIOS уже переключил VGA в 320x200x256 ДО
-    // перехода в Protected Mode (см. switcher.asm: load_kernel32_video) -
-    // отсюда нет пути назад в текстовый режим (нужен был бы реальный переход
-    // в Real Mode), поэтому весь текстовый shell ниже здесь не участвует -
+    // "[3]/[4] 32-bit Video Mode" - BIOS уже переключил VGA в 320x200x256
+    // ИЛИ VBE 640x400x256 ДО перехода в Protected Mode (см. switcher.asm:
+    // load_kernel32_video/load_kernel32_video_hires) - отсюда нет пути
+    // назад в текстовый режим (нужен был бы реальный переход в Real Mode),
+    // поэтому весь текстовый shell ниже здесь не участвует -
     // commands::cliff_gfx::run() сам себя не возвращает (halt при выходе)
     if videomode == 1 {
+        // video_width != 0 - VBE 640x400 вместо обычного mode 13h. Вся
+        // раскладка Cliff остаётся "логически" 320x200 - каждый логический
+        // пиксель просто рисуется блоком 2x2 в настоящем (вдвое большем)
+        // кадровом буфере, см. vga::set_video_geometry
+        if video_width != 0 {
+            vga::set_video_geometry(2, video_stride as usize, video_lfb_addr as usize);
+        }
         commands::cliff_gfx::run();
     }
 

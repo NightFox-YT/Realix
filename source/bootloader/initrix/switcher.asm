@@ -78,6 +78,8 @@ boot_switcher:
     je load_kernel32
     cmp al, '3'
     je load_kernel32_video
+    cmp al, '4'
+    je load_kernel32_video_hires
 
     jmp .timer_loop
 
@@ -116,7 +118,7 @@ load_kernel16:
     jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
 
 
-; > Ветка Protected Mode с Video Mode (32-bit with Cliff)
+; > Ветка Protected Mode с Video Mode (32-bit with Cliff, 320x200)
 load_kernel32_video:
     ; Включение видеорежима
     call enable_vga_videomode
@@ -129,11 +131,57 @@ load_kernel32_video:
 
     mov word [es:PCINFO_ADDR + PCINFO_VIDEOMODE], 1
 
+    ; PCINFO_VIDEO_WIDTH=0 - сигнал kernel32, что это обычный VGA mode 13h
+    ; (320x200, фреймбуфер 0xA0000), а не VBE - см. PCINFO_VIDEO_WIDTH в
+    ; shared/config.asm
+    mov word [es:PCINFO_ADDR + PCINFO_VIDEO_WIDTH], 0
+
     pop ax
     pop es
 
     ; Переход к стандартной загрузке
     jmp load_kernel32
+
+
+; > Ветка Protected Mode с Video Mode (32-bit with Cliff, 640x400 VBE)
+; Тот же путь, что и load_kernel32_video, но с реальным разрешением в 2 раза
+; больше в каждую сторону - kernel32 просто рисует каждый "логический"
+; пиксель как блок 2x2 в настоящем кадровом буфере (см. vga::set_video_geometry,
+; вызывается в main.rs по PCINFO_VIDEO_WIDTH != 0) - остальной код Cliff не
+; меняется, весь интерфейс просто рисуется вдвое крупнее и чётче
+load_kernel32_video_hires:
+    mov cx, VBE_MODE_640x400
+    call enable_vbe_videomode
+    jc .vbe_failed
+
+    push es
+    push ax
+    xor ax, ax
+    mov es, ax
+
+    mov word [es:PCINFO_ADDR + PCINFO_VIDEOMODE], 1
+
+    mov ax, [vbe_width]
+    mov [es:PCINFO_ADDR + PCINFO_VIDEO_WIDTH], ax
+    mov ax, [vbe_height]
+    mov [es:PCINFO_ADDR + PCINFO_VIDEO_HEIGHT], ax
+    mov ax, [vbe_stride]
+    mov [es:PCINFO_ADDR + PCINFO_VIDEO_STRIDE], ax
+    mov eax, [vbe_lfb_addr]
+    mov [es:PCINFO_ADDR + PCINFO_VIDEO_LFB], eax
+
+    pop ax
+    pop es
+
+    jmp load_kernel32
+
+.vbe_failed:
+    ; VBE/LFB недоступны на этой машине - откатываемся на обычный VGA
+    ; mode 13h вместо того, чтобы оставить систему без картинки вообще
+    mov si, msg_vbe_failed
+    call print
+    call print_new_line
+    jmp load_kernel32_video
 
 
 ; > Ветка Protected Mode (32-bit)
@@ -258,11 +306,13 @@ msg_choose_mode:
     db '[?] Select OS Mode:', ENTER
     db '  [1] 16-bit Real Mode (NASM)', ENTER
     db '  [2] 32-bit Protected Mode (Rust)', ENTER
-    db '  [3] 32-bit with Cliff (320x200, 256 colors)', ENTER, 0
+    db '  [3] 32-bit with Cliff (320x200, 256 colors)', ENTER
+    db '  [4] 32-bit with Cliff (640x400, 256 colors, VBE)', ENTER, 0
 
 msg_timer:       db '  (Auto: 32-bit will be selected in 10 seconds)', 0
 msg_loading_16:  db '[+] Loading 16-bit kernel.', ENTER, 0
 msg_entering_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
+msg_vbe_failed:  db '[!] VBE 640x400 unavailable - falling back to 320x200.', ENTER, 0
 
 ; Переменные
 kernel16_filename: db 'KERNEL16BIN'

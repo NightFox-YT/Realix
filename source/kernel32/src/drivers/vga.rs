@@ -10,7 +10,6 @@ use crate::utils::{self, outb};
 
 // Константы
 const VGA_TEXT_BUFFER: *mut u8 = 0xB8000 as *mut u8;
-const VGA_VIDEO_BUFFER: *mut u8 = 0xA0000 as *mut u8;
 pub const VGA_TEXT_WIDTH: usize = 80;
 pub const VGA_TEXT_HEIGHT: usize = 25;
 pub const VGA_VIDEO_WIDTH: usize = 320;
@@ -32,6 +31,14 @@ static CURSOR_COL: AtomicUsize = AtomicUsize::new(0);
 // Cliff::terminax) так, чтобы text_clear_screen/scroll_up их не трогали -
 // см. set_scroll_top ниже
 static SCROLL_TOP: AtomicUsize = AtomicUsize::new(0);
+
+// Геометрия видеопамяти для set_pixel/fill_screen (VGA Video) - по
+// умолчанию обычный VGA mode 13h (320x200, фреймбуфер 0xA0000 построчно
+// без отступов). См. set_video_geometry про VBE-режим (переключается один
+// раз при загрузке, не во время работы - см. её заголовок)
+static VIDEO_SCALE: AtomicUsize = AtomicUsize::new(1);
+static VIDEO_REAL_STRIDE: AtomicUsize = AtomicUsize::new(VGA_VIDEO_WIDTH);
+static VIDEO_REAL_BUFFER: AtomicUsize = AtomicUsize::new(0xA0000);
 
 // Таблица цветов
 #[allow(dead_code)]
@@ -105,17 +112,51 @@ pub fn set_pixel(x: usize, y: usize, color: Color) {
         return;
     }
 
+    // По умолчанию (scale=1, real_stride=320, real_buffer=0xA0000) это то
+    // же самое, что и раньше - см. set_video_geometry про VBE-режим, где
+    // "логический" пиксель (x,y) в реальности рисуется блоком scale x scale
+    let scale = VIDEO_SCALE.load(Relaxed);
+    let stride = VIDEO_REAL_STRIDE.load(Relaxed);
+    let buffer = VIDEO_REAL_BUFFER.load(Relaxed) as *mut u8;
+
+    let real_x = x * scale;
+    let real_y = y * scale;
+
     unsafe {
-        let offset = (y * 320 + x) as isize;
-        VGA_VIDEO_BUFFER.offset(offset).write_volatile(color as u8);
+        for dy in 0..scale {
+            for dx in 0..scale {
+                let offset = (real_y + dy) * stride + (real_x + dx);
+                buffer.add(offset).write_volatile(color as u8);
+            }
+        }
     }
 }
 
-/// Вывод строки на экран (VGA Video)
+/// Заливка всего экрана одним цветом (VGA Video)
 pub fn fill_screen(color: Color) {
-    for i in 0..VGA_VIDEO_WIDTH * VGA_VIDEO_HEIGHT {
-        unsafe { VGA_VIDEO_BUFFER.add(i).write_volatile(color as u8); }
+    for y in 0..VGA_VIDEO_HEIGHT {
+        for x in 0..VGA_VIDEO_WIDTH {
+            set_pixel(x, y, color);
+        }
     }
+}
+
+/// Настройка геометрии видеопамяти после boot-time переключения в VBE (см.
+/// switcher.asm: load_kernel32_video_hires, main.rs: kmain) - по умолчанию
+/// (не вызвано) все пиксельные функции работают как раньше: scale=1,
+/// real_stride=320, real_buffer=0xA0000 (обычный VGA mode 13h)
+/// Параметры:
+///  - scale: во сколько раз один "логический" пиксель (в пределах
+///    VGA_VIDEO_WIDTH x VGA_VIDEO_HEIGHT - раскладка Cliff не меняется)
+///    больше одного настоящего пикселя экрана
+///  - real_stride: байт на строку в настоящем кадровом буфере
+///    (BytesPerScanLine из VBE ModeInfoBlock - не обязательно совпадает
+///    с шириной экрана из-за выравнивания)
+///  - real_buffer: физический адрес настоящего кадрового буфера (LFB)
+pub fn set_video_geometry(scale: usize, real_stride: usize, real_buffer: usize) {
+    VIDEO_SCALE.store(scale, Relaxed);
+    VIDEO_REAL_STRIDE.store(real_stride, Relaxed);
+    VIDEO_REAL_BUFFER.store(real_buffer, Relaxed);
 }
 
 

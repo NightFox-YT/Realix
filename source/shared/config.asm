@@ -31,6 +31,20 @@ PCINFO_DRIVE        equ 8   ; Номер загрузочного диска
 PCINFO_VIDEOMODE    equ 10  ; Номер видеорежима (0 - текстовый, 1 - видеорежим)
 PCINFO_MMAP         equ 12  ; Массив записей E820
 
+; Поля VBE (см. bios-api/vbe.asm) - ДОБАВЛЕНЫ ПОСЛЕ PCINFO_MMAP (не между
+; существующими полями), чтобы не сдвинуть уже используемые смещения.
+; ❗️ Литералы, а не выражение через PCINFO_MMAP+... - build.rs (генератор
+; config.rs для Rust) распознаёт только "ИМЯ equ ЧИСЛО", выражения молча
+; пропускает (см. её же комментарии) - но значение то же самое:
+; PCINFO_MMAP(12) + E820_MAX_ENTRIES(64)*E820_ENTRY_SIZE(24) = 1548
+; PCINFO_VIDEO_WIDTH = 0 означает "обычный VGA mode 13h (320x200,
+; 0xA0000)" - только ненулевое значение означает, что ниже заполнены
+; настоящие данные VBE-режима
+PCINFO_VIDEO_WIDTH  equ 1548  ; 16: Ширина экрана (px)
+PCINFO_VIDEO_HEIGHT equ 1550  ; 16: Высота экрана (px)
+PCINFO_VIDEO_STRIDE equ 1552  ; 16: Байт на строку (BytesPerScanLine)
+PCINFO_VIDEO_LFB    equ 1554  ; 32: Физический адрес линейного фреймбуфера
+
 ; Маркеры кластеров FAT12 (общие для bootix и bios-api/fat12)
 CHAIN_END   equ 0x0FF8  ; Кластер >= этого - конец цепочки (EOF)
 BAD_CLUSTER equ 0x0FF7  ; Дефектный кластер
@@ -38,6 +52,10 @@ BAD_CLUSTER equ 0x0FF7  ; Дефектный кластер
 ; Видеорежимы BIOS: ah - Установка режима, al - Выбранный режим
 TEXT_MODE_80x25    equ 0x0003
 VIDEO_MODE_320x200 equ 0x0013
+
+; Видеорежим VBE (см. bios-api/vbe.asm) - 640x400x256, ровно 2x 320x200
+; (та же пропорция сторон 16:10, в отличие от 0x101=640x480, 4:3)
+VBE_MODE_640x400 equ 0x0100
 
 ; Константы карты памяти (❗️ MAX_ENTRIES используется и из Rust)
 E820_ENTRY_SIZE  equ 24

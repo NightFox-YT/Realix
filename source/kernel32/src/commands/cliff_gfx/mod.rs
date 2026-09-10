@@ -599,13 +599,17 @@ fn draw_icon(kind: usize, x0: usize, y0: usize, w: usize, h: usize) {
             vga::draw_hline(x0 + w / 2 - 6, x0 + w / 2 + 5, y0 + h - 2, Color::DarkGray);
         }
         _ => {
-            // PAINT - палитра с мазками цвета
+            // PAINT - палитра художника с "дыркой" для пальца и мазками
+            // краски по краю (квадраты, не одиночные пиксели - иначе почти
+            // не видно на таком масштабе)
             let r = (h / 2).saturating_sub(1);
             draw_disc(cx, cy, r, Color::Brown);
-            vga::set_pixel(cx - 6, cy - 3, Color::Red);
-            vga::set_pixel(cx, cy - 5, Color::Yellow);
-            vga::set_pixel(cx + 6, cy - 3, Color::LightGreen);
-            vga::set_pixel(cx, cy + 4, Color::Blue);
+            draw_disc(cx + r / 2, cy + r / 2, 2, Color::Black);
+
+            vga::draw_rect(cx - r + 1, cx - r + 3, cy - 2, cy, Color::Red);
+            vga::draw_rect(cx - 2, cx, cy - r + 1, cy - r + 3, Color::Yellow);
+            vga::draw_rect(cx + r - 3, cx + r - 1, cy - 2, cy, Color::LightGreen);
+            vga::draw_rect(cx - 2, cx, cy + r - 3, cy + r - 1, Color::Blue);
         }
     }
 }

@@ -126,6 +126,7 @@ error_handler:
 %include 'bios-api/keyboard.asm'
 %include 'bios-api/rtc.asm'
 %include 'bios-api/graphics.asm'
+%include 'bios-api/vbe.asm'
 %include 'display/memory.asm'
 %include 'filesystem/fat12/file_load.asm'
 ; %include 'drivers/network_rtl8139.asm'
