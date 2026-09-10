@@ -535,11 +535,18 @@ pub struct RealXOutput {
     len: [usize; MAX_LINES],
     count: usize,
     pub error: bool,
+    // true, если pixel()/cls() реально что-то нарисовали (см. run()) -
+    // Cliff рисует рабочий стол заново каждый кадр (см. cliff_gfx::
+    // redraw_all/draw_wallpaper), так что без явной паузы нарисованное
+    // стёрлось бы уже на первом кадре ПОСЛЕ возврата из run(), до того как
+    // пользователь вообще успел бы это увидеть - см. cliff_gfx::handle_top,
+    // которая ждёт нажатия клавиши перед этим кадром, если used_graphics
+    pub used_graphics: bool,
 }
 
 impl RealXOutput {
     fn new() -> Self {
-        RealXOutput { lines: [[0; LINE_LEN]; MAX_LINES], len: [0; MAX_LINES], count: 0, error: false }
+        RealXOutput { lines: [[0; LINE_LEN]; MAX_LINES], len: [0; MAX_LINES], count: 0, error: false, used_graphics: false }
     }
 
     fn push(&mut self, text: &[u8]) {
@@ -862,6 +869,7 @@ pub fn run(
                     if graphics && x >= 0 && y >= 0 {
                         if let Some(color) = int_to_color(c) {
                             vga::set_pixel(x as usize, y as usize, color);
+                            out.used_graphics = true;
                         }
                     }
                     pc += 1;
@@ -878,6 +886,7 @@ pub fn run(
                     if graphics {
                         if let Some(color) = int_to_color(c) {
                             vga::fill_screen(color);
+                            out.used_graphics = true;
                         }
                     }
                     pc += 1;

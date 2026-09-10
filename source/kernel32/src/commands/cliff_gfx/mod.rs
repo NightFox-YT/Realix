@@ -98,10 +98,10 @@ const DOCS_COL: usize = 2;
 const OUTPUT_ROW: usize = 5;
 const OUTPUT_COL: usize = 3;
 
-// Paint - позиция фиксирована (не двигается - см. handle_top про
-// movable/resizable по отдельности), но МЕНЯЕТСЯ в размере: увеличение
-// открывает больше клеток одного и того же буфера paint::MAX_COLS x
-// paint::MAX_ROWS (см. paint_visible_size), а не создаёт холст заново
+// Paint - как и любое окно, двигается и меняется в размере (см. handle_top);
+// рост ОКНА открывает больше клеток одного и того же буфера paint::MAX_COLS x
+// paint::MAX_ROWS (см. paint_visible_size), а не создаёт холст заново - ниже
+// только позиция/размер ПО УМОЛЧАНИЮ при открытии
 const PAINT_ROW: usize = 1;
 const PAINT_COL: usize = 1;
 const PAINT_DEFAULT_W: usize = 38;
@@ -184,6 +184,11 @@ pub fn run() -> ! {
     // Смещение (в пикселях) между точкой клика и левым верхним углом окна,
     // пока идёт перетаскивание за заголовок - см. цикл ниже. None - не тащим
     let mut dragging: Option<(i32, i32)> = None;
+    // true - идёт перетаскивание "ручки" в нижнем правом углу (см.
+    // resize_handle_hit) - в отличие от dragging, без сохранённого смещения:
+    // левый верхний угол окна не двигается, конечный размер каждый кадр
+    // просто пересчитывается напрямую из текущей позиции мыши
+    let mut resizing = false;
 
     redraw_all(selected, &tasks, focused, mouse_x, mouse_y);
 
@@ -229,6 +234,7 @@ pub fn run() -> ! {
                 // перетаскивание, не даём смещению "просочиться" на
                 // СЛЕДУЮЩУЮ сфокусированную задачу
                 dragging = None;
+                resizing = false;
 
                 if mouse_clicked {
                     if let Some(icon) = icon_at_point(mouse_x, mouse_y) {
@@ -271,20 +277,49 @@ pub fn run() -> ! {
                 let win = task.windows[task.depth - 1].as_mut().unwrap();
 
                 // Paint не рисует "[X]" (закрывается только по Escape - см.
-                // draw_paint_window) и не двигается (по просьбе - позиция
-                // фиксирована, но РАЗМЕР - нет, см. handle_top); без этой
-                // проверки клик в той же строке (где у Paint просто текстовая
-                // подсказка) закрывал бы его без всякой видимой кнопки, а
-                // перетаскивание двигало бы окно, которое должно быть
-                // неподвижным
-                let movable = !matches!(win.layer, Layer::Paint(_));
+                // draw_paint_window) - без этой проверки клик в той же
+                // строке (где у Paint просто текстовая подсказка) закрывал
+                // бы его без всякой видимой кнопки. Двигать МОЖНО - как и
+                // любое другое окно (см. movable ниже)
+                let has_close_button = !matches!(win.layer, Layer::Paint(_));
+                // Любое окно можно и двигать, и менять в размере (мышью -
+                // ниже, Ctrl+(Shift+)WASD - см. handle_top)
+                let movable = true;
+
+                // Изменение размера мышью - клик по "ручке" в правом нижнем
+                // углу (см. resize_handle_hit/draw_resize_handle) начинает,
+                // отпускание ЛКМ заканчивает. Левый верхний угол НЕ двигается -
+                // меняются только width/height, пересчитываемые из текущей
+                // позиции мыши КАЖДЫЙ кадр (без сохранённого смещения, в
+                // отличие от dragging - "потяни угол туда, где должен быть
+                // край окна" проще, чем накапливать дельту)
+                if mouse_clicked && resize_handle_hit(win, mouse_x, mouse_y) {
+                    resizing = true;
+                }
+                if resizing {
+                    if left_down {
+                        let (min_w, max_w, min_h, max_h) = resize_bounds(&win.layer);
+                        let raw_w = ((mouse_x - (win.col * CELL_W) as i32).max(CELL_W as i32) as usize) / CELL_W;
+                        let raw_h = ((mouse_y - (win.row * CELL_H) as i32).max(CELL_H as i32) as usize) / CELL_H;
+                        win.width = raw_w.clamp(min_w, max_w).min(grid_cols().saturating_sub(win.col));
+                        win.height = raw_h.clamp(min_h, max_h).min(grid_rows().saturating_sub(win.row));
+                    } else {
+                        resizing = false;
+                    }
+                }
 
                 // Рисование в Paint мышью - зажатая ЛКМ над холстом ставит
                 // квадрат под курсором; таскать - рисовать непрерывно.
                 // Клетка вычисляется ДО заимствования win.layer как mut ниже -
                 // paint_cell_at_point берёт весь Window (для col/row/width),
-                // а не только layer
-                let hovered_paint_cell = if left_down { paint_cell_at_point(win, mouse_x, mouse_y) } else { None };
+                // а не только layer. Клик по "ручке" resize (нижний правый
+                // угол, может пересекаться с видимым холстом) не считается
+                // рисованием - resize имеет приоритет
+                let hovered_paint_cell = if left_down && !resizing && !resize_handle_hit(win, mouse_x, mouse_y) {
+                    paint_cell_at_point(win, mouse_x, mouse_y)
+                } else {
+                    None
+                };
                 if let (Layer::Paint(paint), Some((row, col))) = (&mut win.layer, hovered_paint_cell) {
                     paint.set_cursor(row, col);
                     paint.place_square();
@@ -314,7 +349,7 @@ pub fn run() -> ! {
                     }
                 }
 
-                let action = if mouse_clicked && movable && close_button_hit(win, mouse_x, mouse_y) {
+                let action = if mouse_clicked && has_close_button && close_button_hit(win, mouse_x, mouse_y) {
                     Action::Close
                 } else if let Some(key) = key {
                     handle_top(win, key, (mouse_x, mouse_y, left_down))
@@ -435,14 +470,14 @@ fn resize_bounds(layer: &Layer) -> (usize, usize, usize, usize) {
         Layer::TextZ(_) | Layer::RealXIde(_) | Layer::RealXDocs | Layer::RealXOutput(_)
         | Layer::Clock(_) | Layer::MyPc(_) =>
             (EDITOR_MIN_W, EDITOR_MAX_W, EDITOR_MIN_H, EDITOR_MAX_H),
-        // Позиция Paint фиксирована (см. handle_top - `movable`), но размер
-        // - нет: рост окна открывает больше клеток того же буфера (см.
-        // paint::MAX_COLS/MAX_ROWS, paint_visible_size) - верхняя граница
-        // ограничена ещё и текущей сеткой экрана (не даёт вылезти за экран,
-        // раз окно нельзя подвинуть, чтобы это исправить)
+        // Рост окна открывает больше клеток того же буфера (см.
+        // paint::MAX_COLS/MAX_ROWS, paint_visible_size). Верхняя граница -
+        // от текущей сетки экрана (grid_cols/rows), НЕ от позиции окна -
+        // Paint двигается (как и любое окно, см. handle_top), а apply_resize
+        // сам подвинет win.col/row, если после роста окно вылезло за экран
         Layer::Paint(_) => (
-            PAINT_MIN_W, PAINT_MAX_W.min(grid_cols().saturating_sub(PAINT_COL)),
-            PAINT_MIN_H, PAINT_MAX_H.min(grid_rows().saturating_sub(PAINT_ROW)),
+            PAINT_MIN_W, PAINT_MAX_W.min(grid_cols()),
+            PAINT_MIN_H, PAINT_MAX_H.min(grid_rows()),
         ),
     }
 }
@@ -481,11 +516,11 @@ fn arrow_direction(key: Key) -> Option<Direction> {
 }
 
 fn handle_top(win: &mut Window, key: Key, mouse: (i32, i32, bool)) -> Action {
-    // Paint - позиция фиксирована (по просьбе), но размер - нет: рост окна
-    // открывает больше клеток холста (см. paint.rs, paint_visible_size).
-    // movable/resizable отдельно друг от друга именно из-за Paint - для
-    // всех остальных приложений они всегда совпадают
-    let movable = !matches!(win.layer, Layer::Paint(_));
+    // Любое окно можно двигать и менять в размере (Ctrl+WASD / Ctrl+Shift+
+    // WASD, а также мышью - см. run(): title_bar_hit/resize_handle_hit) -
+    // включая Paint: рост окна открывает больше клеток холста (см. paint.rs,
+    // paint_visible_size), а сдвиг просто меняет row/col как у всех
+    let movable = true;
     let resizable = true;
 
     match key {
@@ -544,7 +579,19 @@ fn handle_top(win: &mut Window, key: Key, mouse: (i32, i32, bool)) -> Action {
             Key::Char(b'\x08') => ide.editor.backspace(),
             Key::Char(b'\n') => ide.editor.newline(),
             Key::Char(b'\\') => return Action::OpenDocs,
-            Key::Char(b'`') => return Action::OpenOutput(realx::lang::run(&ide.editor, mouse, true, gfx_read_input)),
+            Key::Char(b'`') => {
+                let output = realx::lang::run(&ide.editor, mouse, true, gfx_read_input);
+                // pixel()/cls() рисуют прямо на экран (не в окно) - без этой
+                // паузы нарисованное стёрлось бы уже на первом кадре ПОСЛЕ
+                // return (redraw_all в run() перерисовывает весь стол заново
+                // - см. RealXOutput.used_graphics), раньше, чем пользователь
+                // вообще успел бы это увидеть
+                if output.used_graphics {
+                    font::draw_text(4, 4, "Press any key to continue...", Color::White);
+                    keyboard::read_key();
+                }
+                return Action::OpenOutput(output);
+            }
             Key::Char(byte) if (0x20..=0x7E).contains(&byte) => ide.editor.type_char(byte),
             _ => {}
         },
@@ -659,6 +706,14 @@ fn close_button_hit(win: &Window, px: i32, py: i32) -> bool {
 /// сама решает, что делать, если попадание ЕЩЁ И в close_button_hit
 fn title_bar_hit(win: &Window, px: i32, py: i32) -> bool {
     point_in_rect(px, py, win.col * CELL_W, (win.row + 1) * CELL_H, win.width * CELL_W, CELL_H)
+}
+
+/// true, если точка курсора попадает в "ручку" изменения размера - нижний
+/// правый угол окна (та же клетка, что рисует draw_resize_handle) - см. run()
+fn resize_handle_hit(win: &Window, px: i32, py: i32) -> bool {
+    let x0 = (win.col + win.width - 1) * CELL_W;
+    let y0 = (win.row + win.height - 1) * CELL_H;
+    point_in_rect(px, py, x0, y0, CELL_W, CELL_H)
 }
 
 /// Клетка холста Paint под точкой курсора, если она внутри холста - см.
@@ -1022,6 +1077,17 @@ fn draw_window(win: &Window) {
         }
         Layer::Paint(paint) => draw_paint_window(row, col, w, h, paint),
     }
+    draw_resize_handle(row, col, w, h);
+}
+
+/// Маленький светло-серый квадрат в нижнем правом углу окна - "ручка"
+/// изменения размера мышью (см. resize_handle_hit - та же клетка, run()).
+/// Рисуется поверх угла рамки для ЛЮБОГО окна - resizable всегда true
+/// (см. handle_top)
+fn draw_resize_handle(row: usize, col: usize, w: usize, h: usize) {
+    let x0 = (col + w - 1) * CELL_W;
+    let y0 = (row + h - 1) * CELL_H;
+    vga::draw_rect(x0 + 1, x0 + CELL_W - 1, y0 + 1, y0 + CELL_H - 1, Color::LightGray);
 }
 
 /// Paint - холст paint_visible_size(w, h) квадратов paint::CELL_PX пикселей
