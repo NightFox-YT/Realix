@@ -41,14 +41,14 @@ const CELL_H: usize = font::GLYPH_HEIGHT + 1;
 const GRID_COLS: usize = vga::VGA_VIDEO_WIDTH / CELL_W;
 const GRID_ROWS: usize = vga::VGA_VIDEO_HEIGHT / CELL_H;
 
-struct IconDef { label: &'static str }
+struct IconDef { glyph: &'static str, label: &'static str }
 const ICONS: [IconDef; 6] = [
-    IconDef { label: "CALC" },
-    IconDef { label: "TEXTZ" },
-    IconDef { label: "REALX" },
-    IconDef { label: "CLOCK" },
-    IconDef { label: "MY PC" },
-    IconDef { label: "PAINT" },
+    IconDef { glyph: "[=]", label: "CALC" },
+    IconDef { glyph: "[T]", label: "TEXTZ" },
+    IconDef { glyph: "{X}", label: "REALX" },
+    IconDef { glyph: "(O)", label: "CLOCK" },
+    IconDef { glyph: "[#]", label: "MY PC" },
+    IconDef { glyph: "[P]", label: "PAINT" },
 ];
 const PAINT_ICON: usize = 5;
 const ICON_W: usize = 9;
@@ -56,6 +56,9 @@ const ICON_H: usize = 3;
 const ICON_GAP: usize = 1;
 const ICON_ROW: usize = 2;
 const ICON_START_COL: usize = 1;
+// GRID_COLS=53 - 5 иконок ровно влезают в ряд ((ICON_W+ICON_GAP)*5=50);
+// 6-я (Paint) переносится на второй ряд, как и в текстовом Cliff
+const ICONS_PER_ROW: usize = 5;
 
 const CALC_DEFAULT_ROW: usize = 6;
 const CALC_DEFAULT_COL: usize = 15;
@@ -129,11 +132,21 @@ pub fn run() -> ! {
             match keyboard::read_key() {
                 Key::Escape => break,
                 Key::Left => {
-                    if selected > 0 { selected -= 1; }
+                    if selected % ICONS_PER_ROW > 0 { selected -= 1; }
                     redraw_all(selected, &stack, depth);
                 }
                 Key::Right => {
-                    if selected + 1 < ICONS.len() { selected += 1; }
+                    if selected % ICONS_PER_ROW < ICONS_PER_ROW - 1 && selected + 1 < ICONS.len() {
+                        selected += 1;
+                    }
+                    redraw_all(selected, &stack, depth);
+                }
+                Key::Up => {
+                    if selected >= ICONS_PER_ROW { selected -= ICONS_PER_ROW; }
+                    redraw_all(selected, &stack, depth);
+                }
+                Key::Down => {
+                    if selected + ICONS_PER_ROW < ICONS.len() { selected += ICONS_PER_ROW; }
                     redraw_all(selected, &stack, depth);
                 }
                 Key::Char(b'\n') | Key::Char(b' ') => {
@@ -404,19 +417,60 @@ fn redraw_all(selected: usize, stack: &[Option<Window>; 2], depth: usize) {
 
 fn draw_desktop(selected: usize) {
     draw_wallpaper();
-    draw_text_at(0, 0, "LR:select Enter:open Esc:halt", Color::White);
+    draw_text_at(0, 0, "Arrows:select Enter:open Esc:halt", Color::White);
 
     for (i, icon) in ICONS.iter().enumerate() {
-        let col = ICON_START_COL + i * (ICON_W + ICON_GAP);
-        // Заливаем нутро иконки чёрным перед рамкой - иначе подпись читалась
-        // бы поверх обоев (небо/закат/земля), а не однородного фона
-        clear_interior(ICON_ROW, col, ICON_W, ICON_H);
-        let border = if i == selected { Color::Yellow } else { Color::LightGray };
-        draw_box(ICON_ROW, col, ICON_W, ICON_H, border);
+        let col = ICON_START_COL + (i % ICONS_PER_ROW) * (ICON_W + ICON_GAP);
+        let row = ICON_ROW + (i / ICONS_PER_ROW) * (ICON_H + 2);
+        let selected_here = i == selected;
 
-        let label_col = col + (ICON_W - icon.label.len()) / 2;
-        draw_text_at(ICON_ROW + 1, label_col, icon.label, Color::White);
+        // Выбранная иконка - залитый фон (в отличие от текстового Cliff,
+        // тут пиксели, так что настоящая заливка возможна), а не только
+        // цвет рамки
+        let fill = if selected_here { Color::Blue } else { Color::Black };
+        fill_interior(row, col, ICON_W, ICON_H, fill);
+        let border = if selected_here { Color::Yellow } else { Color::LightGray };
+        draw_box(row, col, ICON_W, ICON_H, border);
+
+        let glyph_col = col + (ICON_W - icon.glyph.len()) / 2;
+        draw_text_at(row + 1, glyph_col, icon.glyph, Color::White);
+
+        // Подпись - отдельной строкой ПОД рамкой, не внутри неё
+        let label_col = col + ICON_W.saturating_sub(icon.label.len()) / 2;
+        draw_text_at(row + ICON_H, label_col, icon.label, Color::LightGray);
     }
+
+    draw_taskbar();
+}
+
+/// Панель внизу экрана - имя системы слева, часы (RTC) справа (см.
+/// commands::cliff::draw_taskbar - тот же принцип, здесь пикселями)
+fn draw_taskbar() {
+    let panel_h_px = CELL_H + 4;
+    let y0 = vga::VGA_VIDEO_HEIGHT - panel_h_px;
+    vga::draw_rect(0, vga::VGA_VIDEO_WIDTH - 1, y0, vga::VGA_VIDEO_HEIGHT - 1, Color::DarkGray);
+
+    let text_y = y0 + 2;
+    font::draw_text(3, text_y, "CLIFF", Color::Yellow);
+
+    let now = crate::drivers::rtc::now();
+    let mut buf = [0u8; 8];
+    let clock = format_hms(&now, &mut buf);
+    let clock_x = vga::VGA_VIDEO_WIDTH - clock.len() * CELL_W - 3;
+    font::draw_text(clock_x, text_y, clock, Color::White);
+}
+
+/// "HH:MM:SS" в буфер фиксированного размера
+fn format_hms<'a>(now: &crate::drivers::rtc::DateTime, buf: &'a mut [u8; 8]) -> &'a str {
+    buf[0] = b'0' + now.hour / 10;
+    buf[1] = b'0' + now.hour % 10;
+    buf[2] = b':';
+    buf[3] = b'0' + now.minute / 10;
+    buf[4] = b'0' + now.minute % 10;
+    buf[5] = b':';
+    buf[6] = b'0' + now.second / 10;
+    buf[7] = b'0' + now.second % 10;
+    core::str::from_utf8(buf).unwrap_or("--:--:--")
 }
 
 /// Обои рабочего стола - стилизованный закат (небо/солнце/горизонт/земля)
@@ -643,12 +697,16 @@ fn draw_output_window(row: usize, col: usize, w: usize, h: usize, border: Color,
 /// Именно чёрным, а не белым - иначе светлый текст заголовка/содержимого
 /// (White/LightCyan и т.п.) стал бы невидимым на светлом фоне
 fn clear_interior(row: usize, col: usize, w: usize, h: usize) {
+    fill_interior(row, col, w, h, Color::Black);
+}
+
+fn fill_interior(row: usize, col: usize, w: usize, h: usize, color: Color) {
     if w < 3 || h < 3 { return; }
     let x1 = col * CELL_W + 1;
     let x2 = col * CELL_W + w * CELL_W - 2;
     let y1 = row * CELL_H + 1;
     let y2 = row * CELL_H + h * CELL_H - 2;
-    vga::draw_rect(x1, x2, y1, y2, Color::Black);
+    vga::draw_rect(x1, x2, y1, y2, color);
 }
 
 /// Рамка окна/иконки в пикселях (контур, без заливки)

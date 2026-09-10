@@ -34,6 +34,7 @@ mod terminax;
 pub(crate) mod textz;
 
 use crate::drivers::keyboard::{self, Direction, Key};
+use crate::drivers::rtc;
 use crate::drivers::vga::{self, Color};
 use calc_app::CalcApp;
 use clock::ClockApp;
@@ -411,16 +412,51 @@ fn draw_desktop(selected: usize) {
         // +2 (не +1): под рамкой теперь ещё и отдельная строка подписи -
         // см. ICON_H ниже строки рамки
         let row = ICON_ROW + (i / ICONS_PER_ROW) * (ICON_H + 2);
-        let border = if i == selected { Color::Yellow } else { Color::DarkGray };
+        let selected_here = i == selected;
+        let border = if selected_here { Color::Yellow } else { Color::DarkGray };
         draw_box_text(row, col, ICON_W, ICON_H, border);
 
+        // Выбранная иконка - глиф тоже жёлтый (текстовый режим не даёт
+        // залить фон, см. заголовок файла - только цвет символов)
+        let glyph_color = if selected_here { Color::Yellow } else { Color::White };
         let glyph_col = col + (ICON_W - icon.glyph.len()) / 2;
-        draw_text_at(row + 1, glyph_col, icon.glyph, Color::White);
+        draw_text_at(row + 1, glyph_col, icon.glyph, glyph_color);
 
         // Подпись - отдельной строкой ПОД рамкой, не внутри неё
         let label_col = col + ICON_W.saturating_sub(icon.label.len()) / 2;
         draw_text_at(row + ICON_H, label_col, icon.label, Color::LightGray);
     }
+
+    draw_taskbar();
+}
+
+/// Панель внизу экрана - имя системы слева, часы (RTC) справа. Обновляется
+/// при каждой перерисовке стола (т.е. на любую клавишу - см. заголовок
+/// clock.rs про то же ограничение: нет таймерного пробуждения главного цикла)
+fn draw_taskbar() {
+    let row = vga::VGA_TEXT_HEIGHT - 1;
+    for col in 0..vga::VGA_TEXT_WIDTH {
+        vga::write_char_at(row, col, b' ', Color::DarkGray);
+    }
+    draw_text_at(row, 1, "CLIFF", Color::Yellow);
+
+    let now = rtc::now();
+    let mut buf = [0u8; 8];
+    let clock = format_hms(&now, &mut buf);
+    draw_text_at(row, vga::VGA_TEXT_WIDTH - clock.len() - 1, clock, Color::White);
+}
+
+/// "HH:MM:SS" в буфер фиксированного размера
+fn format_hms<'a>(now: &rtc::DateTime, buf: &'a mut [u8; 8]) -> &'a str {
+    buf[0] = b'0' + now.hour / 10;
+    buf[1] = b'0' + now.hour % 10;
+    buf[2] = b':';
+    buf[3] = b'0' + now.minute / 10;
+    buf[4] = b'0' + now.minute % 10;
+    buf[5] = b':';
+    buf[6] = b'0' + now.second / 10;
+    buf[7] = b'0' + now.second % 10;
+    core::str::from_utf8(buf).unwrap_or("--:--:--")
 }
 
 fn draw_window(win: &Window) {
