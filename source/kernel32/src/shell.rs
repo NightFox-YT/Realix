@@ -95,10 +95,10 @@ fn execute(input: &str) {
     match name {
         "" => {}
         "help" => { commands::help::show(); }
-        "clear" | "cls" => { vga::clear_screen(); }
+        "clear" | "cls" => { commands::clear::run(); } 
         "reboot" => { commands::reboot::run() }
         "shutdown" => { commands::shutdown::run() }
-        "echo" => { commands::echo::run(args) }
+        "echo" => { commands::echo::run(args) } 
         "uptime" => {
             let mut str_buffer: [u8; 10] = [0u8; 10];
 

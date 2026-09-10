@@ -131,6 +131,7 @@ It supports a built-in boot switcher that lets you choose between a 16-bit Real 
 │  │  │  └─ README.md
 │  │  ├─ src/
 │  │  │  ├─ commands/
+│  │  │	 │	├─ clear.rs	
 │  │  │  │  ├─ echo.rs
 │  │  │  │  ├─ help.rs
 │  │  │  │  ├─ matrix.rs
