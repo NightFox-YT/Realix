@@ -44,6 +44,13 @@ impl PaintApp {
         }
     }
 
+    /// Ставит курсор напрямую (напр. под точку, куда наведена мышь) -
+    /// см. cliff_gfx::paint_cell_at_point/run() про рисование мышью
+    pub fn set_cursor(&mut self, row: usize, col: usize) {
+        self.cursor_row = row.min(ROWS - 1);
+        self.cursor_col = col.min(COLS - 1);
+    }
+
     pub fn move_up(&mut self) { self.cursor_row = self.cursor_row.saturating_sub(1); }
     pub fn move_down(&mut self) { self.cursor_row = (self.cursor_row + 1).min(ROWS - 1); }
     pub fn move_left(&mut self) { self.cursor_col = self.cursor_col.saturating_sub(1); }

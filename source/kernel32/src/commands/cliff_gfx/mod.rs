@@ -142,6 +142,10 @@ pub fn run() -> ! {
     let mut mouse_y: i32 = (vga::VGA_VIDEO_HEIGHT / 2) as i32;
     let mut mouse_was_down = false;
 
+    // Смещение (в пикселях) между точкой клика и левым верхним углом окна,
+    // пока идёт перетаскивание за заголовок - см. цикл ниже. None - не тащим
+    let mut dragging: Option<(i32, i32)> = None;
+
     redraw_all(selected, &stack, depth, mouse_x, mouse_y);
 
     loop {
@@ -163,6 +167,12 @@ pub fn run() -> ! {
         mouse_was_down = left_down;
 
         if depth == 0 {
+            // Актуально только пока открыто окно - если оно исчезло, пока
+            // шло перетаскивание (напр. закрыли по Escape с клавиатуры,
+            // не отпуская ЛКМ), не даём смещению "просочиться" на СЛЕДУЮЩЕЕ
+            // открытое окно
+            dragging = None;
+
             if mouse_clicked {
                 if let Some(icon) = icon_at_point(mouse_x, mouse_y) {
                     // Клик по уже выбранной иконке - открыть (как
@@ -203,16 +213,50 @@ pub fn run() -> ! {
         } else {
             let win = stack[depth - 1].as_mut().unwrap();
 
-            // Клик на "[X]" верхнего окна закрывает его - остальная часть
-            // окна (перемещение мышью, клики по содержимому/кнопкам
-            // приложений) пока не реализована, см. заголовок файла
             // Paint не рисует "[X]" (закрывается только по Escape - см.
-            // draw_paint_window) - без этой проверки клик в той же области
-            // (где у Paint просто текстовая подсказка) закрывал бы его
-            // без всякой видимой кнопки
-            let has_close_button = !matches!(win.layer, Layer::Paint(_));
+            // draw_paint_window) и не двигается (по просьбе - окно
+            // фиксировано); без этой проверки клик в той же строке (где у
+            // Paint просто текстовая подсказка) закрывал бы его без всякой
+            // видимой кнопки, а перетаскивание двигало бы окно, которое
+            // должно быть неподвижным
+            let movable = !matches!(win.layer, Layer::Paint(_));
 
-            let action = if mouse_clicked && has_close_button && close_button_hit(win, mouse_x, mouse_y) {
+            // Рисование в Paint мышью - зажатая ЛКМ над холстом ставит
+            // квадрат под курсором; таскать - рисовать непрерывно.
+            // Клетка вычисляется ДО заимствования win.layer как mut ниже -
+            // paint_cell_at_point берёт весь Window (для col/row/width),
+            // а не только layer
+            let hovered_paint_cell = if left_down { paint_cell_at_point(win, mouse_x, mouse_y) } else { None };
+            if let (Layer::Paint(paint), Some((row, col))) = (&mut win.layer, hovered_paint_cell) {
+                paint.set_cursor(row, col);
+                paint.place_square();
+            }
+
+            // Перетаскивание за заголовок (не по "[X]") - начинается кликом
+            // по строке заголовка, продолжается, пока зажата ЛКМ, и
+            // заканчивается её отпусканием. Координаты мыши (пиксели)
+            // пересчитываются в "клетки" (CELL_W/CELL_H) окна, те же
+            // единицы, что и Ctrl+WASD (apply_move)
+            if movable {
+                if mouse_clicked && title_bar_hit(win, mouse_x, mouse_y) && !close_button_hit(win, mouse_x, mouse_y) {
+                    let offset_x = mouse_x - (win.col * CELL_W) as i32;
+                    let offset_y = mouse_y - (win.row * CELL_H) as i32;
+                    dragging = Some((offset_x, offset_y));
+                }
+
+                if let Some((offset_x, offset_y)) = dragging {
+                    if left_down {
+                        let new_col = ((mouse_x - offset_x).max(0) as usize) / CELL_W;
+                        let new_row = ((mouse_y - offset_y).max(0) as usize) / CELL_H;
+                        win.col = new_col.min(GRID_COLS.saturating_sub(win.width));
+                        win.row = new_row.min(GRID_ROWS.saturating_sub(win.height)).max(1);
+                    } else {
+                        dragging = None;
+                    }
+                }
+            }
+
+            let action = if mouse_clicked && movable && close_button_hit(win, mouse_x, mouse_y) {
                 Action::Close
             } else if let Some(key) = key {
                 handle_top(win, key)
@@ -499,20 +543,49 @@ fn close_button_hit(win: &Window, px: i32, py: i32) -> bool {
     point_in_rect(px, py, x0, y0, 3 * CELL_W, CELL_H)
 }
 
-const CURSOR_SIZE: usize = 10;
+/// Вся строка заголовка (та же строка row+1, что и "[X]") - используется
+/// для начала перетаскивания окна мышью (см. run()); вызывающая сторона
+/// сама решает, что делать, если попадание ЕЩЁ И в close_button_hit
+fn title_bar_hit(win: &Window, px: i32, py: i32) -> bool {
+    point_in_rect(px, py, win.col * CELL_W, (win.row + 1) * CELL_H, win.width * CELL_W, CELL_H)
+}
 
-/// Курсор мыши - сплошной треугольник с чёрной обводкой (видна на любом
-/// фоне), остриём в точке (x,y). Рисуется поверх всего остального кадра
-/// (см. redraw_all) - как и все остальные элементы Cliff, каждый кадр
-/// заново, поэтому отдельно стирать предыдущую позицию не нужно
+/// Клетка холста Paint под точкой курсора, если она внутри холста - см.
+/// draw_paint_window про ту же геометрию (canvas_x0/canvas_y0)
+fn paint_cell_at_point(win: &Window, px: i32, py: i32) -> Option<(usize, usize)> {
+    let canvas_x0 = ((win.col + 1) * CELL_W) as i32;
+    let canvas_y0 = ((win.row + 3) * CELL_H) as i32;
+
+    if px < canvas_x0 || py < canvas_y0 {
+        return None;
+    }
+
+    let cx = (px - canvas_x0) as usize / paint::CELL_PX;
+    let cy = (py - canvas_y0) as usize / paint::CELL_PX;
+
+    if cx < paint::COLS && cy < paint::ROWS { Some((cy, cx)) } else { None }
+}
+
+const CURSOR_SIZE: usize = 12;
+const CURSOR_MID: usize = CURSOR_SIZE / 2;
+
+/// Курсор мыши - сплошная "стрелка"-ромб (расширяется до середины, потом
+/// сужается обратно - предыдущая версия только расширялась и обрывалась на
+/// середине, выглядело как обрезанный наполовину треугольник) с чёрной
+/// обводкой (видна на любом фоне), остриём в точке (x,y). Рисуется поверх
+/// всего остального кадра (см. redraw_all) - как и все остальные элементы
+/// Cliff, каждый кадр заново, поэтому отдельно стирать предыдущую позицию
+/// не нужно
 fn draw_cursor(x: i32, y: i32) {
     if x < 0 || y < 0 {
         return;
     }
     let (x, y) = (x as usize, y as usize);
     for row in 0..CURSOR_SIZE {
-        for col in 0..=row {
-            let color = if col == 0 || col == row { Color::Black } else { Color::White };
+        let width = if row <= CURSOR_MID { row + 1 } else { CURSOR_SIZE - row };
+        for col in 0..width {
+            let on_edge = col == 0 || col == width - 1;
+            let color = if on_edge { Color::Black } else { Color::White };
             vga::set_pixel(x + col, y + row, color);
         }
     }

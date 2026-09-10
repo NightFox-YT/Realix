@@ -122,10 +122,13 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     }
 
     // Инициализация аллокатора фреймов по карте памяти E820 из PCINFO
-    let (videomode, video_width, video_height, video_stride, video_lfb_addr) = unsafe {
+    // video_height не используется - см. vga::set_video_geometry: масштаб
+    // (2x) и ширина/буфер достаточно определяют адресацию, "логическая"
+    // высота остаётся VGA_VIDEO_HEIGHT (200) независимо от режима
+    let (videomode, video_width, video_stride, video_lfb_addr) = unsafe {
         let pcinfo: &PcInfo = &*pcinfo_addr;
         frame_allocator::init(&pcinfo.memory_map);
-        (pcinfo.videomode, pcinfo.video_width, pcinfo.video_height, pcinfo.video_stride, pcinfo.video_lfb_addr)
+        (pcinfo.videomode, pcinfo.video_width, pcinfo.video_stride, pcinfo.video_lfb_addr)
     };
 
     // "[3]/[4] 32-bit Video Mode" - BIOS уже переключил VGA в 320x200x256
