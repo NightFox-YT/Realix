@@ -21,6 +21,14 @@
 //    - input() блокирует выполнение и рисует поле ввода прямо в открытом
 //      окне вывода (см. cliff::realx_read_input) - реентерабельности нет,
 //      это обычный синхронный вызов клавиатуры, как и везде в kernel32
+//    - mouse_x()/mouse_y()/mouse_down() - только графический Cliff (см.
+//      cliff_gfx::handle_top - передаёт живые координаты; текстовый
+//      cliff::handle_top передаёт (0,0,false), там нет мыши физически).
+//      Это ОДИН снимок на момент запуска программы (не опрашивается заново
+//      при каждом вызове - см. EvalCtx.mouse) - "живое" отслеживание внутри
+//      цикла while потребовало бы опроса драйвера мыши прямо во время
+//      исполнения, а это конфликтовало бы с тем же опросом в главном цикле
+//      Cliff (см. её же заголовок про то, что это "съело" бы курсор)
 //    - Защита от зависания: программа обрывается с ошибкой после
 //      MAX_STEPS выполненных строк (напр. `while 1 == 1:` без выхода)
 
@@ -266,6 +274,12 @@ struct EvalCtx<'a> {
     vars: &'a VarTable,
     out: &'a mut RealXOutput,
     read_input: &'a mut dyn FnMut(&mut RealXOutput) -> ([u8; INPUT_CAP], usize),
+    // Снимок положения мыши (x, y, зажата ли ЛКМ) на МОМЕНТ запуска
+    // программы (см. run()) - не обновляется во время исполнения. Не
+    // опрашиваем (poll()) мышь напрямую отсюда: это "съедало" бы
+    // накопленное смещение, которое нужно ГЛАВНОМУ циклу Cliff для
+    // курсора - та же идея, что у read_input/клавиатуры (см. заголовок файла)
+    mouse: (i32, i32, bool),
 }
 
 fn parse_expr(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
@@ -330,12 +344,28 @@ fn parse_factor(lex: &mut Lexer, ctx: &mut EvalCtx) -> Result<Value, ()> {
             let name = lex.read_ident();
             if name == b"input" {
                 parse_input_call(lex, ctx)
+            } else if name == b"mouse_x" {
+                parse_zero_arg_call(lex)?;
+                Ok(Value::Int(ctx.mouse.0 as i64))
+            } else if name == b"mouse_y" {
+                parse_zero_arg_call(lex)?;
+                Ok(Value::Int(ctx.mouse.1 as i64))
+            } else if name == b"mouse_down" {
+                parse_zero_arg_call(lex)?;
+                Ok(Value::Int(if ctx.mouse.2 { 1 } else { 0 }))
             } else {
                 ctx.vars.get(name).ok_or(())
             }
         }
         _ => Err(()),
     }
+}
+
+/// Разбор пустых скобок вызова функции без аргументов (mouse_x() и т.п.)
+fn parse_zero_arg_call(lex: &mut Lexer) -> Result<(), ()> {
+    if !lex.consume_byte(b'(') { return Err(()); }
+    if !lex.consume_byte(b')') { return Err(()); }
+    Ok(())
 }
 
 /// input() / input("подсказка") - подсказка (если есть) выводится как
@@ -455,9 +485,13 @@ fn skip_to_matching_end(source: &Editor, open_line: usize) -> Option<usize> {
 
 /// Выполняет программу RealX, записанную в редакторе `source`, и возвращает
 /// захваченный вывод (или сообщение об ошибке с error=true). `read_input` -
-/// см. EvalCtx/cliff::realx_read_input - вызывается при каждом input()
+/// см. EvalCtx/cliff::realx_read_input - вызывается при каждом input().
+/// `mouse` - снимок (x, y, зажата ли ЛКМ) на момент запуска, см. EvalCtx.mouse
+/// и mouse_x()/mouse_y()/mouse_down() в parse_factor - текстовый Cliff
+/// передаёт (0,0,false), там нет мыши
 pub fn run(
     source: &Editor,
+    mouse: (i32, i32, bool),
     mut read_input: impl FnMut(&mut RealXOutput) -> ([u8; INPUT_CAP], usize),
 ) -> RealXOutput {
     let mut out = RealXOutput::new();
@@ -503,7 +537,7 @@ pub fn run(
                 return out;
             }
             let value = {
-                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input };
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse };
                 parse_expr(&mut lex, &mut ctx)
             };
             match value {
@@ -523,7 +557,7 @@ pub fn run(
         } else if ident == b"if" || ident == b"while" {
             let is_while = ident == b"while";
             let cond = {
-                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input };
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse };
                 parse_condition(&mut lex, &mut ctx)
             };
             let cond = match cond {
@@ -571,7 +605,7 @@ pub fn run(
             }
 
             let rhs = {
-                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input };
+                let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input, mouse };
                 parse_expr(&mut lex, &mut ctx)
             };
 

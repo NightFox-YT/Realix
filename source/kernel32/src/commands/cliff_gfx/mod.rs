@@ -259,7 +259,7 @@ pub fn run() -> ! {
             let action = if mouse_clicked && movable && close_button_hit(win, mouse_x, mouse_y) {
                 Action::Close
             } else if let Some(key) = key {
-                handle_top(win, key)
+                handle_top(win, key, (mouse_x, mouse_y, left_down))
             } else {
                 Action::None
             };
@@ -382,7 +382,7 @@ fn arrow_direction(key: Key) -> Option<Direction> {
     }
 }
 
-fn handle_top(win: &mut Window, key: Key) -> Action {
+fn handle_top(win: &mut Window, key: Key, mouse: (i32, i32, bool)) -> Action {
     // Paint - фиксированное окно (по просьбе - не двигается/не меняет
     // размер), поэтому Ctrl+WASD для него намеренно пропускается целиком
     let movable = !matches!(win.layer, Layer::Paint(_));
@@ -439,7 +439,7 @@ fn handle_top(win: &mut Window, key: Key) -> Action {
             Key::Char(b'\x08') => ide.editor.backspace(),
             Key::Char(b'\n') => ide.editor.newline(),
             Key::Char(b'\\') => return Action::OpenDocs,
-            Key::Char(b'`') => return Action::OpenOutput(realx::lang::run(&ide.editor, gfx_read_input)),
+            Key::Char(b'`') => return Action::OpenOutput(realx::lang::run(&ide.editor, mouse, gfx_read_input)),
             Key::Char(byte) if (0x20..=0x7E).contains(&byte) => ide.editor.type_char(byte),
             _ => {}
         },
