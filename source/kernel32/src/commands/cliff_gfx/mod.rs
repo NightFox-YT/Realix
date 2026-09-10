@@ -22,6 +22,7 @@
 // поэтому останавливает систему, а не "выходит" куда-то
 
 mod font;
+mod paint;
 
 use crate::commands::cliff::calc_app::{self, CalcApp};
 use crate::commands::cliff::clock::{self, ClockApp};
@@ -32,6 +33,7 @@ use crate::commands::cliff::realx::{self, RealXIde};
 use crate::commands::cliff::textz::TextZApp;
 use crate::drivers::keyboard::{self, Direction, Key};
 use crate::drivers::vga::{self, Color};
+use paint::PaintApp;
 
 // Размер "клетки" (глиф + межсимвольный интервал) и сетка на экране 320x200
 const CELL_W: usize = font::CHAR_ADVANCE;
@@ -40,13 +42,15 @@ const GRID_COLS: usize = vga::VGA_VIDEO_WIDTH / CELL_W;
 const GRID_ROWS: usize = vga::VGA_VIDEO_HEIGHT / CELL_H;
 
 struct IconDef { label: &'static str }
-const ICONS: [IconDef; 5] = [
+const ICONS: [IconDef; 6] = [
     IconDef { label: "CALC" },
     IconDef { label: "TEXTZ" },
     IconDef { label: "REALX" },
     IconDef { label: "CLOCK" },
     IconDef { label: "MY PC" },
+    IconDef { label: "PAINT" },
 ];
+const PAINT_ICON: usize = 5;
 const ICON_W: usize = 9;
 const ICON_H: usize = 3;
 const ICON_GAP: usize = 1;
@@ -75,6 +79,15 @@ const DOCS_COL: usize = 2;
 const OUTPUT_ROW: usize = 5;
 const OUTPUT_COL: usize = 3;
 
+// Paint - фиксированное окно (не двигается/не меняет размер - см.
+// handle_top), поэтому нет отдельных MIN/MAX, только один размер.
+// Ширина/высота даны с запасом вокруг холста paint::COLS x paint::ROWS
+// клеток по paint::CELL_PX пикселей каждая (см. draw_paint_window)
+const PAINT_ROW: usize = 1;
+const PAINT_COL: usize = 1;
+const PAINT_WINDOW_W: usize = 38;
+const PAINT_WINDOW_H: usize = 16;
+
 enum Layer {
     Calc(CalcApp),
     TextZ(TextZApp),
@@ -83,6 +96,7 @@ enum Layer {
     RealXOutput(RealXOutput),
     Clock(ClockApp),
     MyPc(MyPcApp),
+    Paint(PaintApp),
 }
 
 struct Window {
@@ -193,10 +207,15 @@ fn open_icon(selected: usize) -> Window {
             width: EDITOR_MAX_W, height: EDITOR_MAX_H,
             layer: Layer::Clock(ClockApp::new()),
         },
-        _ => Window {
+        4 => Window {
             row: APP_ROW, col: APP_COL,
             width: EDITOR_MAX_W, height: EDITOR_MAX_H,
             layer: Layer::MyPc(MyPcApp::new()),
+        },
+        _ => Window {
+            row: PAINT_ROW, col: PAINT_COL,
+            width: PAINT_WINDOW_W, height: PAINT_WINDOW_H,
+            layer: Layer::Paint(PaintApp::new()),
         },
     }
 }
@@ -207,6 +226,9 @@ fn resize_bounds(layer: &Layer) -> (usize, usize, usize, usize) {
         Layer::TextZ(_) | Layer::RealXIde(_) | Layer::RealXDocs | Layer::RealXOutput(_)
         | Layer::Clock(_) | Layer::MyPc(_) =>
             (EDITOR_MIN_W, EDITOR_MAX_W, EDITOR_MIN_H, EDITOR_MAX_H),
+        // Paint не двигается/не меняет размер (см. handle_top) - min==max
+        // на случай, если сюда всё же дойдёт вызов, ничего не изменится
+        Layer::Paint(_) => (PAINT_WINDOW_W, PAINT_WINDOW_W, PAINT_WINDOW_H, PAINT_WINDOW_H),
     }
 }
 
@@ -244,9 +266,13 @@ fn arrow_direction(key: Key) -> Option<Direction> {
 }
 
 fn handle_top(win: &mut Window, key: Key) -> Action {
+    // Paint - фиксированное окно (по просьбе - не двигается/не меняет
+    // размер), поэтому Ctrl+WASD для него намеренно пропускается целиком
+    let movable = !matches!(win.layer, Layer::Paint(_));
+
     match key {
-        Key::WindowMove(dir) => { apply_move(win, dir); return Action::None; }
-        Key::WindowResize(dir) => {
+        Key::WindowMove(dir) if movable => { apply_move(win, dir); return Action::None; }
+        Key::WindowResize(dir) if movable => {
             let (min_w, max_w, min_h, max_h) = resize_bounds(&win.layer);
             apply_resize(win, dir, min_w, max_w, min_h, max_h);
             return Action::None;
@@ -309,6 +335,16 @@ fn handle_top(win: &mut Window, key: Key) -> Action {
         Layer::Clock(_) | Layer::MyPc(_) => {
             if let Key::Escape = key { return Action::Close; }
         }
+        Layer::Paint(paint) => match key {
+            Key::Escape => return Action::Close,
+            Key::Up => paint.move_up(),
+            Key::Down => paint.move_down(),
+            Key::Left => paint.move_left(),
+            Key::Right => paint.move_right(),
+            Key::Char(b'\n') => paint.place_square(),
+            Key::Char(b' ') => paint.cycle_color(),
+            _ => {}
+        },
     }
     Action::None
 }
@@ -469,7 +505,51 @@ fn draw_window(win: &Window) {
             }
             draw_static_window(row, col, w, h, "MY PC", Color::Cyan, &refs[..count]);
         }
+        Layer::Paint(paint) => draw_paint_window(row, col, paint),
     }
+}
+
+/// Paint - холст paint::COLS x paint::ROWS квадратов paint::CELL_PX пикселей
+/// каждый, отрисованных заново из состояния (paint.cell()) каждый кадр, плюс
+/// обводка-курсор поверх. Позиция/размер окна фиксированы - см. handle_top
+fn draw_paint_window(row: usize, col: usize, paint: &PaintApp) {
+    let w = PAINT_WINDOW_W;
+    let h = PAINT_WINDOW_H;
+    clear_interior(row, col, w, h);
+    draw_box(row, col, w, h, Color::White);
+
+    draw_text_at(row + 1, col + 1, "PAINT", Color::LightCyan);
+    draw_text_at(row + 1, col + w - 10, "Sp:color Ent:draw", Color::DarkGray);
+
+    // Текущий цвет - подпись + закрашенный образец
+    draw_text_at(row + 2, col + 1, "COLOR:", Color::LightGray);
+    let swatch_x = (col + 8) * CELL_W;
+    let swatch_y = (row + 2) * CELL_H;
+    vga::draw_rect(swatch_x, swatch_x + 7, swatch_y, swatch_y + CELL_H - 2, paint.current_color());
+    draw_text_at(row + 2, col + 10, paint.current_color_name(), Color::White);
+
+    // Холст
+    let canvas_x0 = (col + 1) * CELL_W;
+    let canvas_y0 = (row + 3) * CELL_H;
+
+    for cy in 0..paint::ROWS {
+        for cx in 0..paint::COLS {
+            let x0 = canvas_x0 + cx * paint::CELL_PX;
+            let y0 = canvas_y0 + cy * paint::CELL_PX;
+            let color = paint.cell(cy, cx).unwrap_or(Color::Black);
+            vga::draw_rect(x0, x0 + paint::CELL_PX - 2, y0, y0 + paint::CELL_PX - 2, color);
+        }
+    }
+
+    // Курсор - жёлтая обводка вокруг клетки под ним
+    let cx0 = canvas_x0 + paint.cursor_col * paint::CELL_PX;
+    let cy0 = canvas_y0 + paint.cursor_row * paint::CELL_PX;
+    let cx1 = cx0 + paint::CELL_PX - 2;
+    let cy1 = cy0 + paint::CELL_PX - 2;
+    vga::draw_hline(cx0, cx1, cy0, Color::Yellow);
+    vga::draw_hline(cx0, cx1, cy1, Color::Yellow);
+    vga::draw_vline(cx0, cy0, cy1, Color::Yellow);
+    vga::draw_vline(cx1, cy0, cy1, Color::Yellow);
 }
 
 fn clip(text: &str, max_len: usize) -> &str {
