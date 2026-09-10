@@ -36,11 +36,19 @@ use crate::drivers::mouse;
 use crate::drivers::vga::{self, Color};
 use paint::PaintApp;
 
-// Размер "клетки" (глиф + межсимвольный интервал) и сетка на экране 320x200
+// Размер "клетки" (глиф + межсимвольный интервал) - абсолютный, в пикселях,
+// НЕ зависит от режима (см. grid_cols/grid_rows ниже - это то, что меняется
+// между режимами: при "нативном" 16:9, где логический холст реально больше
+// (см. vga::set_video_geometry), те же клетки просто помещаются в бОльшую
+// сетку - элементы не увеличиваются, их помещается больше)
 const CELL_W: usize = font::CHAR_ADVANCE;
 const CELL_H: usize = font::GLYPH_HEIGHT + 1;
-const GRID_COLS: usize = vga::VGA_VIDEO_WIDTH / CELL_W;
-const GRID_ROWS: usize = vga::VGA_VIDEO_HEIGHT / CELL_H;
+
+/// Сетка в знакоместах - функции, а не const, т.к. зависят от текущей
+/// логической геометрии (vga::video_width/height), которая может быть
+/// разной в разных видеорежимах (см. заголовок CELL_W выше)
+fn grid_cols() -> usize { vga::video_width() / CELL_W }
+fn grid_rows() -> usize { vga::video_height() / CELL_H }
 
 // Иконки рисуются пикселями по номеру (см. draw_icon), а не текстовым
 // глифом - "kind" это просто индекс в draw_icon's match, не связанный с
@@ -62,8 +70,9 @@ const ICON_H: usize = 5;
 const ICON_GAP: usize = 1;
 const ICON_ROW: usize = 2;
 const ICON_START_COL: usize = 1;
-// GRID_COLS=53 - 5 иконок ровно влезают в ряд ((ICON_W+ICON_GAP)*5=50);
-// 6-я (Paint) переносится на второй ряд, как и в текстовом Cliff
+// grid_cols() - минимум 53 (классические режимы) - 5 иконок ровно влезают
+// в ряд ((ICON_W+ICON_GAP)*5=50); 6-я (Paint) переносится на второй ряд,
+// как и в текстовом Cliff (в 16:9-режиме места тем более достаточно)
 const ICONS_PER_ROW: usize = 5;
 
 // Периодическая перерисовка даже без нажатий - см. cliff::IDLE_REDRAW_TICKS
@@ -78,16 +87,18 @@ const CALC_DEFAULT_COL: usize = 15;
 
 // Границы размера окна-редактора (TextZ/RealX IDE/Docs/Output) - максимум
 // = полный размер буфера (editor::LINE_LEN/MAX_LINES), больше показывать
-// нечего; должны укладываться в сетку (GRID_COLS x GRID_ROWS)
+// нечего; должны укладываться в сетку (grid_cols() x grid_rows())
 const EDITOR_MIN_W: usize = 20;
 const EDITOR_MAX_W: usize = editor::LINE_LEN + 4;
 const EDITOR_MIN_H: usize = 7;
 const EDITOR_MAX_H: usize = editor::MAX_LINES + 3;
 
-// Позиции по умолчанию для окон в полный размер (EDITOR_MAX_W=50) - на
-// сетке всего GRID_COLS=53 столбца, так что col не может превышать 3
-// (col+width<=GRID_COLS) - небольшое смещение по строкам вместо столбцов
-// даёт тот же "слоёный" вид (IDE снизу, Docs/Output чуть выше поверх)
+// Позиции по умолчанию для окон в полный размер (EDITOR_MAX_W=50) - в
+// классических режимах grid_cols() всего 53 столбца, так что col не может
+// превышать 3 (col+width<=grid_cols()) - небольшое смещение по строкам
+// вместо столбцов даёт тот же "слоёный" вид (IDE снизу, Docs/Output чуть
+// выше поверх); в 16:9-режиме места намного больше, но те же отступы всё
+// равно смотрятся нормально - просто ближе к левому краю
 const APP_ROW: usize = 1;
 const APP_COL: usize = 1;
 const DOCS_ROW: usize = 3;
@@ -138,8 +149,8 @@ pub fn run() -> ! {
     let mut stack: [Option<Window>; 2] = [None, None];
     let mut depth: usize = 0;
 
-    let mut mouse_x: i32 = (vga::VGA_VIDEO_WIDTH / 2) as i32;
-    let mut mouse_y: i32 = (vga::VGA_VIDEO_HEIGHT / 2) as i32;
+    let mut mouse_x: i32 = (vga::video_width() / 2) as i32;
+    let mut mouse_y: i32 = (vga::video_height() / 2) as i32;
     let mut mouse_was_down = false;
 
     // Смещение (в пикселях) между точкой клика и левым верхним углом окна,
@@ -161,8 +172,8 @@ pub fn run() -> ! {
         // движение мыши или таймаут). Y инвертирован: у PS/2 положительный
         // dy - движение ВВЕРХ, а экранные координаты растут вниз
         let (dx, dy, left_down) = mouse::poll();
-        mouse_x = (mouse_x + dx).clamp(0, vga::VGA_VIDEO_WIDTH as i32 - 1);
-        mouse_y = (mouse_y - dy).clamp(0, vga::VGA_VIDEO_HEIGHT as i32 - 1);
+        mouse_x = (mouse_x + dx).clamp(0, vga::video_width() as i32 - 1);
+        mouse_y = (mouse_y - dy).clamp(0, vga::video_height() as i32 - 1);
         let mouse_clicked = left_down && !mouse_was_down;
         mouse_was_down = left_down;
 
@@ -248,8 +259,8 @@ pub fn run() -> ! {
                     if left_down {
                         let new_col = ((mouse_x - offset_x).max(0) as usize) / CELL_W;
                         let new_row = ((mouse_y - offset_y).max(0) as usize) / CELL_H;
-                        win.col = new_col.min(GRID_COLS.saturating_sub(win.width));
-                        win.row = new_row.min(GRID_ROWS.saturating_sub(win.height)).max(1);
+                        win.col = new_col.min(grid_cols().saturating_sub(win.width));
+                        win.row = new_row.min(grid_rows().saturating_sub(win.height)).max(1);
                     } else {
                         dragging = None;
                     }
@@ -352,9 +363,9 @@ fn resize_bounds(layer: &Layer) -> (usize, usize, usize, usize) {
 fn apply_move(win: &mut Window, dir: Direction) {
     match dir {
         Direction::Up => win.row = win.row.saturating_sub(1).max(1),
-        Direction::Down => win.row = (win.row + 1).min(GRID_ROWS - win.height),
+        Direction::Down => win.row = (win.row + 1).min(grid_rows() - win.height),
         Direction::Left => win.col = win.col.saturating_sub(1),
-        Direction::Right => win.col = (win.col + 1).min(GRID_COLS - win.width),
+        Direction::Right => win.col = (win.col + 1).min(grid_cols() - win.width),
     }
 }
 
@@ -366,8 +377,8 @@ fn apply_resize(win: &mut Window, dir: Direction, min_w: usize, max_w: usize, mi
         Direction::Right => win.width = (win.width + 1).min(max_w),
     }
 
-    win.col = win.col.min(GRID_COLS.saturating_sub(win.width));
-    win.row = win.row.min(GRID_ROWS.saturating_sub(win.height)).max(1);
+    win.col = win.col.min(grid_cols().saturating_sub(win.width));
+    win.row = win.row.min(grid_rows().saturating_sub(win.height)).max(1);
 }
 
 /// Key::Up/Down/Left/Right -> Direction (для окон, где голые стрелки не
@@ -637,8 +648,8 @@ fn draw_desktop(selected: usize) {
 /// commands::cliff::draw_taskbar - тот же принцип, здесь пикселями)
 fn draw_taskbar() {
     let panel_h_px = CELL_H + 4;
-    let y0 = vga::VGA_VIDEO_HEIGHT - panel_h_px;
-    vga::draw_rect(0, vga::VGA_VIDEO_WIDTH - 1, y0, vga::VGA_VIDEO_HEIGHT - 1, Color::DarkGray);
+    let y0 = vga::video_height() - panel_h_px;
+    vga::draw_rect(0, vga::video_width() - 1, y0, vga::video_height() - 1, Color::DarkGray);
 
     let text_y = y0 + 2;
     font::draw_text(3, text_y, "CLIFF", Color::Yellow);
@@ -646,7 +657,7 @@ fn draw_taskbar() {
     let now = crate::drivers::rtc::now();
     let mut buf = [0u8; 5];
     let clock = format_hms(&now, &mut buf);
-    let clock_x = vga::VGA_VIDEO_WIDTH - clock.len() * CELL_W - 3;
+    let clock_x = vga::video_width() - clock.len() * CELL_W - 3;
     font::draw_text(clock_x, text_y, clock, Color::White);
 }
 
@@ -674,13 +685,13 @@ fn draw_wallpaper() {
     let colors = [Color::Black, Color::Blue, Color::Magenta, Color::LightBlue];
     let bands = colors.len() - 1;
 
-    for y in 0..vga::VGA_VIDEO_HEIGHT {
+    for y in 0..vga::video_height() {
         // Положение по вертикали в [0, bands) как fixed-point (шаг 1/256)
-        let pos = y * bands * 256 / vga::VGA_VIDEO_HEIGHT;
+        let pos = y * bands * 256 / vga::video_height();
         let band = (pos / 256).min(bands - 1);
         let frac = pos % 256; // насколько близко к следующему цвету полосы
 
-        for x in 0..vga::VGA_VIDEO_WIDTH {
+        for x in 0..vga::video_width() {
             let dither = (x * 41 + y * 23) % 256;
             let color = if dither < frac { colors[band + 1] } else { colors[band] };
             vga::set_pixel(x, y, color);
@@ -690,10 +701,10 @@ fn draw_wallpaper() {
     // Широкий диагональный блик (парабола) через весь экран
     let cx: isize = 360;
     let cy: isize = -60;
-    for x in 0..vga::VGA_VIDEO_WIDTH {
+    for x in 0..vga::video_width() {
         let dx = x as isize - cx;
         let y = cy + (dx * dx) / 280;
-        if (0..vga::VGA_VIDEO_HEIGHT as isize).contains(&y) {
+        if (0..vga::video_height() as isize).contains(&y) {
             vga::set_pixel(x, y as usize, Color::LightCyan);
         }
     }

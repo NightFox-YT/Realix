@@ -80,6 +80,8 @@ boot_switcher:
     je load_kernel32_video
     cmp al, '4'
     je load_kernel32_video_hires
+    cmp al, '5'
+    je load_kernel32_video_169
 
     jmp .timer_loop
 
@@ -162,6 +164,7 @@ load_kernel32_video_hires:
     mov es, ax
 
     mov word [es:PCINFO_ADDR + PCINFO_VIDEOMODE], 1
+    mov word [es:PCINFO_ADDR + PCINFO_VIDEO_WIDE], 0
 
     mov ax, [vbe_width]
     mov [es:PCINFO_ADDR + PCINFO_VIDEO_WIDTH], ax
@@ -180,6 +183,50 @@ load_kernel32_video_hires:
 .vbe_failed:
     ; VBE/LFB недоступны на этой машине - откатываемся на обычный VGA
     ; mode 13h вместо того, чтобы оставить систему без картинки вообще
+    mov si, msg_vbe_failed
+    call print
+    call print_new_line
+    jmp load_kernel32_video
+
+
+; > Ветка Protected Mode с Video Mode (32-bit with Cliff, 640x480 VBE, 16:9)
+; Тот же самый видеорежим VBE, что и load_kernel32_video_hires, но с другим
+; флагом PCINFO_VIDEO_WIDE - kernel32 (main.rs) читает его и настраивает
+; ДРУГУЮ логическую геометрию (см. vga::set_video_geometry): не блок 2x2
+; поверх тех же логических 320x200, а "натуральный" холст 640x360 (16:9,
+; scale=1) - элементы интерфейса остаются того же размера в пикселях, но
+; занимают МЕНЬШУЮ долю экрана, из-за чего реально помещается больше -
+; именно это должно "ощущаться" как более высокое разрешение, а не просто
+; чёткость того же интерфейса (см. load_kernel32_video_hires)
+load_kernel32_video_169:
+    mov cx, VBE_MODE_640x480
+    call enable_vbe_videomode
+    jc .vbe_failed
+    call set_standard_16_palette
+
+    push es
+    push ax
+    xor ax, ax
+    mov es, ax
+
+    mov word [es:PCINFO_ADDR + PCINFO_VIDEOMODE], 1
+    mov word [es:PCINFO_ADDR + PCINFO_VIDEO_WIDE], 1
+
+    mov ax, [vbe_width]
+    mov [es:PCINFO_ADDR + PCINFO_VIDEO_WIDTH], ax
+    mov ax, [vbe_height]
+    mov [es:PCINFO_ADDR + PCINFO_VIDEO_HEIGHT], ax
+    mov ax, [vbe_stride]
+    mov [es:PCINFO_ADDR + PCINFO_VIDEO_STRIDE], ax
+    mov eax, [vbe_lfb_addr]
+    mov [es:PCINFO_ADDR + PCINFO_VIDEO_LFB], eax
+
+    pop ax
+    pop es
+
+    jmp load_kernel32
+
+.vbe_failed:
     mov si, msg_vbe_failed
     call print
     call print_new_line
@@ -309,7 +356,8 @@ msg_choose_mode:
     db '  [1] 16-bit Real Mode (NASM)', ENTER
     db '  [2] 32-bit Protected Mode (Rust)', ENTER
     db '  [3] 32-bit with Cliff (320x200, 256 colors)', ENTER
-    db '  [4] 32-bit with Cliff (640x480, 256 colors, VBE)', ENTER, 0
+    db '  [4] 32-bit with Cliff (640x480, 256 colors, VBE)', ENTER
+    db '  [5] 32-bit with Cliff (640x480, 16:9, smaller UI, VBE)', ENTER, 0
 
 msg_timer:       db '  (Auto: 32-bit will be selected in 10 seconds)', 0
 msg_loading_16:  db '[+] Loading 16-bit kernel.', ENTER, 0

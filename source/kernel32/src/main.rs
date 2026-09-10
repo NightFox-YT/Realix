@@ -43,6 +43,10 @@ pub struct PcInfo {
     pub video_height: u16,
     pub video_stride: u16,
     pub video_lfb_addr: u32,
+    // 0 = классический 2x-scale (тот же 320x200-интерфейс Cliff), 1 =
+    // "нативный" 16:9 (см. switcher.asm: load_kernel32_video_169,
+    // vga::set_video_geometry)
+    pub video_wide: u16,
 }
 
 // Доступ-обёртка к элементам структуры
@@ -122,28 +126,32 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     }
 
     // Инициализация аллокатора фреймов по карте памяти E820 из PCINFO
-    // video_height не используется - см. vga::set_video_geometry: масштаб
-    // (2x) и ширина/буфер достаточно определяют адресацию, "логическая"
-    // высота остаётся VGA_VIDEO_HEIGHT (200) независимо от режима
-    let (videomode, video_width, video_stride, video_lfb_addr) = unsafe {
+    let (videomode, video_width, video_stride, video_lfb_addr, video_wide) = unsafe {
         let pcinfo: &PcInfo = &*pcinfo_addr;
         frame_allocator::init(&pcinfo.memory_map);
-        (pcinfo.videomode, pcinfo.video_width, pcinfo.video_stride, pcinfo.video_lfb_addr)
+        (pcinfo.videomode, pcinfo.video_width, pcinfo.video_stride, pcinfo.video_lfb_addr, pcinfo.video_wide)
     };
 
-    // "[3]/[4] 32-bit Video Mode" - BIOS уже переключил VGA в 320x200x256
-    // ИЛИ VBE 640x400x256 ДО перехода в Protected Mode (см. switcher.asm:
-    // load_kernel32_video/load_kernel32_video_hires) - отсюда нет пути
-    // назад в текстовый режим (нужен был бы реальный переход в Real Mode),
-    // поэтому весь текстовый shell ниже здесь не участвует -
-    // commands::cliff_gfx::run() сам себя не возвращает (halt при выходе)
+    // "[3]/[4]/[5] 32-bit Video Mode" - BIOS уже переключил VGA в
+    // 320x200x256 ИЛИ VBE 640x480x256 ДО перехода в Protected Mode (см.
+    // switcher.asm: load_kernel32_video/load_kernel32_video_hires/
+    // load_kernel32_video_169) - отсюда нет пути назад в текстовый режим
+    // (нужен был бы реальный переход в Real Mode), поэтому весь текстовый
+    // shell ниже здесь не участвует - commands::cliff_gfx::run() сам себя
+    // не возвращает (halt при выходе)
     if videomode == 1 {
-        // video_width != 0 - VBE 640x400 вместо обычного mode 13h. Вся
-        // раскладка Cliff остаётся "логически" 320x200 - каждый логический
-        // пиксель просто рисуется блоком 2x2 в настоящем (вдвое большем)
-        // кадровом буфере, см. vga::set_video_geometry
+        // video_width != 0 - VBE 640x480 вместо обычного mode 13h.
         if video_width != 0 {
-            vga::set_video_geometry(2, video_stride as usize, video_lfb_addr as usize);
+            if video_wide != 0 {
+                // [5]: "нативный" 16:9 - логический холст РЕАЛЬНО 640x360
+                // (не блочно растянутые те же 320x200 - см. set_video_geometry),
+                // scale=1. 480-360=120 нижних строк реального кадра не
+                // используются (16:9 не укладывается в 640x480 ровно)
+                vga::set_video_geometry(1, video_stride as usize, video_lfb_addr as usize, 640, 360);
+            } else {
+                // [4]: тот же 320x200-интерфейс Cliff, отрисован блоками 2x2
+                vga::set_video_geometry(2, video_stride as usize, video_lfb_addr as usize, 320, 200);
+            }
         }
         drivers::mouse::init();
         commands::cliff_gfx::run();

@@ -40,6 +40,21 @@ static VIDEO_SCALE: AtomicUsize = AtomicUsize::new(1);
 static VIDEO_REAL_STRIDE: AtomicUsize = AtomicUsize::new(VGA_VIDEO_WIDTH);
 static VIDEO_REAL_BUFFER: AtomicUsize = AtomicUsize::new(0xA0000);
 
+// "Логический" размер холста, которым оперируют set_pixel/fill_screen и
+// (через video_width/video_height) вся раскладка cliff_gfx - по умолчанию
+// равен VGA_VIDEO_WIDTH/HEIGHT (обычный VGA mode 13h). set_video_geometry
+// может задать другой размер - см. её заголовок про 16:9-режим, где холст
+// РЕАЛЬНО больше (не блочно растянутая версия тех же 320x200 - см. scale)
+static LOGICAL_WIDTH: AtomicUsize = AtomicUsize::new(VGA_VIDEO_WIDTH);
+static LOGICAL_HEIGHT: AtomicUsize = AtomicUsize::new(VGA_VIDEO_HEIGHT);
+
+/// Текущая логическая ширина/высота холста (см. LOGICAL_WIDTH/HEIGHT выше) -
+/// то, чем должна оперировать вся раскладка (cliff_gfx::GRID_COLS/ROWS и
+/// т.п.), а не фиксированные VGA_VIDEO_WIDTH/HEIGHT, если нужна поддержка
+/// режимов с другим логическим размером (см. set_video_geometry)
+pub fn video_width() -> usize { LOGICAL_WIDTH.load(Relaxed) }
+pub fn video_height() -> usize { LOGICAL_HEIGHT.load(Relaxed) }
+
 // Таблица цветов
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -108,7 +123,7 @@ pub fn print_line(line: &str, color: Color) { unsafe { (OPS.print_line)(line, co
 
 /// Отдельно от OPS — эта функция вообще не должна дёргаться в текстовом режиме
 pub fn set_pixel(x: usize, y: usize, color: Color) {
-    if x >= VGA_VIDEO_WIDTH || y >= VGA_VIDEO_HEIGHT {
+    if x >= video_width() || y >= video_height() {
         return;
     }
 
@@ -134,29 +149,38 @@ pub fn set_pixel(x: usize, y: usize, color: Color) {
 
 /// Заливка всего экрана одним цветом (VGA Video)
 pub fn fill_screen(color: Color) {
-    for y in 0..VGA_VIDEO_HEIGHT {
-        for x in 0..VGA_VIDEO_WIDTH {
+    for y in 0..video_height() {
+        for x in 0..video_width() {
             set_pixel(x, y, color);
         }
     }
 }
 
 /// Настройка геометрии видеопамяти после boot-time переключения в VBE (см.
-/// switcher.asm: load_kernel32_video_hires, main.rs: kmain) - по умолчанию
-/// (не вызвано) все пиксельные функции работают как раньше: scale=1,
-/// real_stride=320, real_buffer=0xA0000 (обычный VGA mode 13h)
+/// switcher.asm: load_kernel32_video_hires/_169, main.rs: kmain) - по
+/// умолчанию (не вызвано) всё работает как раньше: scale=1, real_stride=320,
+/// real_buffer=0xA0000, логический холст VGA_VIDEO_WIDTH x VGA_VIDEO_HEIGHT
+/// (обычный VGA mode 13h)
 /// Параметры:
-///  - scale: во сколько раз один "логический" пиксель (в пределах
-///    VGA_VIDEO_WIDTH x VGA_VIDEO_HEIGHT - раскладка Cliff не меняется)
-///    больше одного настоящего пикселя экрана
+///  - scale: во сколько раз один "логический" пиксель больше одного
+///    настоящего пикселя экрана (2 - тот же 320x200-интерфейс Cliff, но
+///    крупнее/чётче; 1 - "натуральный" размер, см. logical_w/h ниже)
 ///  - real_stride: байт на строку в настоящем кадровом буфере
 ///    (BytesPerScanLine из VBE ModeInfoBlock - не обязательно совпадает
 ///    с шириной экрана из-за выравнивания)
 ///  - real_buffer: физический адрес настоящего кадрового буфера (LFB)
-pub fn set_video_geometry(scale: usize, real_stride: usize, real_buffer: usize) {
+///  - logical_w/logical_h: логический размер холста (то, что видит вся
+///    раскладка cliff_gfx через video_width/video_height) - НЕ обязан
+///    совпадать с VGA_VIDEO_WIDTH/HEIGHT: при scale=1 больший логический
+///    холст даёт реально больше места (мельче относительно экрана, "по-
+///    настоящему" ощущается как более высокое разрешение), а не только
+///    чёткость того же интерфейса, как при scale=2
+pub fn set_video_geometry(scale: usize, real_stride: usize, real_buffer: usize, logical_w: usize, logical_h: usize) {
     VIDEO_SCALE.store(scale, Relaxed);
     VIDEO_REAL_STRIDE.store(real_stride, Relaxed);
     VIDEO_REAL_BUFFER.store(real_buffer, Relaxed);
+    LOGICAL_WIDTH.store(logical_w, Relaxed);
+    LOGICAL_HEIGHT.store(logical_h, Relaxed);
 }
 
 

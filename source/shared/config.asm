@@ -44,6 +44,11 @@ PCINFO_VIDEO_WIDTH  equ 1548  ; 16: Ширина экрана (px)
 PCINFO_VIDEO_HEIGHT equ 1550  ; 16: Высота экрана (px)
 PCINFO_VIDEO_STRIDE equ 1552  ; 16: Байт на строку (BytesPerScanLine)
 PCINFO_VIDEO_LFB    equ 1554  ; 32: Физический адрес линейного фреймбуфера
+; 16: 0 = классический режим (тот же 320x200-интерфейс Cliff, отрисован
+; блоками scale x scale - см. vga::set_video_geometry), 1 = "нативный" 16:9
+; (логический холст РЕАЛЬНО больше, элементы мельче относительно экрана -
+; см. load_kernel32_video_169)
+PCINFO_VIDEO_WIDE   equ 1558
 
 ; Маркеры кластеров FAT12 (общие для bootix и bios-api/fat12)
 CHAIN_END   equ 0x0FF8  ; Кластер >= этого - конец цепочки (EOF)
