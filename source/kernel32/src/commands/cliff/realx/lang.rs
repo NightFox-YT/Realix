@@ -105,6 +105,23 @@ fn compare(cmp: u8, lhs: Value, rhs: Value) -> Result<bool, ()> {
     }
 }
 
+/// Составное присваивание (x += / -= / *= / /= expr) - та же арифметика,
+/// что и обычные операторы (add_values для "+", as_int для остальных, т.к.
+/// -,*,/ определены только для int - см. заголовок файла)
+fn apply_compound(op: u8, current: Value, rhs: Value) -> Result<Value, ()> {
+    match op {
+        b'+' => add_values(current, rhs),
+        b'-' => Ok(Value::Int(as_int(current)?.checked_sub(as_int(rhs)?).ok_or(())?)),
+        b'*' => Ok(Value::Int(as_int(current)?.checked_mul(as_int(rhs)?).ok_or(())?)),
+        b'/' => {
+            let divisor = as_int(rhs)?;
+            if divisor == 0 { return Err(()); }
+            Ok(Value::Int(as_int(current)?.checked_div(divisor).ok_or(())?))
+        }
+        _ => Err(()),
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Var {
     name: [u8; VAR_NAME_LEN],
@@ -541,16 +558,32 @@ pub fn run(
             out.push_error(pc);
             return out;
         } else {
-            // Присваивание: IDENT = expr
-            if !lex.consume_byte(b'=') {
+            // Присваивание: IDENT = expr, либо составное IDENT += / -= / *= / /= expr
+            let compound_op: Option<u8> = if lex.consume_str(b"+=") { Some(b'+') }
+                else if lex.consume_str(b"-=") { Some(b'-') }
+                else if lex.consume_str(b"*=") { Some(b'*') }
+                else if lex.consume_str(b"/=") { Some(b'/') }
+                else { None };
+
+            if compound_op.is_none() && !lex.consume_byte(b'=') {
                 out.push_error(pc);
                 return out;
             }
-            let value = {
+
+            let rhs = {
                 let mut ctx = EvalCtx { vars: &vars, out: &mut out, read_input: &mut read_input };
                 parse_expr(&mut lex, &mut ctx)
             };
-            match value {
+
+            let result = rhs.and_then(|rhs_val| match compound_op {
+                None => Ok(rhs_val),
+                Some(op) => {
+                    let current = vars.get(ident).ok_or(())?;
+                    apply_compound(op, current, rhs_val)
+                }
+            });
+
+            match result {
                 Ok(v) => {
                     if vars.set(ident, v).is_err() {
                         out.push(b"Error: too many variables");

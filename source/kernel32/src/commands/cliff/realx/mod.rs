@@ -29,7 +29,7 @@ pub const DOCS_TEXT: &[&str] = &[
     "    print(x)",
     "end",
     "while x > 0:",
-    "    x = x - 1",
+    "    x -= 1        # also += *= /=",
     "end",
     "Cmp == != < <= > >=  (int-int or str-str)",
     "-,*,/ only int; + also concats str",
