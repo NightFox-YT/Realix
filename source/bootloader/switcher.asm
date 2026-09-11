@@ -87,14 +87,27 @@ boot_switcher:
     je load_kernel16
     cmp al, '2'
     je load_kernel32
+    cmp al, '3'
+    je load_kernel32_nightly
+    cmp al, '4'
+    je load_kernel16_nightly
 
     jmp .menu_loop
 
 .timer_cursor_y: db 0
 
 
-; > Ветка Real Mode (16 bit)
+; > Ветка Real Mode (16 bit, стабильное ядро)
 load_kernel16:
+    mov word [kernel16_target_filename], kernel16_filename
+    jmp load_kernel16_common
+
+; > Ветка Real Mode (16 bit, Nightly - экспериментальное ядро, поддержка MS-DOS .COM)
+load_kernel16_nightly:
+    mov word [kernel16_target_filename], kernel16_nightly_filename
+
+; > Общее продолжение загрузки 16-битного ядра (Имя файла - в kernel16_target_filename)
+load_kernel16_common:
     ; Включаем курсор
     mov ah, 01h
     mov cx, 0607h
@@ -106,7 +119,7 @@ load_kernel16:
     call print
 
     ; Чтение файла 16-битного ядра с диска
-    mov si, kernel16_filename
+    mov si, [kernel16_target_filename]
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
     xor di, di
@@ -126,8 +139,17 @@ load_kernel16:
     jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
 
 
-; > Ветка Protected Mode (32-bit)
+; > Ветка Protected Mode (32-bit, стабильное ядро)
 load_kernel32:
+    mov word [kernel32_target_filename], kernel32_filename
+    jmp load_kernel32_common
+
+; > Ветка Protected Mode (32-bit, Nightly - экспериментальное ядро "это наше")
+load_kernel32_nightly:
+    mov word [kernel32_target_filename], kernel32_nightly_filename
+
+; > Общее продолжение загрузки 32-битного ядра (Имя файла - в kernel32_target_filename)
+load_kernel32_common:
     ; Включаем курсор
     mov ah, 01h
     mov cx, 0607h
@@ -139,7 +161,7 @@ load_kernel32:
     call print
 
     ; Чтение файла 32-битного ядра с диска
-    mov si, kernel32_filename
+    mov si, [kernel32_target_filename]
     mov cx, KERNEL_LOAD_SEGMENT
     mov bx, KERNEL_LOAD_OFFSET
     xor di, di
@@ -248,7 +270,9 @@ bits 16
 msg_choose_mode:
     db '[+] Select OS Mode:', ENTER
     db '  [1] 16-bit Real Mode (NASM)', ENTER
-    db '  [2] 32-bit Protected Mode (Rust)', ENTER, 0
+    db '  [2] 32-bit Protected Mode (Rust)', ENTER
+    db '  [3] 32-bit Protected Mode Nightly (Rust, experimental)', ENTER
+    db '  [4] 16-bit Real Mode Nightly (NASM, MS-DOS .COM support)', ENTER, 0
 
 msg_timer:      db '  (Auto: 32-bit will be selected in 10 seconds)', 0
 msg_loading_16: db '[+] Loading 16-bit kernel.', ENTER, 0
@@ -256,7 +280,13 @@ msg_loading_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
 
 ; Переменные
 kernel16_filename: db 'KERNEL16BIN'
+kernel16_nightly_filename: db 'NIGHT16 BIN'
 kernel32_filename: db 'KERNEL32BIN'
+kernel32_nightly_filename: db 'NIGHTLY BIN'
+
+; Указатели на выбранные имена файлов ядер (Стабильные - по умолчанию)
+kernel16_target_filename: dw kernel16_filename
+kernel32_target_filename: dw kernel32_filename
 
 remaining_sec:  db 10
 last_tick_low:  dw 0

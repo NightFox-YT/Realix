@@ -3,10 +3,14 @@ name = "kernel32"
 version = "0.1.0"
 edition = "2021"
 
-# Путь к исходному коду
+# Путь к исходному коду (Два бинарника: стабильное ядро и Nightly, из разных деревьев)
 [[bin]]
 name = "kernel32"
 path = "source/kernel32/src/main.rs"
+
+[[bin]]
+name = "kernel32-nightly"
+path = "source/kernel32-nightly/src/main.rs"
 
 # Настройки для сборки с отладкой & сборки релиза
 # 1. opt-level

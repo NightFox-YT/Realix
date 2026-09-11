@@ -47,4 +47,9 @@ BAD_CLUSTER equ 0x0FF7  ; Дефектный кластер
 %define SYS_READ_KEY     4  ; Ожидание нажатия клавиши (AL - символ)
 %define SYS_CLEAR        5  ; Очистка экрана
 
+; ❗️ SYS_GET_* реализованы только в kernel32-nightly (src/x86/syscall.rs), не в стабильном
+%define SYS_GET_UPTIME   6  ; Аптайм в секундах -> ECX
+%define SYS_GET_MEMINFO  7  ; Память (КБ): ECX - всего, EDX - свободно
+%define SYS_GET_VERSION  8  ; Указатель на строку версии ОС -> ECX
+
 %endif
