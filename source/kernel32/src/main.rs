@@ -113,20 +113,23 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     }
 
     // Инициализация аллокатора фреймов по карте памяти E820 из PCINFO
-    unsafe {
+    let videomode = unsafe {
         let pcinfo: &PcInfo = &*pcinfo_addr;
         frame_allocator::init(&pcinfo.memory_map);
-        vga::init(pcinfo.videomode);
+        pcinfo.videomode
+    };
 
-        if pcinfo.videomode == 1 {
-            vga::fill_screen(vga::Color::LightCyan);
-            for k in (0..=120).step_by(40) {
-                vga::draw_rect(10, 40, 10 + k, 40 + k, vga::Color::Cyan);
-            }
-            
-            vga::draw_rect(0, 320, 180, 200, vga::Color::Cyan);
-        }
+    // "[3] 32-bit Video Mode" - BIOS уже переключил VGA в 320x200x256 ДО
+    // перехода в Protected Mode (см. switcher.asm: load_kernel32_video) -
+    // отсюда нет пути назад в текстовый режим (нужен был бы реальный переход
+    // в Real Mode), поэтому весь текстовый shell ниже здесь не участвует -
+    // commands::cliff_gfx::run() сам себя не возвращает (halt при выходе)
+    if videomode == 1 {
+        drivers::mouse::init();
+        commands::cliff_gfx::run();
     }
+
+    vga::init(videomode);
 
     // Вывод логотипа и приглашения
     vga::clear_screen();

@@ -10,7 +10,6 @@ use crate::utils::{self, outb};
 
 // Константы
 const VGA_TEXT_BUFFER: *mut u8 = 0xB8000 as *mut u8;
-const VGA_VIDEO_BUFFER: *mut u8 = 0xA0000 as *mut u8;
 pub const VGA_TEXT_WIDTH: usize = 80;
 pub const VGA_TEXT_HEIGHT: usize = 25;
 pub const VGA_VIDEO_WIDTH: usize = 320;
@@ -26,6 +25,19 @@ const VGA_CURSOR_LOW:  u8 = 0x0F;   // Регистр младшего байт�
 // Позиция курсора
 static CURSOR_ROW: AtomicUsize = AtomicUsize::new(0);
 static CURSOR_COL: AtomicUsize = AtomicUsize::new(0);
+
+// Верхняя граница прокрутки/очистки (0 по умолчанию - обычное поведение).
+// Позволяет приложению зарезервировать верхние строки (напр. заголовок
+// Cliff::terminax) так, чтобы text_clear_screen/scroll_up их не трогали -
+// см. set_scroll_top ниже
+static SCROLL_TOP: AtomicUsize = AtomicUsize::new(0);
+
+/// Логическая ширина/высота холста, которым оперируют set_pixel/fill_screen
+/// и вся раскладка cliff_gfx (grid_cols/grid_rows и т.п.) - всегда обычный
+/// VGA mode 13h (320x200, фреймбуфер 0xA0000 построчно без отступов), это
+/// единственный поддерживаемый графический режим
+pub fn video_width() -> usize { VGA_VIDEO_WIDTH }
+pub fn video_height() -> usize { VGA_VIDEO_HEIGHT }
 
 // Таблица цветов
 #[allow(dead_code)]
@@ -95,20 +107,25 @@ pub fn print_line(line: &str, color: Color) { unsafe { (OPS.print_line)(line, co
 
 /// Отдельно от OPS — эта функция вообще не должна дёргаться в текстовом режиме
 pub fn set_pixel(x: usize, y: usize, color: Color) {
-    if x >= VGA_VIDEO_WIDTH || y > VGA_VIDEO_HEIGHT {
+    if x >= video_width() || y >= video_height() {
         return;
     }
+    write_pixel_unchecked(x, y, color);
+}
 
+fn write_pixel_unchecked(x: usize, y: usize, color: Color) {
     unsafe {
-        let offset = (y * 320 + x) as isize;
-        VGA_VIDEO_BUFFER.offset(offset).write_volatile(color as u8);
+        let offset = y * VGA_VIDEO_WIDTH + x;
+        (0xA0000 as *mut u8).add(offset).write_volatile(color as u8);
     }
 }
 
-/// Вывод строки на экран (VGA Video)
+/// Заливка всего экрана одним цветом (VGA Video)
 pub fn fill_screen(color: Color) {
-    for i in 0..VGA_VIDEO_WIDTH * VGA_VIDEO_HEIGHT {
-        unsafe { VGA_VIDEO_BUFFER.add(i).write_volatile(color as u8); }
+    for y in 0..video_height() {
+        for x in 0..video_width() {
+            set_pixel(x, y, color);
+        }
     }
 }
 
@@ -146,41 +163,58 @@ fn clear_cells(start_cell: usize, count: usize) {
 }
 
 
-/// Очистка экрана и сброс курсора в начало
+/// Очистка экрана (от SCROLL_TOP и ниже - см. set_scroll_top) и сброс
+/// курсора в верхний левый угол ОБЛАСТИ (не обязательно строку 0)
 pub fn text_clear_screen() {
-    // "Стираем" экран пробелами с чёрным фоном
-    clear_cells(0, VGA_TEXT_WIDTH * VGA_TEXT_HEIGHT);
+    let top: usize = SCROLL_TOP.load(Relaxed);
 
-    // Сбрасываем позицию курсора
-    CURSOR_ROW.store(0, Relaxed);
+    clear_cells(top * VGA_TEXT_WIDTH, (VGA_TEXT_HEIGHT - top) * VGA_TEXT_WIDTH);
+
+    CURSOR_ROW.store(top, Relaxed);
     CURSOR_COL.store(0, Relaxed);
     update_cursor();
 }
 
 
-/// Поднять все строки на экране на `n` позиций
+/// Резервирует верхние `row` строк экрана от очистки/прокрутки (0 -
+/// обычное поведение на весь экран) - используется приложениями вроде
+/// Cliff::terminax, которым нужна строка заголовка, не участвующая в
+/// прокрутке содержимого. Сбрасывает курсор в начало новой рабочей области
+pub fn set_scroll_top(row: usize) {
+    SCROLL_TOP.store(row.min(VGA_TEXT_HEIGHT - 1), Relaxed);
+    CURSOR_ROW.store(row.min(VGA_TEXT_HEIGHT - 1), Relaxed);
+    CURSOR_COL.store(0, Relaxed);
+    update_cursor();
+}
+
+
+/// Поднять все строки рабочей области (см. SCROLL_TOP) на `n` позиций
 fn scroll_up(lines_count: usize) {
-    // Если кол-во строк для прокрутки больше чем высота VGA
-    if lines_count >= VGA_TEXT_HEIGHT {
-        clear_screen();
+    let top: usize = SCROLL_TOP.load(Relaxed);
+    let usable_height: usize = VGA_TEXT_HEIGHT - top;
+
+    // Если кол-во строк для прокрутки больше чем высота рабочей области
+    if lines_count >= usable_height {
+        text_clear_screen();
         return;
     }
 
-    // Копируем строки `n`..HEIGHT в начало экрана единым блоком (memmove).
+    // Копируем строки `top+n`..HEIGHT в начало рабочей области единым
+    // блоком (memmove); строки выше `top` (если есть) не трогаем
     unsafe {
         core::ptr::copy(
-            VGA_TEXT_BUFFER.add(lines_count * VGA_TEXT_WIDTH * 2),
-            VGA_TEXT_BUFFER,
-            (VGA_TEXT_HEIGHT - lines_count) * VGA_TEXT_WIDTH * 2
+            VGA_TEXT_BUFFER.add((top + lines_count) * VGA_TEXT_WIDTH * 2),
+            VGA_TEXT_BUFFER.add(top * VGA_TEXT_WIDTH * 2),
+            (usable_height - lines_count) * VGA_TEXT_WIDTH * 2
         );
     }
 
-    // "Стираем" последние `n` строк пробелами с чёрным фоном
-    clear_cells((VGA_TEXT_HEIGHT - lines_count) * VGA_TEXT_WIDTH, lines_count * VGA_TEXT_WIDTH);
+    // "Стираем" последние `n` строк рабочей области пробелами
+    clear_cells((top + usable_height - lines_count) * VGA_TEXT_WIDTH, lines_count * VGA_TEXT_WIDTH);
 
-    // Обновляем позицию курсора на `n` строк вверх
+    // Обновляем позицию курсора на `n` строк вверх (не выше `top`)
     let row: usize = CURSOR_ROW.load(Relaxed);
-    CURSOR_ROW.store(row.saturating_sub(lines_count), Relaxed);
+    CURSOR_ROW.store(row.saturating_sub(lines_count).max(top), Relaxed);
     update_cursor();
 }
 
@@ -237,6 +271,22 @@ pub fn text_print_char(char_byte: u8, color: Color) {
     update_cursor();
 }
 
+/// Перемещение аппаратного курсора в произвольную позицию, БЕЗ изменения
+/// сохранённой позиции печати (CURSOR_ROW/COL) - для приложений типа Cliff,
+/// рисующих напрямую через write_char_at и хотящих показать текстовый
+/// курсор (напр. редактор TextZ/RealX IDE). Безопасно, т.к. такие приложения
+/// не вызывают print_char/print_line - CURSOR_ROW/COL при выходе всё равно
+/// сбрасываются в (0,0) через text_clear_screen()
+pub fn set_cursor_pos(row: usize, col: usize) {
+    let pos: u16 = (row * VGA_TEXT_WIDTH + col) as u16;
+    unsafe {
+        outb(VGA_CRTC_INDEX, VGA_CURSOR_LOW);
+        outb(VGA_CRTC_DATA, (pos & 0xFF) as u8);
+        outb(VGA_CRTC_INDEX, VGA_CURSOR_HIGH);
+        outb(VGA_CRTC_DATA, (pos >> 8) as u8);
+    }
+}
+
 /// Вывод символа в определённой позиции
 pub fn write_char_at(row: usize, col: usize, char_byte: u8, color: Color) {
     // Проверка, что символ находитсья в пределах экрана
@@ -263,10 +313,11 @@ pub fn text_print_line(line: &str, color: Color) {
 
 /// Стирание последнего символа с переносом курсора назад
 pub fn print_backspace() {
-    // > Обновление позиции курсора
+    // > Обновление позиции курсора (не выше SCROLL_TOP - см. set_scroll_top)
+    let top: usize = SCROLL_TOP.load(Relaxed);
     if CURSOR_COL.load(Relaxed) > 0 {
         CURSOR_COL.fetch_sub(1, Relaxed);
-    } else if CURSOR_ROW.load(Relaxed) > 0 {
+    } else if CURSOR_ROW.load(Relaxed) > top {
         CURSOR_ROW.fetch_sub(1, Relaxed);
         CURSOR_COL.store(VGA_TEXT_WIDTH - 1, Relaxed);
     }
