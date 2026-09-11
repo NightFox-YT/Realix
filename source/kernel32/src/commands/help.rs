@@ -19,6 +19,7 @@ pub fn show() {
     vga::print_line("  [Fun]\n", Color::Cyan);
     vga::print_line("> matrix    - Show matrix rain\n", Color::LightGray);
     vga::print_line("> stopwatch - Count seconds in realtime\n", Color::LightGray);
+    vga::print_line("> cliff     - Text-mode desktop (Calc/TextZ/RealX/Clock/My PC/Terminax/Nova)\n", Color::LightGray);
     vga::print_line("  [Power]\n", Color::Cyan);
     vga::print_line("> reboot    - Reboot PC\n", Color::LightGray);
     vga::print_line("> shutdown  - Power off PC\n", Color::LightGray);

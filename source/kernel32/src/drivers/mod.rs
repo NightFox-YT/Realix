@@ -6,3 +6,6 @@ pub mod vga;
 pub mod keyboard;
 pub mod pit;
 pub mod speaker;
+pub mod rtc;
+pub mod cpuid;
+pub mod mouse;
