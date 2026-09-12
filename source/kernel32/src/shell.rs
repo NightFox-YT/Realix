@@ -7,6 +7,7 @@
 use crate::commands;
 use crate::drivers::keyboard::{self, read_key};
 use crate::drivers::pit;
+use crate::drivers::speaker;
 use crate::drivers::vga::{self, Color};
 use crate::utils;
 
@@ -25,6 +26,7 @@ struct History {
 }
 
 impl History {
+    /// Создание экземпляра истории
     fn new() -> Self {
         History {
             data: [[0; HISTORY_SLOT_SIZE]; HISTORY_SIZE],
@@ -47,8 +49,10 @@ impl History {
 
     /// Добавление непустой строки в историю (дубликат последней команды не сохраняется)
     fn add(&mut self, line: &str) {
+        // Проверка на пустую строку
         if line.is_empty() { return; }
 
+        // Проверка на то, что последняя запись не является дубликатом текущей
         if self.count > 0 {
             let last_slot: usize = (self.next + HISTORY_SIZE - 1) % HISTORY_SIZE;
             if self.slot_str(last_slot) == line {
@@ -56,6 +60,7 @@ impl History {
             }
         }
 
+        // Запись строки в слот (С преждевременной инициализацией с 0 значением)
         let bytes: &[u8] = line.as_bytes();
         let len: usize = bytes.len().min(HISTORY_SLOT_SIZE - 1);
 
@@ -63,6 +68,7 @@ impl History {
         slot.fill(0);
         slot[..len].copy_from_slice(&bytes[..len]);
 
+        // Обновляем переменные истории
         self.next = (self.next + 1) % HISTORY_SIZE;
         self.count = (self.count + 1).min(HISTORY_SIZE);
     }
@@ -77,10 +83,11 @@ impl History {
             vga::print_line(utils::u32_to_dec_str(i as u32, &mut num_buf), Color::White);
             vga::print_line(": ", Color::LightGray);
             vga::print_line(line, Color::LightGray);
-            vga::new_line();
+            vga::print_new_line();
         }
     }
 }
+
 
 /// Функция выполнения команды
 /// ! Гарантируется, что переданный указатель содержит валидную строку
@@ -99,6 +106,7 @@ fn execute(input: &str) {
         "reboot" => { commands::reboot::run() }
         "shutdown" => { commands::shutdown::run() }
         "echo" => { commands::echo::run(args) }
+        "calc" => { commands::calc::run(args); }
         "uptime" => {
             let mut str_buffer: [u8; 10] = [0u8; 10];
 
@@ -106,13 +114,14 @@ fn execute(input: &str) {
             vga::print_line(
                 utils::u32_to_dec_str(pit::get_uptime(), &mut str_buffer),
                 Color::LightGray);
-            vga::new_line();
+            vga::print_new_line();
         }
         "meminfo" => { commands::meminfo::show(); }
         "matrix" => {
             vga::print_line("Entering Matrix... (Press any key to exit)\n", Color::Green);
             commands::matrix::run();
         }
+        "stopwatch" => { commands::stopwatch::run(); }
         "nova" => {
             unsafe { commands::nova_ai::BC(args); }
         }
@@ -121,6 +130,7 @@ fn execute(input: &str) {
         }
     }
 }
+
 
 /// CLI: Основной цикл
 pub fn run() {
@@ -141,9 +151,10 @@ pub fn run() {
         let end_idx: usize = input_str.find('\0').unwrap_or(input_str.len());
         execute(&input_str[..end_idx]);
 
-        vga::new_line_if_needed();
+        vga::print_new_line_if_needed();
     }
 }
+
 
 /// Замена видимой строки ввода строкой `text` (стирание + перерисовка).
 fn replace_input(buffer: &mut [u8; HISTORY_SLOT_SIZE], pos: &mut usize, text: &str) {
@@ -162,6 +173,7 @@ fn replace_input(buffer: &mut [u8; HISTORY_SLOT_SIZE], pos: &mut usize, text: &s
     buffer[*pos] = 0;
 }
 
+
 /// CLI: Чтение строки
 fn read_line(history: &mut History) -> [u8; HISTORY_SLOT_SIZE] {
     let mut buffer: [u8; HISTORY_SLOT_SIZE] = [0u8; HISTORY_SLOT_SIZE];
@@ -171,7 +183,7 @@ fn read_line(history: &mut History) -> [u8; HISTORY_SLOT_SIZE] {
     loop {
         match read_key() {
             keyboard::Key::Char(b'\n') => {
-                vga::new_line();
+                vga::print_new_line();
                 buffer[pos] = 0;
 
                 let line: &str = core::str::from_utf8(&buffer[..pos]).unwrap_or("");
@@ -215,7 +227,7 @@ fn read_line(history: &mut History) -> [u8; HISTORY_SLOT_SIZE] {
                 }
             }
             keyboard::Key::F7 => {
-                vga::new_line();
+                vga::print_new_line();
                 history.list();
 
                 // Заново показываем промпт и уже набранную строку
@@ -223,10 +235,16 @@ fn read_line(history: &mut History) -> [u8; HISTORY_SLOT_SIZE] {
                 let line: &str = core::str::from_utf8(&buffer[..pos]).unwrap_or("");
                 vga::print_line(line, Color::LightGray);
             }
-            keyboard::Key::Char(byte) if pos < INPUT_MAX && (0x20..=0x7E).contains(&byte) => {
-                buffer[pos] = byte;
-                pos += 1;
-                vga::print_char(byte, Color::LightGray);
+            keyboard::Key::Char(byte) if (0x20..=0x7E).contains(&byte) => {
+                if pos < INPUT_MAX {
+                    buffer[pos] = byte;
+                    pos += 1;
+                    vga::print_char(byte, Color::LightGray);
+                } else {
+                    // Буфер строки заполнен...
+                    speaker::beep_short();
+                }
+
             }
             _ => {}
         }

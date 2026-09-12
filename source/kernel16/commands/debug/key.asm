@@ -31,7 +31,7 @@ cmd_key:
     mov si, msg_key_scan
     call print
     mov al, ah
-    call print_byte
+    call print_hex8
 
     pop si
     pop bx

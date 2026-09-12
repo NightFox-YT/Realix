@@ -91,8 +91,8 @@ pub extern "C" fn exc_handler(regs: &Registers) {
         Color::Red,
     );
     vga::print_line(exception_name, Color::Red);
-    vga::new_line();
-    vga::new_line();
+    vga::print_new_line();
+    vga::print_new_line();
 
     vga::print_line("! Registers:\n", Color::Red);
 
@@ -110,7 +110,7 @@ pub extern "C" fn exc_handler(regs: &Registers) {
     vga::print_reg_line("INT_NUM", regs.int_num);
     vga::print_reg_line("ERR_CODE", regs.err_code);
 
-    vga::new_line();
+    vga::print_new_line();
     vga::print_line("! System halted, please, reboot the machine.\n", Color::Red);
     vga::print_line(
         "! If the problem repeats, report this screen to the developer: ",

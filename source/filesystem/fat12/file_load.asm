@@ -1,26 +1,31 @@
 ; © Realix > FAT12: File Load
-; (28.07.26) v0.11
+; (13.08.26) v0.12
 ; ================
-; ❗️ Зависимости: bios-api/disk/*, kernel16/io/print_ctrl.asm
+; ❗️ Зависимости: bios-api/disk/read, kernel16/io/print_ctrl.asm
 
 ; ❗️ Требуется инициализация FAT12 через `fat12_init`
-%include "bios-api/fat12/init.asm"
+%include "filesystem/fat12/init.asm"
 
 ; Основные константы
 %include 'shared/config.asm'
 
+; Настройка DiskAPI: Read (Если не настроен)
+%ifndef DISK_READ
+%define DISK_READ bios_disk_read
+%endif
+
 ; Предел длины цепочки кластеров (Aрхитектурный потолок FAT12)
 FAT12_MAX_CHAIN equ 4084
 
+
 ; > Загрузка файла с диска в память
-; ❗️ Номер диска берётся из disk_current_drive (заполняет `disk_init`)
 ; Параметры:
 ;  - si: смещение адреса имени файла (11 символов, формат 8.3)
 ;  - cx: сегмент назначения файла
 ;  - bx: смещение назначения файла
 ;  - di: адрес extra-таблицы защиты регионов памяти (0 - только core)
 ; Вывод:
-;  ! Входной si (имя файла) при возврате не сохраняется
+; ❗️ Входной si (имя файла) при возврате не сохраняется
 ;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка)
 ;  - si: смещение адреса сообщения об ошибке (0 - успех)
 file_load:
@@ -31,7 +36,7 @@ file_load:
     push di
     push es
 
-    ; Настраиваем флаг направления и сегмент es
+    ; Настраиваем флаг направления и доп. сегмент
     cld
     xor ax, ax
     mov es, ax
@@ -43,11 +48,11 @@ file_load:
     mov [extra_table_offset], di
 
 .read_root_dir:
-    ; Читаем корневой каталог в память
-    mov ax, [root_dir_lba]
-    mov cx, [root_dir_size]
-    mov bx, FAT_BUFFER_ADDR
-    call disk_read
+    ; Чтение корневого каталога в память
+    mov ax, [root_dir_lba]        ; LBA каталога
+    mov cl, byte [root_dir_size]  ; Кол-во секторов - размер каталога
+    mov bx, FAT_BUFFER_ADDR       ; Адрес записи FAT буфера
+    call DISK_READ
 
     ; Подготовка к поиску файла в корневом каталоге
     xor bx, bx               ; Счётчик пройденных записей
@@ -58,7 +63,7 @@ file_load:
     mov si, [filename_offset]
     mov cx, 11
 
-    ; Сравниваем по символу названия файлов, сохраняя смещение записи
+    ; Сравнение по символу названия файлов, сохраняя смещение записи
     ; > ds:si & es:di; si++, di++ до cx == 0
     push di
     repe cmpsb
@@ -68,7 +73,7 @@ file_load:
     ; Переход к следующей записи
     add di, 32             ; Увеличиваем смещение на размер записи (32 байта)
     inc bx                 ; Увеличиваем индекс записи
-    cmp bx, [dir_entries]
+    cmp bx, [dir_entries] 
     jb .search             ; Если не вышли за предел, продолжаем поиск
 
     ; Ошибка 1: Вышли за предел, => указанного файла нет
@@ -92,8 +97,7 @@ file_load:
     mov [file_size], ecx
     add ecx, ebx
 
-    ; Проверка на пустой файл: Цепочки кластеров нет
-    ; (0 - пусто, 1 - резерв)
+    ; Проверка на пустой файл: Цепочки кластеров нет (0 - пусто, 1 - резерв)
     cmp word [file_cluster], 2
     jb .done
 
@@ -118,11 +122,11 @@ file_load:
     ; Сброс счётчика пройденных кластеров (Защита от петли FAT)
     mov word [chain_length], 0
 
-    ; Читаем FAT в память
-    mov ax, [reserved_sectors]
-    mov cx, [sectors_per_fat]
-    mov bx, FAT_BUFFER_ADDR
-    call disk_read
+    ; Чтение FAT таблицы в память
+    mov ax, [reserved_sectors]       ; LBA
+    mov cl, byte [sectors_per_fat]   ; Кол-во секторов - размер FAT
+    mov bx, FAT_BUFFER_ADDR          ; Адрес записи FAT буфера
+    call DISK_READ
 
     ; Установка сегмента и смещения для чтения файла
     mov bx, [dest_segment]
@@ -140,7 +144,7 @@ file_load:
     add ax, [data_lba]
 
     ; Чтение следующего кластера (cl содержит кол-во секторов)
-    call disk_read
+    call DISK_READ
 
     ; Индикатор прогресса чтения ("кубики")
     call print_square_char
@@ -164,7 +168,7 @@ file_load:
     mov ax, [file_cluster]
     mov cx, 3
     mul cx
-    mov cx, 2
+    dec cx     ; cx: 3 -> 2 (mul не трогает cx)
     div cx
 
     ; Считывание записи из таблицы FAT по индексу (ax)
@@ -245,6 +249,7 @@ file_load:
     pop ax
     ret
 
+
 ; > Проверка пересечения диапазона [start, end) с записями таблицы регионов
 ; Параметры:
 ;  - di: смещение адреса таблицы регионов
@@ -286,6 +291,7 @@ check_table:
     pop edx
     pop eax
     ret
+
 
 ; Переменные модуля
 filename_offset:    dw 0

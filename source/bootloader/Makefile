@@ -7,7 +7,7 @@ BUILD_DIR ?= $(abspath ../../build)
 SRC_DIR   ?= $(abspath ../../source)
 ASM       := nasm
 ASMFLAGS  := -f bin -i $(SRC_DIR)
-ASM_SRC := $(shell find $(SRC_DIR) -name '*.asm')
+ASM_SRC   := $(shell find $(SRC_DIR) -name '*.asm')
 
 .PHONY: all bootloader bootix initrix clean
 
@@ -18,13 +18,13 @@ all: bootix initrix
 bootix: $(BUILD_DIR)/bootix.bin
 
 $(BUILD_DIR)/bootix.bin: $(ASM_SRC) | $(BUILD_DIR)
-	$(ASM) $(ASMFLAGS) $(SRC_DIR)/bootloader/bootix.asm -o $@
+	$(ASM) $(ASMFLAGS) $(SRC_DIR)/bootloader/bootix/main.asm -o $@
 
 # Сборка Initrix
 initrix: $(BUILD_DIR)/initrix.bin
 
 $(BUILD_DIR)/initrix.bin: $(ASM_SRC) | $(BUILD_DIR)
-	$(ASM) $(ASMFLAGS) $(SRC_DIR)/bootloader/initrix.asm -o $@
+	$(ASM) $(ASMFLAGS) $(SRC_DIR)/bootloader/initrix/main.asm -o $@
 
 $(BUILD_DIR):
 	mkdir -p $@

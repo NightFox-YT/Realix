@@ -6,15 +6,15 @@
 // Подключение функций
 use crate::drivers::keyboard;
 use crate::drivers::pit;
-use crate::drivers::vga::{self, VGA_HEIGHT, VGA_WIDTH};
+use crate::drivers::vga::{self, VGA_TEXT_HEIGHT, VGA_TEXT_WIDTH};
 
 /// Запуск анимации Matrix
 pub fn run() {
-    let mut drops_heights: [usize; VGA_WIDTH] = [0; VGA_WIDTH];
+    let mut drops_heights: [usize; VGA_TEXT_WIDTH] = [0; VGA_TEXT_WIDTH];
 
     // Инициализация (Капли на разной высоте)
     for (col, height) in drops_heights.iter_mut().enumerate() {
-        *height = (col.wrapping_mul(7).wrapping_add(3)) % VGA_HEIGHT;
+        *height = (col.wrapping_mul(7).wrapping_add(3)) % VGA_TEXT_HEIGHT;
     }
 
     pit::sleep(400);
@@ -26,7 +26,7 @@ pub fn run() {
             let row: usize = *height;
 
             // Белая голова
-            if row < VGA_HEIGHT {
+            if row < VGA_TEXT_HEIGHT {
                 vga::write_char_at(
                     row, col,
                     random_symbol(col, row),
@@ -35,7 +35,7 @@ pub fn run() {
             }
 
             // Зелёный шлейф выше
-            if row > 0 && row - 1 < VGA_HEIGHT {
+            if row > 0 && row - 1 < VGA_TEXT_HEIGHT {
                 vga::write_char_at(
                     row - 1, col,
                     random_symbol(col, row - 1),
@@ -44,7 +44,7 @@ pub fn run() {
             }
 
             // Тёмный хвост ещё выше
-            if row >= 2 && row - 2 < VGA_HEIGHT {
+            if row >= 2 && row - 2 < VGA_TEXT_HEIGHT {
                 vga::write_char_at(
                     row - 2, col,
                     random_symbol(col, row - 2),
@@ -53,7 +53,7 @@ pub fn run() {
             }
 
             // Стираем символы выше хвоста
-            if row >= 3 && row - 3 < VGA_HEIGHT {
+            if row >= 3 && row - 3 < VGA_TEXT_HEIGHT {
                 vga::write_char_at(
                     row - 3, col,
                     b' ',
@@ -65,8 +65,8 @@ pub fn run() {
             *height += 1;
 
             // Если достигла дна - сбрасываем наверх со стиранием столбца
-            if *height > VGA_HEIGHT {
-                for clear_row in 0..VGA_HEIGHT {
+            if *height > VGA_TEXT_HEIGHT {
+                for clear_row in 0..VGA_TEXT_HEIGHT {
                     vga::write_char_at(
                         clear_row, col,
                         b' ',

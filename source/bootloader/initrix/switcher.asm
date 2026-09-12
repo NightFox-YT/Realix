@@ -1,8 +1,9 @@
 ; © Realix > Switcher CPU modes
-; (06.08.26) v0.11
+; (15.08.26) v0.12
 ; ================
-; ❗️ Не standalone: Подключается из initrix.asm (%include)
-; ❗️ Зависимости: kernel16/io: print & print_new_line; bios-api/fat12/file_load
+; ❗️ Зависимости: Подключается напрямую из initrix.asm (%include),
+;                 bios-api/io/* (Кроме clear); filesystem/fat12/file_load,
+;                 bios-api/rtc, bios-api/keyboard
 
 ; Настройка компиляции
 bits 16
@@ -11,84 +12,74 @@ bits 16
 %include 'shared/config.asm'
 
 
+; > Точка входа в модуль
 boot_switcher:
+    ; Вывод заголовка выбора режима
     mov si, msg_choose_mode
     call print
 
-    ; Выключаем курсор на время выбора режима
-    mov ah, 01h
-    mov cx, 2607h
-    int 0x10
-
-    ; Получаем текущую строку, где будет таймер (в dh)
-    mov ah, 03h
-    xor bx, bx
-    int 0x10
+    ; Выключаем курсор и получаем номер строки, где будет таймер
+    call cursor_set_off
+    call get_cursor_pos
     mov [.timer_cursor_y], dh
 
-    ; Получаем начальное значение тиков (в cx:dx)
-    mov ah, 00h
-    int 0x1A
-    mov [last_tick_low], dx
+.timer_start:
+    ; Получаем начальное значение тиков (в eax)
+    call get_ticks_value
+    mov [last_tick], eax
 
-    ; Вывод сообщения о таймере
+    ; Вывод сообщения о запущенном таймере
     mov si, msg_timer
     call print
 
-.menu_loop:
+.timer_loop:
     ; Проверка нажатия клавиши (из буфера)
-    mov ah, 1h
-    int 0x16
+    call keyboard_poll
     jnz .key_pressed
 
     ; Получаем текущее кол-во тиков и считаем сколько прошло
-    mov ah, 00h
-    int 0x1A
-    mov ax, dx
-    sub ax, word [last_tick_low]
+    call get_ticks_value
+    sub eax, dword [last_tick]
 
     ; Если прошла 1 сек. (~18 тиков), обновляем таймер
-    cmp ax, 18
+    cmp eax, 18
     jae .update_timer
 
     ; Ждём след. прерывание для продолжения
     hlt
-    jmp .menu_loop
+    jmp .timer_loop
 
 .update_timer:
     ; Обновляем наши внутренние счётчики
-    add word [last_tick_low], 18
+    add word [last_tick], 18
     sub byte [remaining_sec], 1
 
     ; Ставим курсор на место числа
-    ; (36 просто посчитано, хардкод о ма гад)
-    mov ah, 02h
+    ; (36 просто посчитано, немного хардкод ;) )
     mov dh, [.timer_cursor_y]
     mov dl, 36
-    int 0x10
+    call set_cursor_pos
 
     ; Выводим сколько осталось секунд
-    movzx ax, byte [remaining_sec]
-    call print_byte
+    mov al, [remaining_sec]
+    call print_hex8
 
     ; Проверяем наш счётчик
     cmp byte [remaining_sec], 0
     je load_kernel32
 
-    jmp .menu_loop
+    jmp .timer_loop
 
 .key_pressed:
-    ; Забираем клавишу из буфера
-    mov ah, 00h
-    int 0x16
-
     ; Варианты выбора
     cmp al, '1'
     je load_kernel16
     cmp al, '2'
     je load_kernel32
+    cmp al, '3'
+    je load_kernel32_video
 
-    jmp .menu_loop
+    jmp .timer_loop
 
 .timer_cursor_y: db 0
 
@@ -96,10 +87,9 @@ boot_switcher:
 ; > Ветка Real Mode (16 bit)
 load_kernel16:
     ; Включаем курсор
-    mov ah, 01h
-    mov cx, 0607h
-    int 0x10
+    call cursor_set_on
 
+    ; Вывод сообщения о начале загрузки ядра
     call print_new_line
     call print_new_line
     mov si, msg_loading_16
@@ -115,7 +105,7 @@ load_kernel16:
 
     ; Передача номера диска и собранной структуры данных в ядро
     ; (Читаем переменные Initrix до смены сегмента ds)
-    mov dl, [disk_current_drive]
+    mov dl, [curr_drive_num]
     mov di, PCINFO_ADDR
 
     ; Настройка сегментов под ядро
@@ -126,16 +116,35 @@ load_kernel16:
     jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
 
 
+; > Ветка Protected Mode с Video Mode (32-bit)
+load_kernel32_video:
+    ; Включение видеорежима
+    call enable_vga_videomode
+
+    ; Обнуление сегмента под `PCINFO` для записи
+    push es
+    push ax
+    xor ax, ax
+    mov es, ax
+
+    mov word [es:PCINFO_ADDR + PCINFO_VIDEOMODE], 1
+
+    pop ax
+    pop es
+
+    ; Переход к стандартной загрузке
+    jmp load_kernel32
+
+
 ; > Ветка Protected Mode (32-bit)
 load_kernel32:
     ; Включаем курсор
-    mov ah, 01h
-    mov cx, 0607h
-    int 0x10
+    call cursor_set_on
 
+    ; Вывод сообщения о начале перехода в Protected Mode
     call print_new_line
     call print_new_line
-    mov si, msg_loading_32
+    mov si, msg_entering_32
     call print
 
     ; Чтение файла 32-битного ядра с диска
@@ -246,17 +255,18 @@ pmode_entry:
 bits 16
 
 msg_choose_mode:
-    db '[+] Select OS Mode:', ENTER
+    db '[?] Select OS Mode:', ENTER
     db '  [1] 16-bit Real Mode (NASM)', ENTER
-    db '  [2] 32-bit Protected Mode (Rust)', ENTER, 0
+    db '  [2] 32-bit Protected Mode (Rust)', ENTER
+    db '  [3] 32-bit Video Mode (Rust Experiment)', ENTER, 0
 
-msg_timer:      db '  (Auto: 32-bit will be selected in 10 seconds)', 0
-msg_loading_16: db '[+] Loading 16-bit kernel.', ENTER, 0
-msg_loading_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
+msg_timer:       db '  (Auto: 32-bit will be selected in 10 seconds)', 0
+msg_loading_16:  db '[+] Loading 16-bit kernel.', ENTER, 0
+msg_entering_32: db '[+] Entering 32-bit Protected Mode.', ENTER, 0
 
 ; Переменные
 kernel16_filename: db 'KERNEL16BIN'
 kernel32_filename: db 'KERNEL32BIN'
 
-remaining_sec:  db 10
-last_tick_low:  dw 0
+remaining_sec: db 10
+last_tick:     dd 0

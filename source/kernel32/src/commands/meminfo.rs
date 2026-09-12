@@ -21,13 +21,13 @@ pub fn show() {
     vga::print_line(
         utils::u32_to_dec_str(total_frames as u32, &mut str_buffer),
         Color::White);
-    vga::new_line();
+    vga::print_new_line();
 
     vga::print_line("> Free frames:  ", Color::LightGray);
     vga::print_line(
         utils::u32_to_dec_str(free_frames as u32, &mut str_buffer),
         Color::White);
-    vga::new_line();
+    vga::print_new_line();
 
     let total_mb: u32 = (frame_allocator::get_total_memory() / BYTES_PER_MB) as u32;
     let free_mb: u32 = (frame_allocator::get_free_memory() / BYTES_PER_MB) as u32;

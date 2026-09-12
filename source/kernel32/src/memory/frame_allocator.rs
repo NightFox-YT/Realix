@@ -239,7 +239,7 @@ pub fn dump_bitmap() {
 
         // Переносим крусор на след. строку после BYTES_PER_ROW байт
         if (i + 1) % BYTES_PER_ROW == 0 {
-            vga::new_line();
+            vga::print_new_line();
         }
     }
 }

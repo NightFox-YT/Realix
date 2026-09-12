@@ -49,7 +49,11 @@ cmd_hexdump:
 .next_byte:
     ; Печать байта в виде "XX"
     mov al, [es:si]
-    call print_byte
+    call print_hex8
+    
+    ; Разделитель байтов
+    mov al, ' '
+    call print_char
 
     ; Продвижение по памяти с переносом сегмента на границе 64 КБ
     inc si
