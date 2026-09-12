@@ -95,7 +95,7 @@ pub fn print_line(line: &str, color: Color) { unsafe { (OPS.print_line)(line, co
 
 /// Отдельно от OPS — эта функция вообще не должна дёргаться в текстовом режиме
 pub fn set_pixel(x: usize, y: usize, color: Color) {
-    if x >= VGA_VIDEO_WIDTH || y > VGA_VIDEO_HEIGHT {
+    if x >= VGA_VIDEO_WIDTH || y >= VGA_VIDEO_HEIGHT {
         return;
     }
 
