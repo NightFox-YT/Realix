@@ -1,4 +1,5 @@
 // © Realix > Command: Stopwatch
+// ø Copyright by @jeksonkd
 // (15.08.26) v0.1
 // ================
 

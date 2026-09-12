@@ -57,6 +57,27 @@ pub fn u32_to_dec_str(value: u32, str_buffer: &mut [u8; 10]) -> &str {
 }
 
 
+/// Обработка беззнакового десятичного 32-битного числа из строки
+pub fn parse_u32(s: &str) -> Option<u32> {
+    // Пустая строка не подходит
+    if s.is_empty() {
+        return None;
+    }
+
+    let mut value: u32 = 0;
+    for byte in s.bytes() {
+        // Если символ не является цифрой, то выходим
+        if !byte.is_ascii_digit() {
+            return None;
+        }
+
+        // Добавляем цифру к значению с защитой от переполнения
+        value = value.checked_mul(10)?.checked_add((byte - b'0') as u32)?;
+    }
+    Some(value)
+}
+
+
 /// Запись байта (u8) в I/O-порт
 #[inline(always)]
 pub unsafe fn outb(port: u16, value: u8) {

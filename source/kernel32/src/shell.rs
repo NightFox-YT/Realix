@@ -235,15 +235,16 @@ fn read_line(history: &mut History) -> [u8; HISTORY_SLOT_SIZE] {
                 let line: &str = core::str::from_utf8(&buffer[..pos]).unwrap_or("");
                 vga::print_line(line, Color::LightGray);
             }
-            keyboard::Key::Char(byte) if pos < INPUT_MAX && (0x20..=0x7E).contains(&byte) => {
-                buffer[pos] = byte;
-                pos += 1;
-                vga::print_char(byte, Color::LightGray);
-            }
-            // Буфер строки заполнен (pos == INPUT_MAX) — сигнализируем об этом,
-            // а не просто молча игнорируем ввод
             keyboard::Key::Char(byte) if (0x20..=0x7E).contains(&byte) => {
-                speaker::beep_short();
+                if pos < INPUT_MAX {
+                    buffer[pos] = byte;
+                    pos += 1;
+                    vga::print_char(byte, Color::LightGray);
+                } else {
+                    // Буфер строки заполнен...
+                    speaker::beep_short();
+                }
+
             }
             _ => {}
         }

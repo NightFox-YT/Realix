@@ -1,4 +1,5 @@
 // © Realix > Command: Calculator
+// ø Copyright by @jeksonkd
 // (15.08.26) v0.1
 // ================
 
@@ -6,7 +7,8 @@
 use crate::drivers::vga::{self, Color};
 use crate::utils;
 
-/// Выполняет calc <num1> <+ - * /> <num2> (операнды - неотрицательные целые)
+
+/// Выполняет calc <num1> <+ - * /> <num2> (операнды - неотрицательные целые числа)
 /// Параметры:
 ///  - args: аргументы после имени команды
 pub fn run(args: &str) {
@@ -21,14 +23,14 @@ pub fn run(args: &str) {
         }
     };
 
-    let a = match parse_u32(a) {
-        Some(v) => v as i64,
+    let a = match utils::parse_u32(a) {
+        Some(value) => value as i64,
         None => {
             vga::print_line("[!] Operands must be non-negative integers.\n", Color::Red);
             return;
         }
     };
-    let b = match parse_u32(b) {
+    let b = match utils::parse_u32(b) {
         Some(v) => v as i64,
         None => {
             vga::print_line("[!] Operands must be non-negative integers.\n", Color::Red);
@@ -62,7 +64,7 @@ pub fn run(args: &str) {
     };
 
     let result = match result {
-        Some(v) if (-(u32::MAX as i64)..=u32::MAX as i64).contains(&v) => v,
+        Some(value) if (-(u32::MAX as i64)..=u32::MAX as i64).contains(&value) => value,
         _ => {
             vga::print_line("[!] Result too large (overflow)\n", Color::Red);
             return;
@@ -73,26 +75,10 @@ pub fn run(args: &str) {
 
     let mut buf: [u8; 10] = [0u8; 10];
     if result < 0 {
-        vga::print_line("-", Color::White);
+        vga::print_char(b'-', Color::White);
         vga::print_line(utils::u32_to_dec_str((-result) as u32, &mut buf), Color::White);
     } else {
         vga::print_line(utils::u32_to_dec_str(result as u32, &mut buf), Color::White);
     }
-    vga::new_line();
-}
-
-/// Разбор беззнакового десятичного числа
-fn parse_u32(s: &str) -> Option<u32> {
-    if s.is_empty() {
-        return None;
-    }
-
-    let mut value: u32 = 0;
-    for byte in s.bytes() {
-        if !byte.is_ascii_digit() {
-            return None;
-        }
-        value = value.checked_mul(10)?.checked_add((byte - b'0') as u32)?;
-    }
-    Some(value)
+    vga::print_new_line();
 }
