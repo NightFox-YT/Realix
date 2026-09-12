@@ -4,7 +4,7 @@
 
 // Подключение функций
 use core::arch::asm;
-use core::sync::atomic::{AtomicUsize, Ordering::{Acquire, Relaxed, Release}};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering::{Acquire, Relaxed, Release}};
 
 // Константы
 pub const KEYBOARD_DATA_PORT: u16 = 0x60;
@@ -12,47 +12,73 @@ const QUEUE_SIZE: usize = 32;
 const PREFIX_EXTENDED_KEY: u8 = 0xE0;
 pub const SCANCODE_RELEASE: u8 = 0x80;
 
+// Scancode'ы левого/правого Shift (без бита отпускания)
+const SCANCODE_LSHIFT: u8 = 0x2A;
+const SCANCODE_RSHIFT: u8 = 0x36;
+
 // Кольцевой буфер
 static mut QUEUE: [u8; QUEUE_SIZE] = [0; QUEUE_SIZE];
 static HEAD: AtomicUsize = AtomicUsize::new(0);
 static TAIL: AtomicUsize = AtomicUsize::new(0);
 
+// Состояние Shift (Left или Right, обновляется в read_key по make/break кодам)
+static SHIFT_HELD: AtomicBool = AtomicBool::new(false);
+
 /// Клавиша
 #[derive(Clone, Copy)]
 pub enum Key { Char(u8), Up, Down, Escape, F7 }
 
-/// Перевод scancode в ASCII
+/// Перевод scancode в ASCII (с учётом текущего состояния Shift)
 pub fn scancode_to_ascii(scancode: u8) -> Option<u8> {
-    match scancode {
+    let base: u8 = match scancode {
         // Буквы
-        0x10 => Some(b'q'), 0x11 => Some(b'w'), 0x12 => Some(b'e'),
-        0x13 => Some(b'r'), 0x14 => Some(b't'), 0x15 => Some(b'y'),
-        0x16 => Some(b'u'), 0x17 => Some(b'i'), 0x18 => Some(b'o'),
-        0x19 => Some(b'p'), 0x1E => Some(b'a'), 0x1F => Some(b's'),
-        0x20 => Some(b'd'), 0x21 => Some(b'f'), 0x22 => Some(b'g'),
-        0x23 => Some(b'h'), 0x24 => Some(b'j'), 0x25 => Some(b'k'),
-        0x26 => Some(b'l'), 0x2C => Some(b'z'), 0x2D => Some(b'x'),
-        0x2E => Some(b'c'), 0x2F => Some(b'v'), 0x30 => Some(b'b'),
-        0x31 => Some(b'n'), 0x32 => Some(b'm'),
+        0x10 => b'q', 0x11 => b'w', 0x12 => b'e',
+        0x13 => b'r', 0x14 => b't', 0x15 => b'y',
+        0x16 => b'u', 0x17 => b'i', 0x18 => b'o',
+        0x19 => b'p', 0x1E => b'a', 0x1F => b's',
+        0x20 => b'd', 0x21 => b'f', 0x22 => b'g',
+        0x23 => b'h', 0x24 => b'j', 0x25 => b'k',
+        0x26 => b'l', 0x2C => b'z', 0x2D => b'x',
+        0x2E => b'c', 0x2F => b'v', 0x30 => b'b',
+        0x31 => b'n', 0x32 => b'm',
 
         // Цифры
-        0x02 => Some(b'1'), 0x03 => Some(b'2'), 0x04 => Some(b'3'),
-        0x05 => Some(b'4'), 0x06 => Some(b'5'), 0x07 => Some(b'6'),
-        0x08 => Some(b'7'), 0x09 => Some(b'8'), 0x0A => Some(b'9'),
-        0x0B => Some(b'0'),
+        0x02 => b'1', 0x03 => b'2', 0x04 => b'3',
+        0x05 => b'4', 0x06 => b'5', 0x07 => b'6',
+        0x08 => b'7', 0x09 => b'8', 0x0A => b'9',
+        0x0B => b'0',
 
-        // Спецсимволы (Shift пока не обрабатываем — будут строчные)
-        0x0C => Some(b'-'), 0x0D => Some(b'='), 0x27 => Some(b';'),
-        0x0E => Some(b'\x08'),  // Backspace
-        0x0F => Some(b'\t'),    // Tab
-        0x1C => Some(b'\n'),    // Enter
-        0x39 => Some(b' '),     // Пробел
-        0x28 => Some(b'\''), 0x29 => Some(b'`'),
-        0x2B => Some(b'\\'), 0x35 => Some(b'/'),
-        0x33 => Some(b','),  0x34 => Some(b'.'),
-        0x1A => Some(b'['),  0x1B => Some(b']'),
-        0x01 => Some(0x1B),   // ESC
-        _ => None,
+        // Спецсимволы
+        0x0C => b'-', 0x0D => b'=', 0x27 => b';',
+        0x0E => b'\x08',  // Backspace
+        0x0F => b'\t',    // Tab
+        0x1C => b'\n',    // Enter
+        0x39 => b' ',     // Пробел
+        0x28 => b'\'', 0x29 => b'`',
+        0x2B => b'\\', 0x35 => b'/',
+        0x33 => b',',  0x34 => b'.',
+        0x1A => b'[',  0x1B => b']',
+        0x01 => 0x1B,   // ESC
+        _ => return None,
+    };
+
+    if !SHIFT_HELD.load(Relaxed) {
+        return Some(base);
+    }
+
+    Some(shift_char(base))
+}
+
+/// Верхний регистр букв и "верхние" символы цифр/пунктуации (US-раскладка)
+fn shift_char(base: u8) -> u8 {
+    match base {
+        b'a'..=b'z' => base - (b'a' - b'A'),
+        b'1' => b'!', b'2' => b'@', b'3' => b'#', b'4' => b'$', b'5' => b'%',
+        b'6' => b'^', b'7' => b'&', b'8' => b'*', b'9' => b'(', b'0' => b')',
+        b'-' => b'_', b'=' => b'+', b';' => b':', b'\'' => b'"', b'`' => b'~',
+        b',' => b'<', b'.' => b'>', b'/' => b'?', b'[' => b'{', b']' => b'}',
+        b'\\' => b'|',
+        other => other,  // управляющие символы, пробел и т.п. - без изменений
     }
 }
 
@@ -121,7 +147,15 @@ pub fn read_key() -> Key {
                 continue;
             }
 
-            // Игнорируем отпускание клавиш (бит 7 = 1)
+            // Отслеживание состояния Shift (make/break, бит 7 - отпускание)
+            let bare_code: u8 = scancode & !SCANCODE_RELEASE;
+            if bare_code == SCANCODE_LSHIFT || bare_code == SCANCODE_RSHIFT {
+                SHIFT_HELD.store(scancode & SCANCODE_RELEASE == 0, Relaxed);
+                extended = false;
+                continue;
+            }
+
+            // Игнорируем отпускание прочих клавиш (бит 7 = 1)
             if scancode & SCANCODE_RELEASE != 0 {
                 extended = false;
                 continue;
