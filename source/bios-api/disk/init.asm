@@ -1,48 +1,63 @@
-; © Realix > Disk Initialization
-; (13.06.26) v0.06
+; © Realix > Disk: Initialization
+; (13.08.26) v0.12
 ; ================
 
-; Защита от повторного включения
-%ifndef DISK_INIT
-%define DISK_INIT
+; Защита от повторного включения модуля
+%ifndef BIOS_DISK_INIT
+%define BIOS_DISK_INIT
 
-; > Инициализация и получение параметров диска (Вызывается 1 раз)
+
+; > Инициализация и получение параметров диска через BIOS
+; (Вызывается при переключении/инициализации диска)
 ; Параметры:
-;   - dl: номер диска
+;  - dl: номер диска
 ; Вывод:
 ;  - cx: sectors_per_track
 ;  - dh: heads
-;  - CF (Carry Flag): 0 — успех, 1 — ошибка чтения
-;  - Заполняет переменные disk_spt и disk_heads
-disk_init:
+;  - dl: number of hard hisk drives
+;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка чтения)
+;  - Заполняет переменные curr_drive_num, curr_drive_spt и curr_drive_heads
+bios_disk_init:
     push ax
-
-    ; Считывание параметров диска
+    push bx
+    push di
     push es
-    mov ah, 8h
+
+    ; Запоминаем номер инициализированного диска
+    mov [curr_drive_num], dl
+
+    ; Считывание параметров диска (С защитой от бага на некоторых BIOS)
+    ; > es:di - указатель на таблицу параметров дискеты, => обнуляем
+    xor di, di
+    mov es, di
+
+    mov ah, 08h
     int 0x13
-    pop es
-    jc .done    ; Выходим из функции (Ошибка)
+    jc .return  ; Выходим из функции (Ошибка)
 
     ; Форматируем кол-во секторов на дорожку (Убираем байты цилиндра)
     and cl, 0x3F
     xor ch, ch
-    mov [disk_spt], cx
 
-    ; Форматируем кол-во голов (Увеличиваем на 1, т.к. счёт с 0)
+    ; Форматируем кол-во голов (Увеличиваем на 1, счёт с 0)
     inc dh
 
-    ; Сохраняем значение кол-ва голов
-    xor ax, ax
-    mov al, dh
-    mov [disk_heads], ax
+    ; Сохраняем значения в переменные
+    movzx ax, dh
+    mov [curr_drive_heads], ax
+    mov [curr_drive_spt], cx
 
-.done:
+.return:
+    pop es
+    pop di
+    pop bx
     pop ax
     ret
 
-; Переменные геометрии текущего диска
-disk_spt:   dw 0
-disk_heads: dw 0
+
+; Переменные текущего диска (Номер и геометрия)
+curr_drive_num:   db 0
+curr_drive_spt:   dw 0
+curr_drive_heads: dw 0
 
 %endif

@@ -1,23 +1,29 @@
-; © Realix > Shell Commands
-; ø Вдохновлено @nyxmalware
-; (13.06.26) v0.06
+; © Realix > Shell: Commands Handler
+; (16.08.26) v0.12
 ; ================
-; ❗️ Зависимости: bios-api/memory (модуль), bios-api/network
+; ❗️ Зависимости: bios-api/memory, bios-api/io, kernel16/shell/parse
+;                 kernel16/panic, display/memory
 ; TODO:
 ;  - Возвращение carry_flag при ошибке
 ;  - В shutdown полагаться не только на APM
 
-; Таблица команд (С названиями)
+; Основные константы
+%include 'shared/config.asm'
+
+; Таблица команд (С названиями и нуль-терминатором)
+CMD_ENTRY_SIZE equ 4
+
 align 2
 cmd_table:
     dw .str_help,     cmd_help
-    dw .str_cls,      cmd_cls
-    dw .str_clear,    cmd_cls
+    dw .str_cls,      clear_screen
+    dw .str_clear,    clear_screen
     dw .str_reboot,   cmd_reboot
     dw .str_shutdown, cmd_shutdown
     dw .str_meminfo,  cmd_meminfo
     dw .str_echo,     cmd_echo
     dw .str_calc,     cmd_calc
+    dw .str_exec,     cmd_exec16
     dw .str_beep,     print_beep_char
     dw .str_about,    cmd_about
     dw .str_reverse,  cmd_reverse
@@ -28,7 +34,19 @@ cmd_table:
     dw .str_ascii,    cmd_ascii
     dw .str_repeat,   cmd_repeat
     dw .str_fib,      cmd_fib
-    dw 0, 0
+    dw .str_ls,       cmd_ls
+    dw .str_load,     cmd_load
+    dw .str_type,     cmd_type
+    dw .str_hexdump,  cmd_hexdump
+    dw .str_regs,     cmd_regs
+    dw .str_time,     cmd_time
+    dw .str_date,     cmd_date
+    dw .str_vga,      cmd_vga
+    dw .str_key,      cmd_key
+    dw .str_sysinfo,  cmd_sysinfo
+    dw .str_panic,    cmd_panic
+    dw .str_uptime,   cmd_uptime
+    dw 0
 
 .str_help:     db 'help', 0
 .str_cls:      db 'cls', 0
@@ -48,6 +66,19 @@ cmd_table:
 .str_ascii:    db 'ascii', 0
 .str_repeat:   db 'repeat', 0
 .str_fib:      db 'fib', 0
+.str_load:     db 'load', 0
+.str_ls:       db 'ls', 0
+.str_type:     db 'type', 0
+.str_hexdump:  db 'hexdump', 0
+.str_regs:     db 'regs', 0
+.str_time:     db 'time', 0
+.str_date:     db 'date', 0
+.str_vga:      db 'vga', 0
+.str_key:      db 'key', 0
+.str_sysinfo:  db 'sysinfo', 0
+.str_panic:    db 'panic', 0
+.str_uptime:   db 'uptime', 0
+.str_exec:     db 'exec', 0
 
 
 ; > Исполнитель команд
@@ -60,11 +91,12 @@ execute_cmd:
     push bx
 
 .skip_spaces:
+    ; Загрузка символа из si в al (Проверка на пробел)
     lodsb
     cmp al, ' '
     je .skip_spaces
 
-    ; SI указывает на первый символ команды
+    ; si указывает на первый символ команды
     dec si
 
     ; Проверка на пустую строку после пробелов
@@ -78,8 +110,8 @@ execute_cmd:
     mov bx, [di]   ; Получаем имя команды по адресу
     test bx, bx    ; Проверяем имя команды на конец таблицы (0)
     jz .not_found
-    
-    ; Сохраняем указатель на начало ввода пользователя
+
+    ; *Сохраняем указатель на начало ввода пользователя
     push si
 
 .compare_loop:
@@ -91,6 +123,9 @@ execute_cmd:
     test ah, ah
     jz .check_match
 
+    ; Перевод символа ввода к нижнему регистру
+    call char_to_lower
+
     ; Сравнение символов ввода и таблицы
     cmp al, ah
     jne .mismatch
@@ -101,21 +136,23 @@ execute_cmd:
     jmp .compare_loop
 
 .check_match:
-    ; Проверка, что во вводе дальше
+    ; Проверка, след. символа после названия
     cmp al, 0
     je .match
     cmp al, ' '
     je .match
 
 .mismatch:
-    pop si            ; *Восстанавливаем для проверки след. команды
-    add di, 4         ; Сдвигаем на следующую запись
+    pop si                  ; *Восстанавливаем указатель для проверки след.
+    add di, CMD_ENTRY_SIZE  ; Сдвигаем на следующую запись
     jmp .search_next
 
 .match:
-    pop ax            ; *Восстанавливаем push si из стека
-    mov ax, [di + 2]  ; Берем адрес функции
-    call ax           ; Вызываем функцию команды
+    ; Убираем сохранённый ввод со стека (si уже указывает на аргументы)
+    add sp, 2
+
+    ; Вызываем обработчик команды по адресу из таблицы
+    call word [di + 2]
     jmp .done
 
 .not_found:
@@ -130,547 +167,73 @@ execute_cmd:
     ret
 
 
-; > Команда помощи
-cmd_help:
-    push si
 
-    mov si, msg_help
-    call print
 
-    pop si
+; > Команда самостоятельного вызова паники
+cmd_panic:
+    call debug_panic_manual
     ret
 
-; > Команда очистки экрана
-%include "kernel16/shell/cmd_cls.asm"
+; > Команды управления питанием
+%include "kernel16/commands/power.asm"
 
-; > Команда перезагрузки
-cmd_reboot:
-    cli
+; > Команда просмотра информации о памяти
+%include "kernel16/commands/base/meminfo.asm"
 
-    ; Аппаратный сброс процессора через вектор BIOS
-    jmp 0xFFFF:0x0000
+; > Команда вывода строки на экран
+%include "kernel16/commands/base/echo.asm"
 
-; > Команда вывода информации о памяти
-cmd_meminfo:
-    push si
-    push di
+; > Команда просмотра информации о проекте
+%include "kernel16/commands/base/about.asm"
 
-    ; Показ строк с информацией о памяти
-    mov di, PCINFO_ADDR
-    call show_lower_memory
-    call print_new_line
+; > Команды для работы с текстом
+%include "kernel16/commands/text.asm"
 
-    mov di, PCINFO_ADDR
-    call show_usable_memory
-    call print_new_line
-
-    mov di, PCINFO_ADDR
-    call show_map_entries_cnt
-
-    call print_new_line
-    call print_new_line
-
-    ; Небольшая заметка
-    mov si, note_meminfo
-    call print
-
-    pop di
-    pop si
-    ret
-
-cmd_shutdown:
-    push ax
-    push bx
-    push cx
-    push si
-
-    ; Подключение к APM:
-    ; > ax - APM функция с подключением реального режима
-    ; > bx - устройство: "System BIOS"
-    mov ax, 0x5301
-    xor bx, bx
-    int 0x15
-    jc .error
-
-    ; Установка версии APM
-    ; > al - выбор версии
-    ; > bx - устройство: "System BIOS"
-    ; > cx - запрашиваемая версия APM 1.2
-    mov ax, 0x530E
-    xor bx, bx
-    mov cx, 0x0102
-    int 0x15
-    jc .error
-
-    ; Команда выключения питания
-    ; > al - установка состояния питания
-    ; > bx - устройство: "All devices" (все устройства)
-    ; > cx - состояние: "Off" (выключить)
-    mov ax, 0x5307
-    mov bx, 0x0001
-    mov cx, 0x0003
-    int 0x15
-    jc .error
-    
-    jmp $
-
-.error:
-    mov si, err_shutdown
-    call print
-    
-    pop si
-    pop cx
-    pop bx
-    pop ax
-    ret
-
-; > Команда "Echo"
-; Параметры:
-;  - si: указатель на начало аргументов команды
-cmd_echo:
-    push ax
-    push si
-
-    ; Пропускаем пробелы
-    call skip_spaces
-
-    ; Если аргументов нет (сразу конец строки)
-    cmp byte [si], 0
-    jz .done
-
-    ; Вывод сообщения         
-    call print
-
-.done:
-    pop si
-    pop ax
-
-    ret
-
-; > Команда "About"
-cmd_about:
-    push si
-
-    mov si, msg_about
-    call print
-
-    pop si
-    ret
-
-; > Команда печати аргумента задом наперед
-cmd_reverse:
-    push ax
-    push bx
-    push di
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    mov bx, si        ; bx - указатель начала строки
-    mov di, si        ; di - указатель для поиска конца
-
-.find_end:
-    ; Идём до нуль-терминатора
-    cmp byte [di], 0
-    je .is_empty
-
-    inc di
-    jmp .find_end
-
-.is_empty:
-    ; Проверка на пустой аргумент (Конец совпал с началом)
-    cmp di, bx
-    je .done
-
-    ; Устанавливаем di на последний символ строки
-    dec di
-
-.print_loop:
-    ; Печать символов от конца к началу
-    cmp di, bx
-    jb .done
-
-    mov al, [di]
-    call print_char
-
-    ; Дошли до начала строки
-    cmp di, bx
-    je .done
-
-    ; Переход к след. символу
-    dec di
-    jmp .print_loop
-
-.done:
-    pop si
-    pop di
-    pop bx
-    pop ax
-    ret
-
-; > Команда подсчёта длины аргумента
-cmd_len:
-    push ax
-    push cx
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    xor cx, cx        ; Счётчик символов
-
-.loop:
-    ; Идём до нуль-терминатора
-    cmp byte [si], 0
-    je .print
-
-    ; Переход к след. символу, увеличивая счётчик
-    inc si
-    inc cx
-    jmp .loop
-
-.print:
-    ; "Length: " + число
-    mov si, msg_len
-    call print
-
-    ; Печать длины строки
-    mov ax, cx
-    call print_dec16
-
-    pop si
-    pop cx
-    pop ax
-    ret
-
-; > Команда печати аргумента в верхнем регистре
-cmd_upper:
-    push ax
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-
-.loop:
-    lodsb        ; Загрузка символа (si > al)
-    test al, al  ; Конец строки?
-    jz .done
-
-    ; Переводим только a-z, остальное - как есть
-    cmp al, 'a'
-    jb .emit
-    cmp al, 'z'
-    ja .emit
-
-    ; Перевод в верхний регистр по сдвигу в таблице ASCII
-    sub al, 32
-
-.emit:
-    call print_char
-    jmp .loop
-
-.done:
-    pop si
-    pop ax
-    ret
-
-; > Команда печати аргумента в нижнем регистре
-cmd_lower:
-    push ax
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-
-.loop:
-    lodsb
-    test al, al
-    jz .done
-
-    ; Переводим только A-Z, остальное - как есть
-    cmp al, 'A'
-    jb .emit
-    cmp al, 'Z'
-    ja .emit
-
-    ; Перевод в нижний регистр по сдвигу в таблице ASCII
-    add al, 32
-
-.emit:
-    call print_char
-    jmp .loop
-
-.done:
-    pop si
-    pop ax
-    ret
-
-; > Команда вывода числа в шестнадцатеричном виде
-cmd_hex:
-    push ax
-    push bx
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
-
-    ; Парсинг числа
-    call parse_uint16
-    jc .usage
-    mov bx, ax         ; Сохраняем число (parse затрёт ax)
-
-    ; После числа не должно быть мусора
-    call skip_spaces
-    cmp byte [si], 0
-    jne .usage
-
-    ; "Hex: 0x" + число
-    mov si, msg_hex
-    call print
-
-    mov ax, bx
-    call print_hex16
-    jmp .done
-
-.usage:
-    mov si, msg_hex_usage
-    call print
-
-.done:
-    pop si
-    pop bx
-    pop ax
-    ret
-
-; > Команда вывода символа по десятичному коду
-cmd_ascii:
-    push ax
-    push bx
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
-
-    ; Парсинг кода символа
-    call parse_uint16
-    jc .usage
-
-    ; Код должен влезать в один байт
-    cmp ax, 255
-    ja .usage
-    mov bx, ax
-
-    ; После числа не должно быть мусора
-    call skip_spaces
-    cmp byte [si], 0
-    jne .usage
-
-    ; "Char: " + сам символ
-    mov si, msg_ascii
-    call print
-    mov al, bl
-    call print_char
-    jmp .done
-
-.usage:
-    mov si, msg_ascii_usage
-    call print
-
-.done:
-    pop si
-    pop bx
-    pop ax
-    ret
-
-; > Команда повтора текста `N` раз
-; ❗️ Предел N: 20, иначе ошибка синтаксиса
-cmd_repeat:
-    push ax
-    push cx
-    push si
-
-    ; Пропуск пробелов до счётчика
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
-
-    ; Парсинг числа повторов
-    call parse_uint16
-    jc .usage
-
-    ; Ноль повторов - тихо выходим
-    test ax, ax
-    jz .done
-
-    ; Верхнее ограничение
-    cmp ax, 20
-    ja .too_many
-    mov cx, ax        ; cx - счётчик
-
-    ; Пропуск пробелов до текста
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
-
-.print_loop:
-    ; Вывод одного и того же текста `N` раз
-    call print
-    loop .print_loop
-    jmp .done
-
-.usage:
-    mov si, msg_repeat_usage
-    call print
-    jmp .done
-
-.too_many:
-    mov si, err_repeat_count
-    call print
-
-.done:
-    pop si
-    pop cx
-    pop ax
-    ret
-
-; > Команда вычисления числа Фибоначчи (0-24)
-; ❗️ Предел 24, чтобы результат влез в 16 бит (fib(24) = 46368)
-cmd_fib:
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-
-    ; Пропуск пробелов до аргумента
-    call skip_spaces
-    cmp byte [si], 0
-    je .usage
-
-    ; Парсинг номера
-    call parse_uint16
-    jc .usage
-    push ax
-
-    ; После числа не должно быть мусора
-    call skip_spaces
-    cmp byte [si], 0
-    jne .usage
-
-    ; Ограничение сверху (иначе переполнение uint16)
-    pop ax
-    cmp ax, 24
-    ja .too_big
-
-    ; Начальная пара: ax = fib(n-1), bx = fib(n) = 1
-    mov cx, ax
-    xor ax, ax
-    mov bx, 1
-
-    ; Позиция 0 в последовательности Фибоначчи известна заранее
-    test cx, cx
-    jz .print
-
-.loop:
-    ; Линейный счёт числа в последовательности (dx = ax + bx)
-    mov dx, ax
-    add dx, bx
-
-    ; Обновляем позиции: fib(n-1), fib(n)
-    mov ax, bx
-    mov bx, dx
-    loop .loop
-
-.print:
-    ; "Fib: " + результат (уже в ax)
-    mov si, msg_fib
-    call print
-    call print_dec16
-    jmp .done
-
-.usage:
-    mov si, msg_fib_usage
-    call print
-    jmp .done
-
-.too_big:
-    mov si, err_fib_range
-    call print
-
-.done:
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
+; > Команды для работы с числами
+%include "kernel16/commands/nums.asm"
 
 ; > Команда простого калькулятора
-%include "kernel16/shell/cmd_calc.asm"
+%include "kernel16/commands/calc.asm"
 
-; > Пропуск пробелов до первого символа
-; Вывод:
-;  - si: указатель на первый символ строки
-skip_spaces:
-    ; Пропуск пробела c переходом к след. символу
-    lodsb
-    cmp al, ' '
-    je skip_spaces
+; > Команда загрузки файла с диска
+%include "kernel16/commands/filesystem/load.asm"
 
-.done:
-    ; Возвращаем si назад на первый символ строки
-    dec si
-    ret
+; > Команда загрузки RLX приложения с диска
+%include "kernel16/commands/filesystem/exec.asm"
 
-err_unknown_cmd:  db '[!] Unknown command, write help for list of commands.', 0
-err_shutdown:     db '[!] PC shutdown failed! (No APM)', 0
-err_repeat_count: db '[!] Repeat count must be 1..20.', 0
-err_fib_range:    db '[!] Fib argument must be 0..24.', 0
+; > Команда вывода списка файлов
+%include "kernel16/commands/filesystem/ls.asm"
 
-; Сообщения
-msg_help:
-    db 'Commands:', ENTER
-    db '  [Base]', ENTER
-    db '> help      - Show this manual', ENTER
-    db '> clear/cls - Clear screen', ENTER
-    db '> echo <t>  - Print <text> to console', ENTER
-    db '> about     - Show system info', ENTER
-    db '> beep      - Beep via BIOS speaker', ENTER
-    db '> meminfo   - Display RAM configuration', ENTER
-    db '  [Text]', ENTER
-    db '> len <t>           - Length of <text>', ENTER
-    db '> upper <t>         - <text> to upper case', ENTER
-    db '> lower <t>         - <text> to lower case', ENTER
-    db '> reverse <t>       - Reverse <text>', ENTER
-    db '> repeat <1-20> <t> - Repeat <text> N times', ENTER
-    db '  [Numbers]', ENTER
-    db '> calc <num1> <+ - * /> <num2> - Simple calculator (positive only)', ENTER
-    db '> hex <num>     - Show <num> in hexadecimal', ENTER
-    db '> ascii <0-255> - Print char by ASCII code', ENTER
-    db '> fib <0-24>    - Nth Fibonacci number', ENTER
-    db '  [Power]', ENTER
-    db '> reboot   - Reboot PC', ENTER
-    db '> shutdown - Power off PC', 0
-msg_about:
-    db '> Realix version: ', OS_VERSION, ENTER
-    db '> Realix is a lightweight hybrid x86 OS.', ENTER
-    db 'It supports a built-in boot switcher that lets users choose:', ENTER
-    db '1. 16-bit Real Mode kernel for legacy compatibility', ENTER
-    db '2. 32-bit Protected Mode kernel for high performance.', 0
+; > Команда печати файла как текста
+%include "kernel16/commands/filesystem/type.asm"
 
-msg_len:          db 'Length: ', 0
-msg_hex:          db 'Hex: 0x', 0
-msg_hex_usage:    db 'Usage: hex <num>', 0
-msg_ascii:        db 'Char: ', 0
-msg_ascii_usage:  db 'Usage: ascii <0-255>', 0
-msg_repeat_usage: db 'Usage: repeat <1-20> <text>', 0
-msg_fib:          db 'Fib: ', 0
-msg_fib_usage:    db 'Usage: fib <0-24>', 0
+; > Команда шестнадцатеричного дампа файла
+%include "kernel16/commands/filesystem/hexdump.asm"
 
-note_meminfo: db 'Note: In Real mode you can access only low RAM.', 0
+; > Команда вывода снимка регистров
+%include "kernel16/commands/debug/regs.asm"
 
-; Буфер ввода
-input_str: times 64 db 0
+; > Команды вывода времени и даты (RTC)
+%include "kernel16/commands/debug/date-time.asm"
+
+; > Команда демонстрации графического режима
+%include "kernel16/commands/debug/vga.asm"
+
+; > Команды для вывода ascii/scancode клавиши
+%include "kernel16/commands/debug/key.asm"
+
+; > Команды для вывода системной информации
+%include "kernel16/commands/base/sysinfo.asm"
+
+; > Команды для вывода аптайма
+%include "kernel16/commands/base/uptime.asm"
+
+; > Команда помощи
+%include "kernel16/commands/base/help.asm"
+
+; Подключение доп. модуля для команд
+%include "kernel16/shell/utils.asm"
+
+
+; Сообщение о неизвестной команде
+err_unknown_cmd: db "[!] Unknown command. Type 'help' for list of commands.", 0

@@ -3,7 +3,7 @@
 // ================
 
 // Подключение функций
-use crate::{inb, outb};
+use crate::utils::{inb, outb};
 
 // Командные порты и порты данных Master & Slave
 const PIC1_CMD:  u16 = 0x20;
@@ -20,7 +20,6 @@ const PIC2_OFFSET: u8 = 0x28;
 
 
 /// Короткая задержка для старых PIC/ISA-устройств
-/// (Порт 0x80 исторически под POST-коды, годится для паузы ввода-вывода)
 #[inline(always)]
 unsafe fn io_wait() {
     outb(0x80, 0);
@@ -139,14 +138,13 @@ pub fn is_spurious(irq: u8) -> bool {
         // IRQ7: ложное, если бит 7 в ISR master'а не установлен
         7 => read_isr(PIC1_CMD) & 0x80 == 0,
 
-        // IRQ15: ложное, если ISR slave пуст (но master ждёт EOI)
+        // IRQ15: настоящее, если ISR slave не пуст
+        15 if read_isr(PIC2_CMD) & 0x80 != 0 => false,
+
+        // IRQ15: ложное, но master всё равно ждёт EOI за проброс через IRQ2
         15 => {
-            if read_isr(PIC2_CMD) & 0x80 == 0 {
-                unsafe { outb(PIC1_CMD, PIC_EOI); }
-                true
-            } else {
-                false
-            }
+            unsafe { outb(PIC1_CMD, PIC_EOI); }
+            true
         }
         _ => false,
     }

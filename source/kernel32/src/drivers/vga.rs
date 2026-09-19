@@ -1,19 +1,29 @@
-// © Realix > VGA
-// (01.07.26) v0.08
-// ø Вдохновлено @liquifield
+// © Realix > Driver: VGA
+// ø Inspired by @liquifield
+// (24.08.26) v0.12
 // ================
 // ! Не вызывать из IRQ прерываний (Гонка данных на константах)
 
 // Подключение функций
-use core::arch::asm;
 use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-use crate::utils;
+use crate::utils::{self, outb};
 
 // Константы
-const VGA_BUFFER: *mut u8 = 0xB8000 as *mut u8;
-pub const VGA_WIDTH: usize = 80;
-pub const VGA_HEIGHT: usize = 25;
+const VGA_TEXT_BUFFER: *mut u8 = 0xB8000 as *mut u8;
+const VGA_VIDEO_BUFFER: *mut u8 = 0xA0000 as *mut u8;
+pub const VGA_TEXT_WIDTH: usize = 80;
+pub const VGA_TEXT_HEIGHT: usize = 25;
+pub const VGA_VIDEO_WIDTH: usize = 320;
+pub const VGA_VIDEO_HEIGHT: usize = 200;
+const EMPTY_CELL: u16 = (0x0F << 8) | b' ' as u16;  // Пробел + 0x0F (белый на чёрном)
 
+// Регистры CRT-контроллера для управления аппаратным курсором
+const VGA_CRTC_INDEX: u16 = 0x3D4;  // Индексный порт
+const VGA_CRTC_DATA:  u16 = 0x3D5;  // Порт данных
+const VGA_CURSOR_HIGH: u8 = 0x0E;   // Регистр старшего байта позиции курсора
+const VGA_CURSOR_LOW:  u8 = 0x0F;   // Регистр младшего байта позиции курсора
+
+// Позиция курсора
 static CURSOR_ROW: AtomicUsize = AtomicUsize::new(0);
 static CURSOR_COL: AtomicUsize = AtomicUsize::new(0);
 
@@ -40,15 +50,106 @@ pub enum Color {
     White = 0xF,
 }
 
+/// Общая структура для одноименных функций в видеорежиме и текстовом режиме
+pub struct VideoOps {
+    pub print_line: fn(line: &str, color: Color),
+    pub print_char: fn(char_byte: u8, color: Color),
+    pub clear_screen: fn(),
+}
 
-pub fn clear_screen() {
-    // "Стираем" экран пробелами с чёрным фоном
-    for byte in 0..(VGA_WIDTH * VGA_HEIGHT) {
-        unsafe {
-            VGA_BUFFER.add(byte * 2).write_volatile(b' ');
-            VGA_BUFFER.add(byte * 2 + 1).write_volatile(0x0F);
-        }
+
+/// Инициализация OPS, используя структуру VideoOps
+pub fn init(videomode: u16) {
+    unsafe {
+        OPS = match videomode {
+            0 => VideoOps {
+                print_line: text_print_line,
+                print_char: text_print_char,
+                clear_screen: text_clear_screen,
+            },
+
+            // ! Пока что в видеорежиме нет таких обработчиков, оставляем заглушки
+            1 => VideoOps {
+                print_line: text_print_line,
+                print_char: text_print_char,
+                clear_screen: text_clear_screen,
+            },
+            _ => panic!("unsupported video mode"),
+        };
     }
+}
+
+
+// Основной интерфейс (Дефолтный)
+static mut OPS: VideoOps = VideoOps {
+    print_line: text_print_line,
+    print_char: text_print_char,
+    clear_screen: text_clear_screen,
+};
+
+// Публичный интерфейс модуля
+pub fn clear_screen() { unsafe { (OPS.clear_screen)() } }
+pub fn print_char(char_byte: u8, color: Color) { unsafe { (OPS.print_char)(char_byte, color) } }
+pub fn print_line(line: &str, color: Color) { unsafe { (OPS.print_line)(line, color) } }
+
+
+/// Отдельно от OPS — эта функция вообще не должна дёргаться в текстовом режиме
+pub fn set_pixel(x: usize, y: usize, color: Color) {
+    if x >= VGA_VIDEO_WIDTH || y > VGA_VIDEO_HEIGHT {
+        return;
+    }
+
+    unsafe {
+        let offset = (y * 320 + x) as isize;
+        VGA_VIDEO_BUFFER.offset(offset).write_volatile(color as u8);
+    }
+}
+
+/// Вывод строки на экран (VGA Video)
+pub fn fill_screen(color: Color) {
+    for i in 0..VGA_VIDEO_WIDTH * VGA_VIDEO_HEIGHT {
+        unsafe { VGA_VIDEO_BUFFER.add(i).write_volatile(color as u8); }
+    }
+}
+
+
+/// Отрисовка горизонтальной линии (VGA Video)
+pub fn draw_hline(x1: usize, x2: usize, y: usize, color: Color) {
+    for curr_x in x1..=x2 {
+        set_pixel(curr_x, y, color);
+    }
+}
+
+/// Отрисовка вертикальной линии (VGA Video)
+pub fn draw_vline(x: usize, y1: usize, y2: usize, color: Color) {
+    for curr_y in y1..=y2 {
+        set_pixel(x, curr_y, color);
+    }
+}
+
+/// Отрисовка вертикальной линии (VGA Video)
+pub fn draw_rect(x1: usize, x2: usize, y1: usize, y2: usize, color: Color) {
+    // Рисуем циклично горизонтальные строки
+    for curr_y in y1..=y2 {
+        draw_hline(x1, x2, curr_y, color);
+    }
+}
+    
+
+/// Заполнение `count` ячеек экрана пустой ячейкой, начиная с `start_cell`
+fn clear_cells(start_cell: usize, count: usize) {
+    let cells: *mut u16 = VGA_TEXT_BUFFER as *mut u16;
+
+    for i in start_cell..start_cell + count {
+        unsafe { cells.add(i).write_volatile(EMPTY_CELL); }
+    }
+}
+
+
+/// Очистка экрана и сброс курсора в начало
+pub fn text_clear_screen() {
+    // "Стираем" экран пробелами с чёрным фоном
+    clear_cells(0, VGA_TEXT_WIDTH * VGA_TEXT_HEIGHT);
 
     // Сбрасываем позицию курсора
     CURSOR_ROW.store(0, Relaxed);
@@ -60,88 +161,76 @@ pub fn clear_screen() {
 /// Поднять все строки на экране на `n` позиций
 fn scroll_up(lines_count: usize) {
     // Если кол-во строк для прокрутки больше чем высота VGA
-    if lines_count >= VGA_HEIGHT {
+    if lines_count >= VGA_TEXT_HEIGHT {
         clear_screen();
         return;
     }
 
-    // Копируем все строки кроме первой на `n` позиций выше
-    for row in lines_count..VGA_HEIGHT {
-        let src_offset: usize = (row * VGA_WIDTH) * 2;
-        let dst_offset: usize = ((row - lines_count) * VGA_WIDTH) * 2;
-
-        for byte in 0..(VGA_WIDTH * 2) {
-            unsafe {
-                let value: u8 = VGA_BUFFER.add(src_offset + byte).read_volatile();
-                VGA_BUFFER.add(dst_offset + byte).write_volatile(value);
-            }
-        }
+    // Копируем строки `n`..HEIGHT в начало экрана единым блоком (memmove).
+    unsafe {
+        core::ptr::copy(
+            VGA_TEXT_BUFFER.add(lines_count * VGA_TEXT_WIDTH * 2),
+            VGA_TEXT_BUFFER,
+            (VGA_TEXT_HEIGHT - lines_count) * VGA_TEXT_WIDTH * 2
+        );
     }
 
     // "Стираем" последние `n` строк пробелами с чёрным фоном
-    for row in (VGA_HEIGHT - lines_count)..VGA_HEIGHT {
-        let row_offset: usize = row * VGA_WIDTH * 2;
-
-        for col in 0..VGA_WIDTH {
-            unsafe {
-                VGA_BUFFER.add(row_offset + col * 2).write_volatile(b' ');
-                VGA_BUFFER.add(row_offset + col * 2 + 1).write_volatile(0x0F);
-            }
-        }
-    }
+    clear_cells((VGA_TEXT_HEIGHT - lines_count) * VGA_TEXT_WIDTH, lines_count * VGA_TEXT_WIDTH);
 
     // Обновляем позицию курсора на `n` строк вверх
-    let _row: usize = CURSOR_ROW.load(Relaxed);
-    CURSOR_ROW.store(if _row > lines_count { _row - lines_count } else { 0 }, Relaxed);
+    let row: usize = CURSOR_ROW.load(Relaxed);
+    CURSOR_ROW.store(row.saturating_sub(lines_count), Relaxed);
     update_cursor();
 }
 
 
+/// Перенос аппаратного курсора CRTC в текущую позицию
 fn update_cursor() {
     // Вычисляем новую позицию
-    let _row: usize = CURSOR_ROW.load(Relaxed);
-    let _col: usize = CURSOR_COL.load(Relaxed);
-    let pos: u16 = (_row * VGA_WIDTH + _col) as u16;
+    let row: usize = CURSOR_ROW.load(Relaxed);
+    let col: usize = CURSOR_COL.load(Relaxed);
+    let pos: u16 = (row * VGA_TEXT_WIDTH + col) as u16;
 
-    // Включаем порт VGA и передаём младший, затем старший байт позиции курсора
+    // Выбираем регистр CRTC и передаём младший, затем старший байт позиции курсора
     unsafe {
-        asm!("out dx, al", in("dx") 0x3D4u16, in("al") 0x0Fu8);
-        asm!("out dx, al", in("dx") 0x3D5u16, in("al") (pos & 0xFF) as u8);
+        outb(VGA_CRTC_INDEX, VGA_CURSOR_LOW);
+        outb(VGA_CRTC_DATA, (pos & 0xFF) as u8);
 
-        asm!("out dx, al", in("dx") 0x3D4u16, in("al") 0x0Eu8);
-        asm!("out dx, al", in("dx") 0x3D5u16, in("al") ((pos >> 8) & 0xFF) as u8);
+        outb(VGA_CRTC_INDEX, VGA_CURSOR_HIGH);
+        outb(VGA_CRTC_DATA, (pos >> 8) as u8);
     }
 }
 
 
 /// Вывод символа на экран (по принципам TTY)
-pub fn print_char(char_byte: u8, color: Color) {
+pub fn text_print_char(char_byte: u8, color: Color) {
     match char_byte {
         b'\n' => {
             CURSOR_COL.store(0, Relaxed);
-            CURSOR_ROW.fetch_add(1, Relaxed); 
+            CURSOR_ROW.fetch_add(1, Relaxed);
         }
         b'\r' => { CURSOR_COL.store(0, Relaxed); }
         _ => {
             let row: usize = CURSOR_ROW.load(Relaxed);
             let col: usize = CURSOR_COL.load(Relaxed);
-            let offset: usize = (row * VGA_WIDTH + col) * 2;
+            let offset: usize = (row * VGA_TEXT_WIDTH + col) * 2;
             unsafe {
-                VGA_BUFFER.add(offset).write_volatile(char_byte);
-                VGA_BUFFER.add(offset + 1).write_volatile(color as u8);
+                VGA_TEXT_BUFFER.add(offset).write_volatile(char_byte);
+                VGA_TEXT_BUFFER.add(offset + 1).write_volatile(color as u8);
             }
             CURSOR_COL.fetch_add(1, Relaxed);
         }
     }
 
     // Перенос курсора на след. строку
-    if CURSOR_COL.load(Relaxed) >= VGA_WIDTH {
+    if CURSOR_COL.load(Relaxed) >= VGA_TEXT_WIDTH {
         CURSOR_COL.store(0, Relaxed);
-        CURSOR_ROW.fetch_add(1, Relaxed); 
+        CURSOR_ROW.fetch_add(1, Relaxed);
     }
 
     // Если курсор выходит за нижнюю границу экрана
-    while CURSOR_ROW.load(Relaxed) >= VGA_HEIGHT {
+    while CURSOR_ROW.load(Relaxed) >= VGA_TEXT_HEIGHT {
         scroll_up(1);
     }
 
@@ -150,49 +239,60 @@ pub fn print_char(char_byte: u8, color: Color) {
 
 /// Вывод символа в определённой позиции
 pub fn write_char_at(row: usize, col: usize, char_byte: u8, color: Color) {
-    // За границу экрана мы не пишем
-    if row >= VGA_HEIGHT || col >= VGA_WIDTH {
+    // Проверка, что символ находитсья в пределах экрана
+    if row >= VGA_TEXT_HEIGHT || col >= VGA_TEXT_WIDTH {
         return;
     }
 
-    let offset: usize = (row * VGA_WIDTH + col) * 2;
+    // Запись символа
+    let offset: usize = (row * VGA_TEXT_WIDTH + col) * 2;
     unsafe {
-        VGA_BUFFER.add(offset).write_volatile(char_byte);
-        VGA_BUFFER.add(offset + 1).write_volatile(color as u8);
+        VGA_TEXT_BUFFER.add(offset).write_volatile(char_byte);
+        VGA_TEXT_BUFFER.add(offset + 1).write_volatile(color as u8);
     }
 }
 
+
 /// Вывод строки на экран (по принципам TTY)
-pub fn print_line(line: &str, color: Color) {
+pub fn text_print_line(line: &str, color: Color) {
     for byte in line.bytes() {
         print_char(byte, color);
     }
 }
 
+
+/// Стирание последнего символа с переносом курсора назад
 pub fn print_backspace() {
     // > Обновление позиции курсора
     if CURSOR_COL.load(Relaxed) > 0 {
         CURSOR_COL.fetch_sub(1, Relaxed);
     } else if CURSOR_ROW.load(Relaxed) > 0 {
-        CURSOR_ROW.fetch_sub(1, Relaxed); 
-        CURSOR_COL.store(VGA_WIDTH - 1, Relaxed);
+        CURSOR_ROW.fetch_sub(1, Relaxed);
+        CURSOR_COL.store(VGA_TEXT_WIDTH - 1, Relaxed);
     }
 
     // Замена последнего символа на пробел
-    let _row: usize = CURSOR_ROW.load(Relaxed);
-    let _col: usize = CURSOR_COL.load(Relaxed);
-    let offset: usize = (_row * VGA_WIDTH + _col) * 2;
+    let row: usize = CURSOR_ROW.load(Relaxed);
+    let col: usize = CURSOR_COL.load(Relaxed);
+    let offset: usize = (row * VGA_TEXT_WIDTH + col) * 2;
     unsafe {
-        VGA_BUFFER.add(offset).write_volatile(b' ');
-        VGA_BUFFER.add(offset + 1).write_volatile(0x0F);
+        VGA_TEXT_BUFFER.add(offset).write_volatile(b' ');
+        VGA_TEXT_BUFFER.add(offset + 1).write_volatile(0x0F);
     }
 
     update_cursor();
 }
 
 /// Перевод строки
-pub fn new_line() {
+pub fn print_new_line() {
     print_char(b'\n', Color::White);
+}
+
+/// Перевод строки, если надо
+pub fn print_new_line_if_needed() {
+    if CURSOR_COL.load(Relaxed) != 0 {
+        print_char(b'\n', Color::White);
+    }
 }
 
 /// Вывод строки дампа регистра
@@ -203,5 +303,5 @@ pub fn print_reg_line(reg_label: &str, value: u32) {
     print_line(reg_label, Color::LightGray);
     print_line(" = ", Color::LightGray);
     print_line(utils::u32_to_hex_str(value, &mut buffer), Color::White);
-    new_line();
+    print_new_line();
 }

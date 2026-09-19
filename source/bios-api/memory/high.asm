@@ -1,16 +1,18 @@
 ; © Realix > High memory (Memory Map)
-; (12.07.26) v0.09
+; (15.08.26) v0.12
 ; ================
 
 ; Основные константы
 %include 'shared/config.asm'
 
-; > Получение карты памяти через прерывание int 0x15 (E820)
+
+; > Получение карты памяти: int 0x15 (E820)
 ; Параметры:
-;  - es:di: адрес, куда мы будем сохранять таблицу карт памяти
+;  - es:di: адрес сохранения таблицы карты памяти
 ; Вывод:
 ;  - bp: количество успешно прочитанных записей
 ;  - di: указатель на конец таблицы
+;  - CF (Carry Flag): 0 (Успех), 1 (Ошибка)
 get_memory_map:
     push eax
     push ebx
@@ -24,17 +26,19 @@ get_memory_map:
 .next:
     ; Не позволяем BIOS записать больше, чем вмещает `E820Map` в kernel32
     cmp bp, E820_MAX_ENTRIES
-    jae .success
+    jae .done
 
     mov eax, 0xe820
     mov edx, 0x0534D4150       ; "SMAP"
     mov ecx, E820_ENTRY_SIZE   ; Запрашиваем 24 байта
     mov [es:di + 20], dword 1  ; Делаем запись валидной для ACPI 3.X (Она сможет перезаписаться)
 
+    ; Установленный CF - "функция не поддерживается" или "конец списка"
     int 0x15
-    jc .carry_result      ; Установленный CF - "функция не поддерживается" или "конец списка"
+    jc .carry_result
 
-    cmp eax, 0x0534D4150  ; В случае успеха eax должен быть сброшен в "SMAP"
+    ; В случае успеха eax должен быть сброшен в "SMAP"
+    cmp eax, 0x0534D4150
     jne .fail
 
     ; Есть ли расширенные атрибуты ACPI 3.X? (BIOS может вернуть 20 или 24 байта)
@@ -46,7 +50,7 @@ get_memory_map:
     jz .skipentry         ; Если 64-битная длина равна 0, пропустить запись
 
     ; Если запись не превышает макс. размер в 24 байта, принимаем
-    cmp ecx, 24
+    cmp ecx, E820_ENTRY_SIZE
     jb .accept
 
     ; Есть атрибуты: очищен ли бит "игнорировать эти данные"?
@@ -63,21 +67,20 @@ get_memory_map:
     test ebx, ebx
     jne .next
 
-.success:
-    ; Очищаем CF и выходим
+.done:
     clc
-    jmp .done
+    jmp .return
 
 .carry_result:
-    ; CF при уже собранных записях обычно означает "конец списка достигнут"
+    ; CF при собранных записях означает "конец списка достигнут"
     test bp, bp
-    jnz .success
+    jnz .done
 
 .fail:
     ; Выход по ошибке "Функция не поддерживается"
     stc
 
-.done:
+.return:
     pop edx
     pop ecx
     pop ebx
@@ -85,60 +88,30 @@ get_memory_map:
     ret
 
 
-; > Вывод кол-ва записей карты памяти в текстовом режиме
-; ❗️ Зависимости: kernel16/print.asm
-show_map_entries_cnt:
-    push si
-    push ax
-    push es
-
-    ; Настраиваем сегмент `es` под PCINFO
-    xor ax, ax
-    mov es, ax
-
-    ; Выводим информацию о кол-ве записей карты памяти
-    mov si, str_memory_map
-    call print
-    mov ax, word [es:PCINFO_ADDR + 3]
-    call print_dec16
-    mov si, str_entries
-    call print
-
-.done:
-    pop es
-    pop ax
-    pop si
-    ret
-
-
 ; > Получение общей длины всех отрезкой памяти по её карте
 ; Параметры:
-;  - es:di: Указатель на `PC_INFO`
+;  - es:si: Указатель на начало карты памяти
+;  - cx: Кол-во записей в карте памяти
 ; Вывод:
-;  - ax: Число свободной памяти (МБ), насыщается на 65535 при переполнении
+;  - eax: Число свободной памяти (До 2 ^ 32 МБ или до 4096 ТБ)
 get_usable_memory:
     push ebx
-    push ecx
     push edx
+    push cx
     push si
 
+    ; Подготовка параметров
     xor ebx, ebx
     xor edx, edx
 
-    ; Читаем количество записей (Если 0 - Выходим)
-    mov cx, [es:di + 3]
+    ; Смотрим количество записей (Если 0 - Выходим)
     test cx, cx
     jz .empty
 
-    ; Доп. защита от повреждённого PCINFO (не больше, чем реально бывает записей)
+    ; Доп. защита от повреждённого `PCINFO` (Не больше, чем ожидается Rust ядром)
     cmp cx, E820_MAX_ENTRIES
-    jbe .count_valid
+    jbe .loop
     mov cx, E820_MAX_ENTRIES
-
-.count_valid:
-    ; Адрес первой записи E820
-    mov si, di
-    add si, 5
 
 .loop:
     ; Проходим по свободным регионам памяти
@@ -159,54 +132,19 @@ get_usable_memory:
     shrd ebx, edx, 20  ; Сдвигаем ebx на 20 бит, заполняя верх ebx из edx
     shr edx, 20        ; Сдвигаем edx на 20 бит
 
-    ; Если результат не влезает в ax, насыщаем значение вместо переполнения
+    ; Если результат не влезает (Вдруг >4096 ТБ...), насыщаем значение
     test edx, edx
     jnz .saturate
-    cmp ebx, 0xFFFF
-    ja .saturate
 
-    mov ax, bx
+    mov eax, ebx
     jmp .done
 
 .saturate:
-    mov ax, 0xFFFF
+    mov eax, 0xFFFFFFFF
 
 .done:
     pop si
+    pop cx
     pop edx
-    pop ecx
     pop ebx
     ret
-
-
-; > Вывод кол-ва свободной памяти в текстовом режиме
-; ❗️ Зависимости: kernel16/print.asm, kernel16/print_reg.asm
-show_usable_memory:
-    push es
-    push si
-    push ax
-
-    ; Считаем и выводим кол-во свободной памяти
-    xor ax, ax
-    mov es, ax
-    mov di, PCINFO_ADDR
-    call get_usable_memory
-
-    ; NOTE: ax содержит нужное число после `call get_usable_memory`
-    mov si, str_usable_ram
-    call print
-    call print_dec16
-    mov si, str_mb
-    call print
-
-.done:
-    pop ax
-    pop si
-    pop es
-    ret
-
-; Строки
-str_memory_map: db 'Memory Map: ', 0
-str_entries:    db ' entries', 0
-str_usable_ram: db 'Usable RAM: ', 0
-str_mb:         db ' MB', 0

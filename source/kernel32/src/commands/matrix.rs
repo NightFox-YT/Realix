@@ -1,34 +1,32 @@
-// © Realix > Matrix command
-// (04.07.26) v0.08
-// ø Copyright by @liquifield
+// © Realix > Command: Matrix
+// ø @liquifield
+// (27.07.26) v0.1
 // ================
 
 // Подключение функций
 use crate::drivers::keyboard;
 use crate::drivers::pit;
-use crate::drivers::vga::{self, VGA_HEIGHT, VGA_WIDTH};
-
+use crate::drivers::vga::{self, VGA_TEXT_HEIGHT, VGA_TEXT_WIDTH};
 
 /// Запуск анимации Matrix
 pub fn run() {
-    let mut drops_heights: [usize; VGA_WIDTH] = [0; VGA_WIDTH];
+    let mut drops_heights: [usize; VGA_TEXT_WIDTH] = [0; VGA_TEXT_WIDTH];
 
     // Инициализация (Капли на разной высоте)
-    for col in 0..VGA_WIDTH {
-        drops_heights[col] =
-            (col.wrapping_mul(7).wrapping_add(3)) % VGA_HEIGHT;
+    for (col, height) in drops_heights.iter_mut().enumerate() {
+        *height = (col.wrapping_mul(7).wrapping_add(3)) % VGA_TEXT_HEIGHT;
     }
 
-    pit::sleep(500);
+    pit::sleep(400);
     vga::clear_screen();
 
     loop {
         // Отрисовка одного кадра
-        for col in 0..VGA_WIDTH {
-            let row = drops_heights[col];
+        for (col, height) in drops_heights.iter_mut().enumerate() {
+            let row: usize = *height;
 
             // Белая голова
-            if row < VGA_HEIGHT {
+            if row < VGA_TEXT_HEIGHT {
                 vga::write_char_at(
                     row, col,
                     random_symbol(col, row),
@@ -37,7 +35,7 @@ pub fn run() {
             }
 
             // Зелёный шлейф выше
-            if row > 0 && row - 1 < VGA_HEIGHT {
+            if row > 0 && row - 1 < VGA_TEXT_HEIGHT {
                 vga::write_char_at(
                     row - 1, col,
                     random_symbol(col, row - 1),
@@ -46,7 +44,7 @@ pub fn run() {
             }
 
             // Тёмный хвост ещё выше
-            if row >= 2 && row - 2 < VGA_HEIGHT {
+            if row >= 2 && row - 2 < VGA_TEXT_HEIGHT {
                 vga::write_char_at(
                     row - 2, col,
                     random_symbol(col, row - 2),
@@ -55,7 +53,7 @@ pub fn run() {
             }
 
             // Стираем символы выше хвоста
-            if row >= 3 && row - 3 < VGA_HEIGHT {
+            if row >= 3 && row - 3 < VGA_TEXT_HEIGHT {
                 vga::write_char_at(
                     row - 3, col,
                     b' ',
@@ -64,37 +62,28 @@ pub fn run() {
             }
 
             // Двигаем каплю вниз
-            drops_heights[col] += 1;
+            *height += 1;
 
-            // Если достигла дна — сбрасываем наверх с стиранием столбца
-            if drops_heights[col] >= VGA_HEIGHT + 1 {
-                for clear_row in 0..VGA_HEIGHT {
+            // Если достигла дна - сбрасываем наверх со стиранием столбца
+            if *height > VGA_TEXT_HEIGHT {
+                for clear_row in 0..VGA_TEXT_HEIGHT {
                     vga::write_char_at(
                         clear_row, col,
                         b' ',
                         vga::Color::Black,
                     );
                 }
-                drops_heights[col] = 0;
+                *height = 0;
             }
         }
 
         // Задержка для плавности
         pit::sleep(40);
 
-        // Выход по любой нажатой клавише
+        // Выход по любой нажатой клавише (Отпускания игнорируем)
         if let Some(scancode) = keyboard::queue_pop() {
-            // Игнорируем отпускание клавиш (бит 7 = 1)
-            if scancode & 0x80 == 0 {
+            if scancode & keyboard::SCANCODE_RELEASE == 0 {
                 break;
-            }
-        } else {
-            // Очередь пуста
-            unsafe {
-                core::arch::asm!(
-                    "sti", "hlt",
-                    options(nostack, nomem),
-                );
             }
         }
     }
