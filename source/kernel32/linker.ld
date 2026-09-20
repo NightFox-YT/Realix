@@ -41,6 +41,9 @@ SECTIONS
 
     __kernel_end = .;
 
+    /* Стек ядра: 0x80000..0x90000. Все секции ядра должны находиться ниже. */
+    ASSERT(__kernel_end <= 0x80000, "kernel overlaps the reserved kernel stack")
+
     /* Эти секции объектных файлов мы выкидываем из бинарника */
     /DISCARD/ :
     {
