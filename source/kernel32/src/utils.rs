@@ -102,6 +102,18 @@ pub unsafe fn outw(port: u16, value: u16) {
 }
 
 
+/// Запись 32-битного слова (long) числа в I/O-порт
+#[inline(always)]
+pub unsafe fn outl(port: u16, value: u32) {
+    asm!(
+        "out dx, eax",
+        in("dx") port,
+        in("eax") value,
+        options(nostack, nomem, preserves_flags),
+    );
+}
+
+
 /// Чтение байта (u8) из I/O-порта
 #[inline(always)]
 pub unsafe fn inb(port: u16) -> u8 {
@@ -115,4 +127,42 @@ pub unsafe fn inb(port: u16) -> u8 {
     );
 
     value
+}
+
+
+/// Чтение слова (u16) из I/O-порта
+#[inline(always)]
+pub unsafe fn inw(port: u16) -> u16 {
+    let value: u16;
+
+    asm!(
+        "in ax, dx",
+        in("dx") port,
+        out("ax") value,
+        options(nostack, nomem, preserves_flags),
+    );
+
+    value
+}
+
+
+/// Чтение 32-битного слова (long) числа из I/O-порта
+#[inline(always)]
+pub unsafe fn inl(port: u16) -> u32 {
+    let value: u32;
+
+    asm!(
+        "in eax, dx",
+        in("dx") port,
+        out("eax") value,
+        options(nostack, nomem, preserves_flags),
+    );
+
+    value
+}
+
+/// Задержка IO-порта
+#[inline(always)]
+pub unsafe fn io_wait() {
+    outb(0x80, 0);
 }

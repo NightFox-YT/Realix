@@ -11,3 +11,4 @@ pub mod reboot;
 pub mod shutdown;
 pub mod stopwatch;
 pub mod nova_ai;
+pub mod lspci;
