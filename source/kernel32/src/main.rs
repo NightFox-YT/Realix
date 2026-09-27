@@ -14,12 +14,12 @@ mod shell;
 mod utils;
 mod x86;
 mod config;
-
+mod test;
 // Подключение функций
 use core::arch::{asm, naked_asm};
 use core::panic::PanicInfo;
 use drivers::{keyboard, pit, vga};
-use memory::{frame_allocator, pmm};
+use memory::{frame_allocator, pmm, vmm};
 use crate::pmm::E820Entry;
 use x86::{gdt, idt};
 use crate::config::{PCINFO_ADDR, E820_MAX_ENTRIES};
@@ -116,6 +116,9 @@ extern "C" fn kmain(pcinfo_addr: *const PcInfo) -> ! {
     unsafe {
         let pcinfo: &PcInfo = &*pcinfo_addr;
         frame_allocator::init(&pcinfo.memory_map);
+        vmm::init();
+        //#[cfg(feature = "run_tests")]
+        // тут были тесты...
         vga::init(pcinfo.videomode);
 
         if pcinfo.videomode == 1 {
