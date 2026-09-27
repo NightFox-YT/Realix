@@ -18,7 +18,12 @@ fn _8(v:u16)->f32{
     else{f32::from_bits(_9|(((_10+112)as u32)<<23)|(_11<<13))}
 }
 
-unsafe fn _13(p:*const u8,_14:usize)->u32{ptr::read_unaligned(p.add(_14)as*const u32)}
+unsafe fn _13(p: *const u8, _14: usize) -> u32
+{
+    let virt = p.add(_14) as usize;
+    if crate::memory::vmm::virt_to_phys(virt).is_none() { return 0; }
+    ptr::read_unaligned(virt as *const u32)
+}
 unsafe fn _15(p:*const u8,_16:usize)->u64{ptr::read_unaligned(p.add(_16)as*const u64)}
 unsafe fn _17(p:*const u8,_18:usize)->u8{ptr::read_volatile(p.add(_18))}
 unsafe fn _19(_20:usize)->u16{ptr::read_unaligned(_20 as*const u16)}
