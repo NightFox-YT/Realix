@@ -14,7 +14,6 @@ mod shell;
 mod utils;
 mod x86;
 mod config;
-mod test;
 // Подключение функций
 use core::arch::{asm, naked_asm};
 use core::panic::PanicInfo;
