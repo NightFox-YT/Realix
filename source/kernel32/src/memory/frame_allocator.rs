@@ -6,38 +6,12 @@
 // Подключение функций
 use core::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
-use crate::{E820_MAX_ENTRIES, memory::pmm};
-
-// Размер фрейма и границы адресного пространства
-const PAGE_SIZE: usize = 4096;                         // 4 КБ
-const MAX_PHYSICAL_MEMORY: usize = 128 * 1024 * 1024;  // ! 2 ГБ для теста
-const FRAME_COUNT: usize = MAX_PHYSICAL_MEMORY / PAGE_SIZE;
-
-// Битмап: 1 байт на 8 фреймов
-const BITMAP_SIZE: usize = FRAME_COUNT / 8;
-
-// Первый 1 МБ резервируется целиком:
-// IVT+BDA, загрузчик, kernel32, стек ядра, видеопамять и BIOS ROM
-const RESERVED_LOW_MEMORY: usize = 1024 * 1024;
-
-/// Тип свободного региона в карте памяти E820
-const E820_TYPE_FREE: u32 = 1;
-
-// Статический битмап фреймов: бит 0 - свободен, бит 1 - занят
-// (Изначально всё занято: свобода выдаётся по карте памяти E820)
-static mut FRAME_BITMAP: [u8; BITMAP_SIZE] = [0xFF; BITMAP_SIZE];
-static TOTAL_FRAMES: AtomicUsize = AtomicUsize::new(0);
-static FREE_FRAMES: AtomicUsize = AtomicUsize::new(0);
-
-/// Доступ к битмапу через raw-указатель
-fn bitmap() -> &'static mut [u8; BITMAP_SIZE] {
-    unsafe { &mut *(&raw mut FRAME_BITMAP) }
-}
+use crate::{E820_MAX_ENTRIES, memory::pmm, memory};
 
 /// Инициализация аллокатора фреймов на основе карты памяти E820
 pub fn init(memory_map: &[pmm::E820Entry; E820_MAX_ENTRIES]) {
     // Очищаем битмап: Все фреймы помечаем как занятые
-    bitmap().fill(0xFF);
+    memory::bitmap().fill(0xFF);
 
     // Считываем кол-во записей от загрузчика, но оно может превышать ёмкость массива
     let entry_count: usize = memory_map.len() as usize;
@@ -47,46 +21,51 @@ pub fn init(memory_map: &[pmm::E820Entry; E820_MAX_ENTRIES]) {
         let entry = memory_map[i];
 
         // Пропускаем не свободные области памяти E820
-        if entry.seg_type != E820_TYPE_FREE {
+        if entry.seg_type != memory::E820_TYPE_FREE {
             continue;
         }
 
+        let max_phys = memory::FRAME_MAX_PHYS_MEMORY as u64;
+
         // Пропускаем адреса, выходящие за наше адресное пространство
-        if entry.address >= MAX_PHYSICAL_MEMORY as u64 {
+        if entry.address >= max_phys {
             continue;
         }
 
         // Сохраняем адреса из записи карты памяти
         let start: u64 = entry.address;
         let end: u64 = entry.address.saturating_add(entry.size)
-            .min(MAX_PHYSICAL_MEMORY as u64);
+            .min(memory::FRAME_MAX_PHYS_MEMORY as u64);
+
+        if start >= end { continue; }
 
         // Вычисляем диапазон фреймов (Частично свободный фрейм - занятый фрейм)
-        let start_frame: usize = start.div_ceil(PAGE_SIZE as u64) as usize;
-        let end_frame: usize = (end / PAGE_SIZE as u64) as usize;
+        let start_frame: usize = start.div_ceil(memory::FRAME_PAGE_SIZE as u64) as usize;
+        let end_frame: usize = (end / memory::FRAME_PAGE_SIZE as u64) as usize;
 
-        // Помечаем фрейм как свободный
-        for frame in start_frame..end_frame {
-            mark_frame_free(frame);
+        if start_frame < end_frame {
+            // Помечаем фрейм как свободный
+            for frame in start_frame..end_frame {
+                memory::mark_frame_free(frame);
+            }
         }
     }
 
-    // Всего полезных фреймов, освобождённых по карте E820
-    let total_frames: usize = count_free_frames();
-
-    // Резервируем нижнюю память (см. RESERVED_LOW_MEMORY)
-    for frame in 0..(RESERVED_LOW_MEMORY / PAGE_SIZE) {
-        mark_frame_used(frame);
+    // резервируем нижнюю память
+    let reserved_frames = memory::RESERVED_LOW_MEMORY / memory::FRAME_PAGE_SIZE;
+    for frame in 0..reserved_frames {
+        memory::mark_frame_used(frame);
     }
 
-    TOTAL_FRAMES.store(total_frames, Relaxed);
-    FREE_FRAMES.store(count_free_frames(), Relaxed);
+    let free_frames_count: usize = memory::count_free_frames();
+    memory::TOTAL_FRAMES.store(free_frames_count, Relaxed);
+    memory::FREE_FRAMES.store(free_frames_count, Relaxed);
 }
 
 /// Выделение одного фрейма
 /// Вывод: физический адрес фрейма (None - свободных нет)
 pub fn alloc_frame() -> Option<usize> {
-    for (byte_idx, byte) in bitmap().iter_mut().enumerate() {
+    for (byte_idx, byte) in memory::bitmap().iter_mut().enumerate() {
         // Все 8 фреймов байта заняты
         if *byte == 0xFF {
             continue;
@@ -96,8 +75,8 @@ pub fn alloc_frame() -> Option<usize> {
         let bit: usize = byte.trailing_ones() as usize;
         *byte |= 1 << bit;
 
-        FREE_FRAMES.fetch_sub(1, Relaxed);
-        return Some((byte_idx * 8 + bit) * PAGE_SIZE);
+        memory::FREE_FRAMES.fetch_sub(1, Relaxed);
+        return Some((byte_idx * 8 + bit) * memory::FRAME_PAGE_SIZE);
     }
 
     // Нет свободной памяти
@@ -116,9 +95,9 @@ pub fn alloc_frames(count: usize) -> Option<usize> {
     let mut start_frame: usize = 0;
 
     // Перебираем фреймы
-    for frame in 0..FRAME_COUNT {
+    for frame in 0..memory::FRAME_COUNT {
         // Занятый фрейм разрывает непрерывное окно
-        if !is_bit_free(frame) {
+        if !memory::is_bit_free(frame) {
             consecutive = 0;
             continue;
         }
@@ -132,10 +111,10 @@ pub fn alloc_frames(count: usize) -> Option<usize> {
         // Нашли нужное кол-во последовательных фреймов
         if consecutive == count {
             for frame in start_frame..start_frame + count {
-                mark_frame_used(frame);
+                memory::mark_frame_used(frame);
             }
-            FREE_FRAMES.fetch_sub(count, Relaxed);
-            return Some(start_frame * PAGE_SIZE);
+            memory::FREE_FRAMES.fetch_sub(count, Relaxed);
+            return Some(start_frame * memory::FRAME_PAGE_SIZE);
         }
     }
 
@@ -145,61 +124,19 @@ pub fn alloc_frames(count: usize) -> Option<usize> {
 /// Освобождение фрейма по физическому адресу
 pub fn free_frame(addr: usize) {
     // Проверка: адрес выходит за предел адресного пространства
-    if addr >= MAX_PHYSICAL_MEMORY {
+    if addr >= memory::FRAME_MAX_PHYS_MEMORY {
         return;
     }
 
-    let frame: usize = addr / PAGE_SIZE;
+    let frame: usize = addr / memory::FRAME_PAGE_SIZE;
 
     // Уже свободен: не искажаем счётчик повторным освобождением
-    if is_bit_free(frame) {
+    if memory::is_bit_free(frame) {
         return;
     }
 
-    mark_frame_free(frame);
-    FREE_FRAMES.fetch_add(1, Relaxed);
-}
-
-/// Проверка, свободен ли фрейм по физическому адресу
-pub fn is_frame_free(addr: usize) -> bool {
-    // Проверка: адрес выходит за предел адресного пространства
-    if addr >= MAX_PHYSICAL_MEMORY {
-        return false;
-    }
-    is_bit_free(addr / PAGE_SIZE)
-}
-
-/// Получение статистики: (всего фреймов, свободно фреймов)
-pub fn get_stats() -> (usize, usize) {
-    (TOTAL_FRAMES.load(Relaxed), FREE_FRAMES.load(Relaxed))
-}
-
-/// Получение количества свободной памяти в байтах
-pub fn get_free_memory() -> usize {
-    FREE_FRAMES.load(Relaxed) * PAGE_SIZE
-}
-
-/// Получение количества всей полезной памяти в байтах
-pub fn get_total_memory() -> usize {
-    TOTAL_FRAMES.load(Relaxed) * PAGE_SIZE
-}
-
-// > Вспомогательные функции (номер фрейма, без валидации)
-fn is_bit_free(frame: usize) -> bool {
-    (bitmap()[frame / 8] >> (frame % 8)) & 1 == 0
-}
-
-fn mark_frame_used(frame: usize) {
-    bitmap()[frame / 8] |= 1 << (frame % 8);
-}
-
-fn mark_frame_free(frame: usize) {
-    bitmap()[frame / 8] &= !(1 << (frame % 8));
-}
-
-/// Подсчёт свободных фреймов по битмапу
-fn count_free_frames() -> usize {
-    bitmap().iter().map(|byte| byte.count_zeros() as usize).sum()
+    memory::mark_frame_free(frame);
+    memory::FREE_FRAMES.fetch_add(1, Relaxed);
 }
 
 /// Вывод карты фреймов первых 4 МБ (для отладки)
@@ -211,18 +148,18 @@ pub fn dump_bitmap() {
     const BYTES_PER_ROW: usize = 8;
 
     // Сколько байт битмапа показать (Первые 4 МБ)
-    const DUMP_BYTES: usize = 4 * 1024 * 1024 / PAGE_SIZE / 8;
+    const DUMP_BYTES: usize = 4 * 1024 * 1024 / memory::FRAME_PAGE_SIZE / 8;
 
     vga::print_line("Frame map, first 4 MB ('.' free, '#' used):\n", vga::Color::Cyan);
 
-    for (i, byte) in bitmap().iter().take(DUMP_BYTES).enumerate() {
+    for (i, byte) in memory::bitmap().iter().take(DUMP_BYTES).enumerate() {
         // Пишем адрес в начале каждой строки
         if i % BYTES_PER_ROW == 0 {
             let mut buf: [u8; 10] = [0; 10];
             vga::print_line("  ", vga::Color::LightGray);
             vga::print_line(
                 crate::utils::u32_to_hex_str(
-                    (i * 8 * PAGE_SIZE) as u32, &mut buf),
+                    (i * 8 * memory::FRAME_PAGE_SIZE) as u32, &mut buf),
                 vga::Color::White,
             );
             vga::print_line(": ", vga::Color::LightGray);
@@ -243,3 +180,4 @@ pub fn dump_bitmap() {
         }
     }
 }
+
