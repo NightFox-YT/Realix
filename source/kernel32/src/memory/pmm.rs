@@ -5,6 +5,7 @@
 #![allow(dead_code)]
 
 use core::ffi::c_void;
+use crate::memory;
 
 /// Структура записи карты памяти E820 (24 байта)
 #[repr(C, packed)]
@@ -15,11 +16,6 @@ pub struct E820Entry {
     pub seg_type: u32,    // Тип региона (1 - свободный)
     pub attributes: u32,  // Расширенные атрибуты ACPI 3.X
 }
-
-// Состояние аллокатора
-static mut PAGE_POOL_START: usize = 0;
-static mut PAGE_POOL_END: usize = 0;
-const PAGE_SIZE: usize = 4096;
 
 /// Инициализация PMM: Нахождение первого пригодного региона
 #[no_mangle]
@@ -34,8 +30,8 @@ pub extern "C" fn init_kernel_page_allocator() {
         // Находим первый подходящий регион под аллокатор
         if entry.seg_type == 1 && entry.address >= 0x100000 {
             unsafe {
-                PAGE_POOL_START = ((entry.address + 4095) & !4095) as usize;
-                PAGE_POOL_END = ((entry.address + entry.size) & !4095) as usize;
+                memory::PMM_POOL_START = ((entry.address + 4095) & !4095) as usize;
+                memory::PMM_POOL_END = ((entry.address + entry.size) & !4095) as usize;
                 found = true;
                 break;
             }
@@ -44,8 +40,8 @@ pub extern "C" fn init_kernel_page_allocator() {
  
     if !found {
         unsafe {
-            PAGE_POOL_START = 0x500000;
-            PAGE_POOL_END = 0x2000000;
+            memory::PMM_POOL_START = 0x500000;
+            memory::PMM_POOL_END = 0x2000000;
         }
     }
 }
@@ -55,11 +51,11 @@ pub extern "C" fn init_kernel_page_allocator() {
 #[no_mangle]
 pub unsafe extern "C" fn rlxalloc_page() -> *mut c_void {
     // Память переполнена
-    if PAGE_POOL_START >= PAGE_POOL_END {
+    if memory::PMM_POOL_START >= memory::PMM_POOL_END {
         return core::ptr::null_mut();
     }
 
-    let page: usize = PAGE_POOL_START;
-    PAGE_POOL_START += PAGE_SIZE;
+    let page: usize = memory::PMM_POOL_START;
+    memory::PMM_POOL_START += memory::PMM_PAGE_SIZE;
     return page as *mut c_void;
 }
