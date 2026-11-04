@@ -125,6 +125,9 @@ fn execute(input: &str) {
         "nova" => {
             unsafe { commands::nova_ai::BC(args); }
         }
+        "lspci" => {
+            commands::lspci::run();
+        }
         _ => {
             vga::print_line("[!] Unknown command. Type 'help' for list of commands.\n", Color::Red);
         }

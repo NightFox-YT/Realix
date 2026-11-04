@@ -14,6 +14,7 @@ pub fn show() {
     vga::print_line("> echo [t]  - Print text to console\n", Color::LightGray);
     vga::print_line("> uptime    - Show uptime (seconds)\n", Color::LightGray);
     vga::print_line("> meminfo   - Show memory information\n", Color::LightGray);
+    vga::print_line("> lspci     - Show PCI devices\n", Color::LightGray);
     vga::print_line("  [Numbers]\n", Color::Cyan);
     vga::print_line("> calc <a> <+ - * /> <b> - Calculator\n", Color::LightGray);
     vga::print_line("  [Fun]\n", Color::Cyan);
