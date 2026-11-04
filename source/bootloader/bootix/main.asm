@@ -70,8 +70,8 @@ main:
     ; Инициализация драйвера диска (dl содержит номер диска)
     ; ! CF не проверяется - нет места (512 байт так-то)
     call DISK_INIT
-    mov [bpb_sectors_per_track], cx
-    mov [bpb_heads], dh
+    ; Значения spt/heads из INT 13h сохраняются в curr_drive_spt/curr_drive_heads
+    ; (BPB поля не используются Initrix, экономия места)
 
     ; > Далее загрузка 2-ого этапа загрузчика (Initrix.bin)
     ; ❗️ Свой мин. обход FAT12 вместо filesystem/fat12/file_load,
@@ -85,7 +85,7 @@ main:
 
     ; *Сохраняем LBA корневого каталога (root_dir_lba)
     push ax
-    mov cx, ax
+    xchg cx, ax           ; cx = LBA корневого каталога (1 байт вместо mov cx, ax)
 
     ; Вычисление размера корневого каталога
     ; > root_dir_size = (number_of_entries * 32) / bytes_per_sector

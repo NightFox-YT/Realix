@@ -4,6 +4,9 @@
 ; ❗️ Зависимости: error_handler (внешний обработчик), bios-api/disk/init (переменные)
 
 ; ❗️ Требуется инициализация диска через `bios_disk_init`
+%ifndef BIOS_DISK_READ
+%define BIOS_DISK_READ
+
 %include "bios-api/disk/init.asm"
 
 
@@ -90,7 +93,13 @@ lba_to_chs:
 
     ; Упаковка цилиндра и сектора в cx для int 0x13
     mov ch, al  ; Сохраняем [bits 8-15] цилиндра в ch
-    shl ah, 6   ; Сдвигаем старшие 2 бита цилиндра
+    ; shl ah, 6 — умножаем ah на 64 через 6 сложений (8086-совместимо)
+    add ah, ah
+    add ah, ah
+    add ah, ah
+    add ah, ah
+    add ah, ah
+    add ah, ah
     or cl, ah   ; Перемещаем верхние 2 бита [bits 6-7] в cl
 
     pop ax      ; *Восстанавливаем ax <- оригинальный dx
@@ -121,3 +130,5 @@ read_error:
     jmp error_handler
 
 err_read_failed: db '[#] Read failed!', 0
+
+%endif
